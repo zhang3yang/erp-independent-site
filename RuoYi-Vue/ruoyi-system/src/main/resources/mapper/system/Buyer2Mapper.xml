@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.Buyer2Mapper">
+
+  <resultMap id="Buyer2Result" type="com.ruoyi.system.domain.Buyer2">
+    <result property="shopCode"   column="shop_code"/>
+    <result property="buyer2Code" column="buyer2code"/>
+    <result property="buyerCode"  column="buyercode"/>
+    <result property="imageUrl"   column="imageurl"/>
+    <result property="buyer2Name" column="buyer2name"/>
+    <result property="buyer2User" column="buyer2user"/>
+    <result property="mobile"     column="mobile"/>
+    <result property="address"    column="address"/>
+    <result property="activeFlag" column="activeflag"/>
+    <result property="remark"     column="remark"/>
+    <result property="createUser" column="createuser"/>
+    <result property="createTime" column="createtime"/>
+    <result property="updateUser" column="updateuser"/>
+    <result property="updateTime" column="updatetime"/>
+  </resultMap>
+
+  <sql id="columns">
+    shop_code, buyer2code, buyercode, imageurl, buyer2name, buyer2user, mobile,
+    address, activeflag, remark, createuser, createtime, updateuser, updatetime
+  </sql>
+
+  <!-- buyerCode 由 Service 强制填上：二级客户永远挂在某个主客户下，不做全商户平铺查询 -->
+  <select id="selectList" resultMap="Buyer2Result">
+    select <include refid="columns"/>
+      from sdsshop.u_m_buyer2
+     where shop_code = #{query.shopCode}
+       and buyercode = #{query.buyerCode}
+    <if test="query.buyer2Name != null and query.buyer2Name != ''">
+      and buyer2name like concat('%', #{query.buyer2Name}, '%')</if>
+    <if test="query.buyer2User != null and query.buyer2User != ''">
+      and buyer2user like concat('%', #{query.buyer2User}, '%')</if>
+    <if test="query.mobile != null and query.mobile != ''">
+      and mobile like concat('%', #{query.mobile}, '%')</if>
+    <if test="query.activeFlag != null">
+      and activeflag = #{query.activeFlag}</if>
+     order by activeflag desc, createtime desc, buyer2code desc
+  </select>
+
+  <select id="selectByCode" resultMap="Buyer2Result">
+    select <include refid="columns"/>
+      from sdsshop.u_m_buyer2
+     where shop_code = #{shopCode} and buyer2code = #{buyer2Code}
+  </select>
+
+  <select id="selectOptions" resultMap="Buyer2Result">
+    select shop_code, buyer2code, buyercode, imageurl, buyer2name, buyer2user, mobile, address, activeflag
+      from sdsshop.u_m_buyer2
+     where shop_code = #{shopCode}
+       and buyercode = #{buyerCode}
+       and activeflag = 1
+     order by createtime, buyer2code
+  </select>
+
+  <insert id="insert" parameterType="com.ruoyi.system.domain.Buyer2">
+    insert into sdsshop.u_m_buyer2(
+      shop_code, buyer2code, buyercode, imageurl, buyer2name, buyer2user,
+      mobile, address, activeflag, remark, createuser, createtime
+    ) values(
+      #{shopCode}, #{buyer2Code}, #{buyerCode}, #{imageUrl}, #{buyer2Name}, #{buyer2User},
+      #{mobile}, #{address}, coalesce(#{activeFlag}, 1), #{remark}, #{createUser}, sysdate()
+    )
+  </insert>
+
+  <!-- buyercode 不在可改列里：改所属主客户等于把一条子记录搬到别人名下，
+       真要搬只能删了重建，否则订单快照里的主客户和现在的从属关系会对不上 -->
+  <update id="update" parameterType="com.ruoyi.system.domain.Buyer2">
+    update sdsshop.u_m_buyer2
+       set imageurl = #{imageUrl},
+           buyer2name = #{buyer2Name},
+           buyer2user = #{buyer2User},
+           mobile = #{mobile},
+           address = #{address},
+           activeflag = coalesce(#{activeFlag}, activeflag),
+           remark = #{remark},
+           updateuser = #{updateUser},
+           updatetime = sysdate()
+     where shop_code = #{shopCode} and buyer2code = #{buyer2Code}
+  </update>
+
+  <delete id="deleteByCodes">
+    delete from sdsshop.u_m_buyer2
+     where shop_code = #{shopCode}
+       and buyer2code in
+    <foreach item="code" collection="buyer2Codes" open="(" separator="," close=")">
+      #{code}
+    </foreach>
+  </delete>
+
+  <delete id="deleteByBuyerCodes">
+    delete from sdsshop.u_m_buyer2
+     where shop_code = #{shopCode}
+       and buyercode in
+    <foreach item="code" collection="buyerCodes" open="(" separator="," close=")">
+      #{code}
+    </foreach>
+  </delete>
+
+</mapper>

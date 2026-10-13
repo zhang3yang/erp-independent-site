@@ -1,0 +1,521 @@
+# ============================================================================
+# 独立站 nginx 配置模板 —— Windows Server 一站一机
+#
+# ⚠ 这一份是**从线上实配反向生成的**（49.234.194.194 的
+#   C:\nginx\conf\conf.d\station.conf，2026-09-06 快照）。它不是构想，是已经在跑、
+#   已经验证过 HTTPS 全链路的那一份。改线上之前先比对这份；改完之后把这份同步回来。
+#
+# 放到 C:\nginx\conf\conf.d\station.conf，nginx.conf 的 http{} 里要有
+#   include conf.d/*.conf;
+#
+# ---------------------------------------------------------------------------
+# 用法：把 DOMAIN 全文替换成实际主域名（例如 kangchen.vclinker.com）即可。
+#       其余占位只有目录路径，默认值就是线上用的值。
+# ---------------------------------------------------------------------------
+#
+# 主域 + 三个子域，一台机器（boundary 要点 7）：
+#   DOMAIN          商城 SSR（首页、商品、购物车、下单、登录注册），反代 3000
+#   buyer.DOMAIN    买家中心 SSR（我的订单、账号资料、地址簿），同样反代 3000
+#   console.DOMAIN  管理台静态 dist + /api /sso 转 8081
+#   data.DOMAIN     后端对外 API，只开 /openapi/site/ 和 /files/
+#   file.DOMAIN     上传文件。**本文件里没有它的 server 块**，原因见 §5
+#
+# ⚠ 2026-09-09 改过一次分工。在那之前 buyer. 是前台、主域没有 server 块。
+#   现在商城回到主域，buyer. 只留登录后的页面——用户要求「登录的人和浏览的人
+#   不在同一个域名上」。设计和实施计划：
+#     docs/设计稿/2026-09-08-独立站域名拆分.md
+#     docs/设计稿/2026-09-08-独立站域名拆分实施计划.md
+#
+#   两个前台域反代的是**同一个 Node 进程**，谁该在哪个域由 Nuxt 的
+#   server/middleware/domain-split.ts 判，不在 nginx 里判。
+#
+# ⚠ 主域要一张自己的证书。它是这次新增的，签之前 https://DOMAIN/ 会落到
+#   443 的第一个块上，用别人的证书把站发出去（见 §0）。
+#
+# ---------------------------------------------------------------------------
+# ⚠ 这份是**单 host 布局**：前台整站在 buyer. 上，主域名没有 server 块。
+#
+# 新的布局在 deploy/nginx/tongling.conf 里，前台劈成两个 host：
+#
+#   DOMAIN        公开页（首页、商品、购物车、我的询价）—— 对外那个地址
+#   buyer.DOMAIN  账号页（登录 / 注册 / 找回密码 / 重置密码 / 邮箱验证 / 账户）
+#
+# 这份模板**刻意没跟着改**：它是从线上实配反向生成的（见文件头第一段），
+# 而线上康辰那台还是单 host。照新布局改这一份、线上没改，就会出现
+# 「按模板核对，处处对得上，站还是坏的」——那比不一致更糟。
+#
+# 康辰要迁到两 host 的话，四件事必须一起做，缺一件都是静默失败：
+#   1. 这份 nginx：加主域的 server 块 + 主域自己的证书（腾讯云免费 DV 严格单域名，
+#      buyer. 那张不覆盖主域），两个方向的跳转照 tongling.conf 抄；
+#   2. station-site 的 NUXT_PUBLIC_SITE_URL 改成主域、加 NUXT_PUBLIC_BUYER_URL；
+#   3. station-console 不设置 STATION_COOKIE_DOMAIN；买家 Cookie 保持 host-only，
+#      两个 host 通过 BuyerHandoff 交接会话
+#      —— 漏了它表现是「登录成功，回到主域还是显示未登录」；
+#   4. 库里 u_s_siteinfo.domain 改成主域名（照
+#      sql/station/migration/2026-09-08-site-domain-to-apex.sql 那份改）。
+# ---------------------------------------------------------------------------
+#
+# 端口 3000 和 8081 只监听回环，安全组只开 80/443（boundary §2）。
+#
+# ⚠ 域名较长时 nginx.conf 里要加 server_names_hash_bucket_size 64;
+#   默认 32 放不下 28 字符的子域，nginx -t 会直接报错。
+#
+# 证书按 docs/独立站部署手册（Windows）.md 附录 D 的约定放：
+#   C:/nginx/cert/<域名>/<域名>.pem
+#   C:/nginx/cert/<域名>/<域名>.key
+#
+# ⚠ 不要照抄 8080。8080 是 ERP 的端口，而独立站的三个模块**都不该认识 ERP**
+#   （docs/独立站与ERP的边界.md 要点 1）。本文件里所有反代目标只有两个：
+#   8081（station-console）和 3000（station-site）。仓库里那几份写 8080 的旧模板
+#   已经删了，见 git 历史——它们属于 2026-09-03 分家之前的架构。
+# ============================================================================
+
+
+# ---- 共用的反代头。⚠ X-Forwarded-For 必须转发 ----------------------------
+#
+# 询盘接口 POST /openapi/site/inquiry 按 IP 限流（每分钟 5 条 / 每天 50 条，
+# station.inquiry.*）。漏了这个头，所有访客在后端看来都是 127.0.0.1，
+# 每 IP 的限流会退化成全站限流——第 6 个客户就提交不了询盘，
+# 而且后端日志上看不出异常。
+#
+# 配套地，station-console 的服务环境变量里必须有
+#   SERVER_FORWARD_HEADERS_STRATEGY=FRAMEWORK
+# 不配的话 /sso 验签成功后会 302 到 http:// 而不是 https://，Secure Cookie
+# 在那一跳上不会发送，表现是「跳转成功但还是没登录」。
+
+
+# ---------------------------------------------------------------------
+# 装修预览：只有这一种请求允许被管理台内嵌
+#
+# 管理台「首页装修」右边那一列里嵌的是前台自己（<主域>/?__preview=1）。
+# 管理台在 console. 子域上，和主域**跨源**，浏览器默认不让嵌。
+# 所以只对带 ?__preview=1 的那一次请求发 CSP frame-ancestors，只放行管理台
+# 那一个域；其余请求一个字都没变。
+#
+# ⚠ 为什么不是把 X-Frame-Options 改成放行：这个头没有「允许某个别的域」那一档
+#   （ALLOW-FROM 早就没有浏览器认了）。能表达「只让 console. 嵌」的只有 CSP。
+#   两个头都发时，认 frame-ancestors 的浏览器按 CSP 来——但这里干脆把
+#   X-Frame-Options 一起收掉（$station_xfo 取空串），省得依赖「谁压过谁」
+#   这种要翻规范才敢确定的事。
+#
+# ⚠ 这一招靠的是「算出来是空串的 add_header 不发这条头」。nginx 一直是这么做的
+#   （同一个写法也是条件 CORS 的标准做法），但它不在文档的显眼处，改这里的人要知道。
+#
+# ⚠ 只给**主域**。buyer. / console. / data. 三个块不动：那上面没有预览这回事，
+#   放一个能被嵌套的口子是白送。
+#
+# 对应的前端：station-shared/DecorateForm.vue 的「预览」那一段。没放行的部署上
+# 它自己会发现嵌不进来，提示改用另开窗口——不会只剩一块空白。
+# ---------------------------------------------------------------------
+map $arg___preview $station_xfo {
+    default  "SAMEORIGIN";
+    "1"      "";
+}
+map $arg___preview $station_frame_csp {
+    default  "";
+    "1"      "frame-ancestors 'self' https://console.DOMAIN";
+}
+
+# ============================================================
+# 0. 兜底：Host 对不上的一律丢弃
+#
+# ⚠ 这两块以前**没有**，2026-09-09 补的。少了它们的后果不是「访问不到」，
+#   是「访问得到，但是错的」：
+#
+#   TLS 是先握手后看 Host，Host 对不上时 nginx 落到**第一个** 443 server 块。
+#   于是 https://<任意没配的 Host>/ 会把 buyer 那个站整个发出去，
+#   用的是 buyer 的证书 → 页面正常显示，地址栏一片红。
+#   看着像证书配错了，其实是这个 Host 压根不该有响应。
+#
+#   2026-09-09 实测：那时候 https://DOMAIN/（主域还没有自己的块）
+#   返回 200 + 完整商城 + CN=buyer.DOMAIN 的证书。
+#
+# 444 = 直接断连接，不回任何响应，比 403 少一次握手。
+#
+# ⚠ 443 那块必须给证书：TLS 先握手后看 Host，没有 ssl_certificate 的话
+#   nginx 启动就报 `no "ssl_certificate" is defined for the "listen ... ssl"`。
+#   借哪张都行——访客拿到的是「证书域名不匹配」+ 连接被断，正是想要的结果。
+# ============================================================
+server {
+    listen       80 default_server;
+    server_name  _;
+    return 444;
+}
+
+server {
+    listen       443 ssl default_server;
+    server_name  _;
+    ssl_certificate      C:/nginx/cert/DOMAIN/DOMAIN.pem;
+    ssl_certificate_key  C:/nginx/cert/DOMAIN/DOMAIN.key;
+
+    # ⚠⚠ 协议版本在 TLS 握手里协商，**比 SNI 更早**，那会儿 nginx 还不知道对方要哪个
+    #    Host。所以整个 443 socket 只认 default_server（就是这一块）的 ssl_protocols，
+    #    底下四个域各自写的那一行**对协议版本不起作用**。
+    #
+    #    2026-09-11 之前这里一个字都没写，靠的是 OpenSSL 自己的默认值把 1.0/1.1 关掉了
+    #    （在康辰站实测确实关着）——也就是说「TLS 1.0 关没关」当时不由我们的配置决定，
+    #    换个 nginx 构建就可能变。写在这里才算真的定下来。
+    #
+    # ⚠ 以后再开别的 443 socket（换端口、加 IP），那个 socket 的 default_server 也要写。
+    ssl_protocols        TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers  on;
+
+    return 444;
+}
+
+
+# ============================================================
+# 1. http -> https（主域和三个子域一起收）
+# ============================================================
+server {
+    listen       80;
+    server_name  DOMAIN
+                 buyer.DOMAIN console.DOMAIN
+                 data.DOMAIN;
+    return 301 https://$host$request_uri;
+}
+
+
+# ============================================================
+# 1.5 商城 —— DOMAIN（主域）
+#
+# 首页、商品、购物车、下单、登录注册。**要被 Google 收录的就是这个域。**
+# 买家中心（我的订单、账号资料、地址簿管理）在 §2 的 buyer. 子域上。
+#
+# 两个域的配置几乎一样，都是反代同一个 Node 进程（127.0.0.1:3000）——
+# 路由归属由 Nuxt 的 server/middleware/domain-split.ts 判，不在 nginx 里判。
+# 理由：带语言前缀的路由是构建时生成的，抄一份清单到 nginx 就有了两份
+# 会各自变旧的清单。设计见
+# docs/设计稿/2026-09-08-独立站域名拆分.md。
+#
+# ⚠ 不要在这个域上拦 /openapi/site/account/。结算页要用地址簿，主域必须能认人。
+# ============================================================
+server {
+    listen       443 ssl;
+    server_name  DOMAIN;
+
+    ssl_certificate      C:/nginx/cert/DOMAIN/DOMAIN.pem;
+    ssl_certificate_key  C:/nginx/cert/DOMAIN/DOMAIN.key;
+    ssl_session_cache    shared:SSL:1m;
+    ssl_session_timeout  5m;
+    ssl_ciphers          HIGH:!aNULL:!MD5;
+    # ⚠ 只给 1.2/1.3。旧块里那份带着 TLSv1 TLSv1.1，那两个已经不该再开，
+    #   新加的块不跟着抄。旧的什么时候收另说，别在这里扩大面。
+    ssl_protocols        TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers  on;
+
+    client_max_body_size 20M;
+
+    # ⚠ HSTS 先给 300 秒，不是一年。
+    #
+    #   证书 2026-12-04 到期，续期还是手工的。带一年期 HSTS 的话，证书一过期
+    #   用户连「继续访问」都点不了，而这个域是对外的门面。
+    #   等自动续期跑顺了再放长。
+    #
+    #   （旁边几个块写的是 max-age=31536000，那是先有的。这里不跟着抄同一个
+    #   风险——那几个域的用户已经被那一年绑住了，新域没必要再绑一次。）
+    add_header Strict-Transport-Security "max-age=300" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # ⚠ 这两条是**新加的**（2026-09-11）。在这之前主域一条 X-Frame-Options 都不发，
+    #   也就是说任何网站都能把这个商城整个 iframe 进去（点击劫持那一类）。
+    #   现在默认 SAMEORIGIN，只给装修预览那一次请求（?__preview=1）单独放行，
+    #   放行的对象也只有本站的管理台一个域。两个 map 在本文件上方。
+    add_header X-Frame-Options $station_xfo always;
+    add_header Content-Security-Policy $station_frame_csp always;
+
+    # ---- 前台取数：同源转本机后端 ----
+    #
+    # ⚠ 这一条不能省，而且**前台的 NUXT_PUBLIC_API_BASE 必须保持留空**。
+    #   留空 = 相对路径 = 同源。埋点上报走 navigator.sendBeacon 发
+    #   application/json，同源才不走 CORS 预检；配成别的域名会被预检挡下，
+    #   而 sendBeacon **拿不到响应**——出错时页面完全正常、控制台干净、
+    #   库里就是不再进数据。
+    location /openapi/site/ {
+        proxy_pass         http://127.0.0.1:8081;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout    60s;
+    }
+
+    # ---- SSR ----
+    location / {
+        proxy_pass         http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout    60s;
+    }
+
+    location /_nuxt/ {
+        proxy_pass       http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        expires 365d;
+        add_header Cache-Control "public, immutable";
+        # ⚠ nginx 的 add_header 不继承：这个 location 里只要写了一条，
+        #   server 层那几条就**全部失效**。所以要原样重复一遍，不能只写差异。
+        add_header Strict-Transport-Security "max-age=300" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    }
+}
+
+
+# ============================================================
+# 2. 买家中心 —— buyer.DOMAIN
+#    我的订单、账号资料、地址簿管理。全站 noindex + robots Disallow: /
+#
+#    ⚠ 这个域**曾经是前台**（2026-09-05 到 2026-09-09）。那时候主域在这份
+#      配置里连 server 块都没有，前台只能落在这里。现在主域自己有块有证书了，
+#      公开页由 Nuxt 中间件 301 回主域——老链接和已收录的商品页不会断。
+#
+#    配置和主域几乎一样，反代同一个 Node 进程。
+# ============================================================
+server {
+    listen       443 ssl;
+    server_name  buyer.DOMAIN;
+
+    ssl_certificate      C:/nginx/cert/buyer.DOMAIN/buyer.DOMAIN.pem;
+    ssl_certificate_key  C:/nginx/cert/buyer.DOMAIN/buyer.DOMAIN.key;
+    ssl_session_cache    shared:SSL:1m;
+    ssl_session_timeout  5m;
+    ssl_ciphers          HIGH:!aNULL:!MD5;
+    ssl_protocols        TLSv1.2 TLSv1.3;   # 对协议版本不起作用，真生效的在 §0 default_server
+    ssl_prefer_server_ciphers  on;
+
+    # 询盘可能带附件，但前台不上传大文件，比管理台小得多
+    client_max_body_size 20M;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    # 不用 DENY：外贸站常被嵌进展会页/代理商页。前台是纯公开内容、没有会话，
+    # 被 iframe 也没有可点击劫持的东西
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # ---- 前台取数：同源转本机后端 ----
+    #
+    # 转到这里而不是让浏览器直接打 data. 子域，是为了让前台的请求保持同源：
+    # 省一次跨域预检，也不用维护 CORS 白名单（station.cors.allowed-origins 留空即可）。
+    # 聊天轮询 /openapi/site/chat/*、买家账号 /openapi/site/account/*、
+    # 下单 /openapi/site/order 都在这个前缀下。
+    location /openapi/site/ {
+        proxy_pass         http://127.0.0.1:8081;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout    60s;
+    }
+
+    # ---- SSR ----
+    location / {
+        proxy_pass         http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout    60s;
+    }
+
+    # Nuxt 带 hash 的构建产物，可以长缓存
+    location /_nuxt/ {
+        proxy_pass       http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        expires 365d;
+        add_header Cache-Control "public, immutable";
+        # ⚠ nginx 的 add_header 不继承：这个 location 里只要写了一条，
+        #   server 层那几条就**全部失效**。所以要原样重复一遍，不能只写差异。
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    }
+}
+
+
+# ============================================================
+# 3. 管理台 —— console.DOMAIN
+#    静态 dist + 同源的 /api，会话 Cookie 靠同源才带得过来
+# ============================================================
+server {
+    listen       443 ssl;
+    server_name  console.DOMAIN;
+
+    ssl_certificate      C:/nginx/cert/console.DOMAIN/console.DOMAIN.pem;
+    ssl_certificate_key  C:/nginx/cert/console.DOMAIN/console.DOMAIN.key;
+    ssl_session_cache    shared:SSL:1m;
+    ssl_session_timeout  5m;
+    ssl_ciphers          HIGH:!aNULL:!MD5;
+    ssl_protocols        TLSv1.2 TLSv1.3;   # 对协议版本不起作用，真生效的在 §0 default_server
+    ssl_prefer_server_ciphers  on;
+
+    # 后端 spring.servlet.multipart.max-request-size 是 220MB，这里要放得开，
+    # 否则大文件在 nginx 就被 413 挡掉，后端日志里什么都看不到
+    client_max_body_size 220M;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    # 管理台有会话，必须禁止被嵌套（点击劫持）
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    root  C:/wczlerp/station-console-ui;
+    index index.html;
+
+    # ---- 管理台接口 ----
+    location /api/ {
+        proxy_pass         http://127.0.0.1:8081;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 10s;
+        # 上传大文件要久一点
+        proxy_read_timeout    300s;
+        proxy_send_timeout    300s;
+        proxy_request_buffering off;
+    }
+
+    # ---- 从 ERP 跳转进来的入口（POST 表单 + GET） ----
+    #
+    # ⚠ 必须是精确匹配 =/sso，不能写成 /sso/。SsoController 上是 @PostMapping("/sso")
+    # 和 @GetMapping("/sso")，没有子路径。
+    location = /sso {
+        proxy_pass         http://127.0.0.1:8081;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+
+    # ---- 上传的图片，管理台预览用 ----
+    location /files/ {
+        alias C:/wczlerp/station-upload/;
+        expires 30d;
+        add_header Cache-Control "public";
+        # ⚠ nginx 的 add_header 不继承：这个 location 里只要写了一条，
+        #   server 层那几条就**全部失效**。所以要原样重复一遍，不能只写差异。
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    }
+
+    # ---- SPA 路由 ----
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|webp|woff2?)$ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        # ⚠ nginx 的 add_header 不继承：这个 location 里只要写了一条，
+        #   server 层那几条就**全部失效**。所以要原样重复一遍，不能只写差异。
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    }
+
+    # index.html 绝不能缓存：缓存了发版之后用户还在用旧的 JS 文件名
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        # ⚠ nginx 的 add_header 不继承：这个 location 里只要写了一条，
+        #   server 层那几条就**全部失效**。所以要原样重复一遍，不能只写差异。
+        #   ⚠ 这一块是本文件里最要紧的一处：`location /` 的 try_files 会内部跳到
+        #   /index.html，于是**管理台首页**落在这里。2026-09-11 之前它一个安全头都没发，
+        #   上面 server 层那行 X-Frame-Options 事实上从来没生效过（康辰站实测 curl -I
+        #   只有 Cache-Control），管理台可以被任意站点 iframe 嵌套。
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    }
+}
+
+
+# ============================================================
+# 4. 后端对外 API —— data.DOMAIN
+#
+#    要点 7 明列的「后端服务域名」。前台走的是自己域名下的同源转发（见 §2），
+#    所以这个子域实际只在两种情况下用到：外部集成，和排查时直接打接口。
+#
+#    ⚠ 这里只暴露 /openapi/site/**（匿名开放接口）。
+#      /api/** 是管理台接口、/sso 是跳转入口，两者都**不在这个域名下开放**——
+#      它们靠同源 Cookie 认身份，多开一个源只会多一条要防的路径。
+# ============================================================
+server {
+    listen       443 ssl;
+    server_name  data.DOMAIN;
+
+    ssl_certificate      C:/nginx/cert/data.DOMAIN/data.DOMAIN.pem;
+    ssl_certificate_key  C:/nginx/cert/data.DOMAIN/data.DOMAIN.key;
+    ssl_session_cache    shared:SSL:1m;
+    ssl_session_timeout  5m;
+    ssl_ciphers          HIGH:!aNULL:!MD5;
+    ssl_protocols        TLSv1.2 TLSv1.3;   # 对协议版本不起作用，真生效的在 §0 default_server
+    ssl_prefer_server_ciphers  on;
+
+    client_max_body_size 20M;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    location /openapi/site/ {
+        proxy_pass         http://127.0.0.1:8081;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout    60s;
+    }
+
+    # 排查用：data.DOMAIN/files/... 能看到上传的文件（WebMvcConfig 注释提到这个用法）
+    location /files/ {
+        alias C:/wczlerp/station-upload/;
+        expires 30d;
+        add_header Cache-Control "public";
+        # ⚠ nginx 的 add_header 不继承：这个 location 里只要写了一条，
+        #   server 层那几条就**全部失效**。所以要原样重复一遍，不能只写差异。
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options "nosniff" always;
+    }
+
+    location / {
+        return 404;
+    }
+}
+
+
+# ============================================================
+# 5. 文件 —— file.DOMAIN
+#
+# 这份模板里**没有** file 子域的 server 块，是刻意的：线上（康辰）该子域
+# CNAME 到腾讯云 COS，由 COS 直接发文件，证书也不签在这台机器上，
+# 留一个 443 块只会让 nginx -t 失败。
+#
+# ⚠ 如果 file 子域不指向本机、而后端又把文件写在本机 C:\wczlerp\station-upload，
+#   那么 STATION_FILE_BASE_URL 拼出来的 imageurl / videourl 就是死链，
+#   而且改起来要动历史数据。两条路二选一：
+#     a. 后端存储改成 COS（u_s_storage 配 tencent，见 SiteStorageService）；
+#     b. 把 STATION_FILE_BASE_URL 改成 https://data.DOMAIN/files
+#        —— data 子域的 /files/ 已经指向同一个目录，改这一个环境变量就行，
+#        但必须**在有人上传第一个文件之前**改。
+#
+# 排查用的入口在 §4 data 子域的 location /files/。
+# ============================================================

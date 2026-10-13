@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!-- 站点视频资源。改动同 SiteImageMapper.xml，理由见那个文件顶部 -->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteVideoMapper">
+
+  <resultMap id="VideoResult" type="com.ruoyi.station.console.domain.SiteVideo">
+    <result property="videoId"    column="videoid"/>
+    <result property="shopCode"   column="shop_code"/>
+    <result property="siteCode"   column="sitecode"/>
+    <result property="videoName"  column="videoname"/>
+    <result property="videoUrl"   column="videourl"/>
+    <result property="objectName" column="objectname"/>
+    <result property="provider"   column="provider"/>
+    <result property="fileSize"   column="filesize"/>
+    <result property="mimeType"   column="mimetype"/>
+    <result property="width"      column="width"/>
+    <result property="height"     column="height"/>
+    <result property="duration"   column="duration"/>
+    <result property="remark"     column="remark"/>
+    <result property="folderId"  column="folderid"/>
+    <result property="createtime" column="createtime"/>
+    <result property="updatetime" column="updatetime"/>
+    <result property="createBy"   column="create_by"/>
+    <result property="updateBy"   column="update_by"/>
+  </resultMap>
+
+  <sql id="columns">
+    videoid, shop_code, sitecode, videoname, videourl, objectname, provider,
+    filesize, mimetype, width, height, duration, remark, folderid,
+    createtime, updatetime, create_by, update_by
+  </sql>
+
+  <sql id="listWhere">
+    <where>
+      <!-- 按文件夹筛。没传=全部（含未分类）；ROOT=只看未分类；具体值=只看那个文件夹。 -->
+      <!-- ⚠ 「全部」和「未分类」必须分得开，否则点根节点看到所有图，会以为文件夹没生效 -->
+      <if test="query.folderId != null and query.folderId != ''">
+        <choose>
+          <when test="query.folderId == 'ROOT'">and folderid is null</when>
+          <otherwise>and folderid = #{query.folderId}</otherwise>
+        </choose>
+      </if>
+      <if test="query.videoName != null and query.videoName != ''">
+        and videoname like concat('%', #{query.videoName}, '%')
+      </if>
+      <!-- 当前生效的存储。理由和 NULL 那一支的解释都在 SiteImageMapper.xml 顶部 -->
+      <if test="query.provider != null and query.provider != ''">
+        and (provider = #{query.provider}
+             or (provider is null and #{query.provider} = 'local'))
+      </if>
+    </where>
+  </sql>
+
+  <select id="selectList" resultMap="VideoResult">
+    select <include refid="columns"/>
+      from u_s_sitevideo
+    <include refid="listWhere"/>
+     order by createtime desc, videoid desc
+     limit #{offset}, #{limit}
+  </select>
+
+  <select id="countList" resultType="int">
+    select count(1) from u_s_sitevideo
+    <include refid="listWhere"/>
+  </select>
+
+  <!-- 数即将不生效的那一家，所以不能复用 listWhere（它按当前生效过滤） -->
+  <select id="countByProvider" resultType="int">
+    select count(1) from u_s_sitevideo
+     where provider = #{provider}
+        or (provider is null and #{provider} = 'local')
+  </select>
+
+  <select id="selectByCode" resultMap="VideoResult">
+    select <include refid="columns"/>
+      from u_s_sitevideo
+     where videoid = #{videoId}
+  </select>
+
+  <insert id="insertVideo" parameterType="com.ruoyi.station.console.domain.SiteVideo">
+    insert into u_s_sitevideo(videoid, shop_code, sitecode, videoname, videourl,
+                              objectname, provider, filesize, mimetype,
+                              width, height, duration, remark, folderid, createtime, updatetime,
+                              create_by, update_by)
+    values(#{videoId}, #{shopCode}, #{siteCode}, #{videoName}, #{videoUrl},
+           #{objectName}, #{provider}, #{fileSize}, #{mimeType},
+           #{width}, #{height}, #{duration}, #{remark}, #{folderId}, sysdate(), sysdate(),
+           #{createBy}, #{updateBy})
+  </insert>
+
+  <update id="updateVideoInfo" parameterType="com.ruoyi.station.console.domain.SiteVideo">
+    update u_s_sitevideo
+       set videoname  = #{videoName},
+           remark     = #{remark},
+           updatetime = sysdate(),
+           update_by  = #{updateBy}
+     where videoid = #{videoId}
+  </update>
+
+  <delete id="deleteByCode">
+    delete from u_s_sitevideo
+     where videoid = #{videoId}
+  </delete>
+  <!-- 文件夹相关：只动 folderid 这一列，不碰文件本身——图片可能正被商品页或博客引用 -->
+  <update id="clearFolder">
+    update u_s_sitevideo set folderid = null where folderid = #{folderId}
+  </update>
+
+  <update id="updateFolder">
+    update u_s_sitevideo set folderid = #{folderId}
+     where videoid in
+    <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+  </update>
+
+</mapper>

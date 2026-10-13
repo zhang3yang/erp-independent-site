@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.OrderPlatformMapper">
+    <resultMap type="com.ruoyi.system.domain.OrderPlatform" id="PlatformResult">
+        <result property="id" column="id"/><result property="shopCode" column="shop_code"/>
+        <result property="platformCode" column="platform_code"/><result property="platformName" column="platform_name"/>
+        <result property="isActive" column="is_active"/><result property="remark" column="remark"/>
+        <result property="createUser" column="create_user"/><result property="createTime" column="create_time"/>
+        <result property="updateUser" column="update_user"/><result property="updateTime" column="update_time"/>
+        <result property="storeCount" column="store_count"/>
+    </resultMap>
+    <resultMap type="com.ruoyi.system.domain.OrderPlatformStore" id="StoreResult">
+        <result property="id" column="id"/><result property="shopCode" column="shop_code"/>
+        <result property="platformCode" column="platform_code"/><result property="platformName" column="platform_name"/>
+        <result property="storeCode" column="store_code"/><result property="storeName" column="store_name"/>
+        <result property="isActive" column="is_active"/><result property="remark" column="remark"/>
+        <result property="createUser" column="create_user"/><result property="createTime" column="create_time"/>
+        <result property="updateUser" column="update_user"/><result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <select id="selectPlatformList" resultMap="PlatformResult">
+        select p.id, p.shop_code, p.platform_code, p.platform_name, p.is_active, p.remark,
+               p.create_user, p.create_time, p.update_user, p.update_time,
+               (select count(1) from sdsorder.u_o_platform_store s
+                 where s.shop_code=p.shop_code and s.platform_code=p.platform_code) store_count
+          from sdsorder.u_o_platform p
+         where p.shop_code=#{shopCode}
+        <if test="platformCode != null and platformCode != ''">and p.platform_code=#{platformCode}</if>
+        <if test="platformName != null and platformName != ''">and p.platform_name like concat('%',#{platformName},'%')</if>
+        <if test="isActive != null">and p.is_active=#{isActive}</if>
+         order by p.is_active desc, p.platform_code
+    </select>
+    <select id="selectPlatformByCode" resultMap="PlatformResult">
+        select p.*, (select count(1) from sdsorder.u_o_platform_store s
+          where s.shop_code=p.shop_code and s.platform_code=p.platform_code) store_count
+          from sdsorder.u_o_platform p where p.shop_code=#{shopCode} and p.platform_code=#{platformCode}
+    </select>
+    <insert id="insertPlatform" useGeneratedKeys="true" keyProperty="id">
+        insert into sdsorder.u_o_platform(shop_code,platform_code,platform_name,is_active,remark,create_user,create_time)
+        values(#{shopCode},#{platformCode},#{platformName},coalesce(#{isActive},1),#{remark},#{createUser},sysdate())
+    </insert>
+    <update id="updatePlatform">
+        update sdsorder.u_o_platform set platform_name=#{platformName},is_active=coalesce(#{isActive},1),
+        remark=#{remark},update_user=#{updateUser},update_time=sysdate()
+        where shop_code=#{shopCode} and id=#{id}
+    </update>
+    <delete id="deletePlatform">delete from sdsorder.u_o_platform where shop_code=#{shopCode} and id=#{id}</delete>
+    <select id="countStores" resultType="int">
+        select count(1) from sdsorder.u_o_platform_store where shop_code=#{shopCode} and platform_code=#{platformCode}
+    </select>
+
+    <select id="selectStoreList" resultMap="StoreResult">
+        select s.id,s.shop_code,s.platform_code,p.platform_name,s.store_code,s.store_name,s.is_active,s.remark,
+               s.create_user,s.create_time,s.update_user,s.update_time
+          from sdsorder.u_o_platform_store s
+          join sdsorder.u_o_platform p on p.shop_code=s.shop_code and p.platform_code=s.platform_code
+         where s.shop_code=#{shopCode}
+        <if test="platformCode != null and platformCode != ''">and s.platform_code=#{platformCode}</if>
+        <if test="storeCode != null and storeCode != ''">and s.store_code=#{storeCode}</if>
+        <if test="storeName != null and storeName != ''">and s.store_name like concat('%',#{storeName},'%')</if>
+        <if test="isActive != null">and s.is_active=#{isActive}</if>
+         order by s.is_active desc,s.platform_code,s.store_code
+    </select>
+    <select id="selectStoreByCode" resultMap="StoreResult">
+        select s.id,s.shop_code,s.platform_code,p.platform_name,s.store_code,s.store_name,s.is_active,s.remark,
+               s.create_user,s.create_time,s.update_user,s.update_time
+          from sdsorder.u_o_platform_store s
+          join sdsorder.u_o_platform p on p.shop_code=s.shop_code and p.platform_code=s.platform_code
+         where s.shop_code=#{shopCode} and s.platform_code=#{platformCode} and s.store_code=#{storeCode}
+    </select>
+    <select id="selectStoreByName" resultMap="StoreResult">
+        select s.id,s.shop_code,s.platform_code,p.platform_name,s.store_code,s.store_name,s.is_active,s.remark,
+               s.create_user,s.create_time,s.update_user,s.update_time
+          from sdsorder.u_o_platform_store s
+          join sdsorder.u_o_platform p on p.shop_code=s.shop_code and p.platform_code=s.platform_code
+         where s.shop_code=#{shopCode} and s.platform_code=#{platformCode} and s.store_name=#{storeName}
+    </select>
+    <insert id="insertStore" useGeneratedKeys="true" keyProperty="id">
+        insert into sdsorder.u_o_platform_store(shop_code,platform_code,store_code,store_name,is_active,remark,create_user,create_time)
+        values(#{shopCode},#{platformCode},#{storeCode},#{storeName},coalesce(#{isActive},1),#{remark},#{createUser},sysdate())
+    </insert>
+    <update id="updateStore">
+        update sdsorder.u_o_platform_store set store_name=#{storeName},is_active=coalesce(#{isActive},1),
+        remark=#{remark},update_user=#{updateUser},update_time=sysdate()
+        where shop_code=#{shopCode} and id=#{id}
+    </update>
+    <delete id="deleteStore">delete from sdsorder.u_o_platform_store where shop_code=#{shopCode} and id=#{id}</delete>
+    <select id="countStoreOrders" resultType="int">
+        select count(1) from sdsorder.u_o_order_${tableSuffix}
+         where shop_code=#{shopCode} and platcode=#{platformCode} and shopcode=#{storeCode}
+    </select>
+</mapper>

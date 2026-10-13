@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.DocTypeConfigMapper">
+
+    <resultMap type="DocTypeConfig" id="DocTypeConfigResult">
+        <result property="docType"          column="doctype" />
+        <result property="docTypeName"      column="doctypename" />
+        <result property="direction"        column="direction" />
+        <result property="needConfirmFlag"  column="needconfirmflag" />
+        <result property="allowNegativeFlag" column="allownegativeflag" />
+        <result property="remark"           column="remark" />
+    </resultMap>
+
+    <select id="selectDocTypeByCode" resultMap="DocTypeConfigResult">
+        select doctype, doctypename, direction, needconfirmflag, allownegativeflag, remark
+          from sdsshop.u_m_doctypeconfig
+         where doctype = #{docType}
+    </select>
+
+    <select id="selectDocTypeList" resultMap="DocTypeConfigResult">
+        select doctype, doctypename, direction, needconfirmflag, allownegativeflag, remark
+          from sdsshop.u_m_doctypeconfig
+         where 1 = 1
+        <if test="docType != null and docType != ''">
+           and doctype = #{docType}
+        </if>
+        <if test="docTypeName != null and docTypeName != ''">
+           and doctypename like concat('%', #{docTypeName}, '%')
+        </if>
+        <if test="direction != null and direction != ''">
+           and direction = #{direction}
+        </if>
+         order by doctype
+    </select>
+
+    <insert id="insertDocType" parameterType="DocTypeConfig">
+        insert into sdsshop.u_m_doctypeconfig(
+            doctype, doctypename, direction, needconfirmflag, allownegativeflag, remark
+        ) values(
+            #{docType}, #{docTypeName}, #{direction}, #{needConfirmFlag}, #{allowNegativeFlag}, #{remark}
+        )
+    </insert>
+
+    <update id="updateDocType" parameterType="DocTypeConfig">
+        update sdsshop.u_m_doctypeconfig
+           set doctypename = #{docTypeName},
+               direction = #{direction},
+               needconfirmflag = #{needConfirmFlag},
+               allownegativeflag = #{allowNegativeFlag},
+               remark = #{remark}
+         where doctype = #{docType}
+    </update>
+
+    <delete id="deleteDocTypeByCode">
+        delete from sdsshop.u_m_doctypeconfig
+         where doctype = #{docType}
+    </delete>
+
+    <select id="checkDocTypeUnique" resultType="int">
+        select count(1) from sdsshop.u_m_doctypeconfig
+         where doctype = #{docType}
+    </select>
+
+</mapper>

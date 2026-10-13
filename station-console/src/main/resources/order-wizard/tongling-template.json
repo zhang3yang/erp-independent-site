@@ -1,0 +1,315 @@
+{
+  "version": 1,
+  "title": {
+    "en": "Build your order",
+    "zh": "在线定制下单",
+    "ru": "Соберите свой заказ",
+    "es": "Arme su pedido"
+  },
+  "lead": {
+    "en": "Pick garments and parts step by step. We reply with a written quote — nothing is paid on this site.",
+    "zh": "一步步选好套件和配件，我们按你的选择书面报价。本站不收款。",
+    "ru": "Выберите манжеты и комплектующие шаг за шагом. Мы ответим письменным предложением — на сайте ничего не оплачивается.",
+    "es": "Elija prendas y piezas paso a paso. Le respondemos con un presupuesto por escrito; en este sitio no se paga nada."
+  },
+  "groups": [
+    {
+      "code": "basic",
+      "title": { "en": "Basics", "zh": "基本信息", "ru": "Основное", "es": "Datos básicos" },
+      "sub": { "en": "Who you are and where it ships", "zh": "你是谁、货发去哪", "ru": "Кто вы и куда доставить", "es": "Quién es usted y adónde enviamos" },
+      "fields": [
+        {
+          "code": "audience",
+          "type": "cards",
+          "required": true,
+          "title": { "en": "You are buying for", "zh": "采购身份", "ru": "Вы покупаете", "es": "Compra para" },
+          "help": {
+            "en": "Personal: a few pieces for your own use or repair. Business: brands, assemblers and resellers — logo, packaging and certifications available.",
+            "zh": "个人：自用或维修，买几件。企业：品牌方、组装厂、经销商，可以做 logo、包装和认证。",
+            "ru": "Для себя: несколько штук для личного пользования или ремонта. Для бизнеса: бренды, сборщики и дилеры — логотип, упаковка и сертификаты.",
+            "es": "Particular: unas pocas piezas para uso propio o reparación. Empresa: marcas, ensambladores y distribuidores; logotipo, embalaje y certificaciones disponibles."
+          },
+          "options": [
+            {
+              "code": "personal", "icon": "🙋",
+              "title": { "en": "Personal use", "zh": "个人使用", "ru": "Для себя", "es": "Uso personal" },
+              "desc": { "en": "Own use or repair", "zh": "自用 / 维修", "ru": "Для себя или ремонта", "es": "Uso propio o reparación" }
+            },
+            {
+              "code": "business", "icon": "🏭",
+              "title": { "en": "Business", "zh": "企业采购", "ru": "Для бизнеса", "es": "Empresa" },
+              "desc": { "en": "Brand, assembler, reseller", "zh": "品牌方、组装厂、经销", "ru": "Бренд, сборщик, дилер", "es": "Marca, ensamblador, distribuidor" }
+            }
+          ]
+        },
+        {
+          "code": "mode",
+          "type": "cards",
+          "required": true,
+          "showIf": [ { "field": "audience", "in": [ "business" ] } ],
+          "title": { "en": "Order type", "zh": "订购方式", "ru": "Тип заказа", "es": "Tipo de pedido" },
+          "help": {
+            "en": "Standard: our catalogue parts as they are. OEM: same parts with your logo and packaging. ODM: changes to chambers, size or function, reviewed by our engineers.",
+            "zh": "标准品：目录里的原样配件。贴牌 OEM：配件不变，印你的 logo、用你的包装。深度定制 ODM：改腔数、尺寸或功能，由工程师评估。",
+            "ru": "Стандарт: детали из каталога как есть. OEM: те же детали с вашим логотипом и упаковкой. ODM: изменение числа камер, размеров или функций — оценят наши инженеры.",
+            "es": "Estándar: piezas del catálogo tal cual. OEM: las mismas piezas con su logotipo y embalaje. ODM: cambios de cámaras, tamaño o función, evaluados por nuestros ingenieros."
+          },
+          "options": [
+            {
+              "code": "stock", "icon": "📦",
+              "title": { "en": "Standard", "zh": "标准品", "ru": "Стандарт", "es": "Estándar" },
+              "desc": { "en": "Catalogue parts", "zh": "目录原样", "ru": "Из каталога", "es": "Del catálogo" }
+            },
+            {
+              "code": "oem", "icon": "🏷️",
+              "title": { "en": "OEM", "zh": "贴牌 OEM", "ru": "OEM", "es": "OEM" },
+              "desc": { "en": "Your logo and packaging", "zh": "你的 logo 和包装", "ru": "Ваш логотип и упаковка", "es": "Su logotipo y embalaje" },
+              "badge": { "en": "Popular", "zh": "常选", "ru": "Часто", "es": "Frecuente" }
+            },
+            {
+              "code": "odm", "icon": "🛠️",
+              "title": { "en": "ODM", "zh": "深度定制 ODM", "ru": "ODM", "es": "ODM" },
+              "desc": { "en": "Change the design", "zh": "改结构 / 功能", "ru": "Изменить конструкцию", "es": "Cambiar el diseño" },
+              "badge": { "en": "Reviewed", "zh": "需评估", "ru": "По оценке", "es": "Con estudio" }
+            }
+          ]
+        },
+        {
+          "code": "country",
+          "type": "options",
+          "required": true,
+          "title": { "en": "Destination country", "zh": "目的国家", "ru": "Страна доставки", "es": "País de destino" },
+          "help": {
+            "en": "Used to suggest certifications (you can change them) and to quote freight.",
+            "zh": "用来建议认证（可以改）和估算运费。",
+            "ru": "Нужна, чтобы предложить сертификаты (их можно изменить) и рассчитать доставку.",
+            "es": "Sirve para sugerir certificaciones (puede cambiarlas) y cotizar el transporte."
+          },
+          "options": [
+            { "code": "US", "sets": { "certs": [ "FCC" ] }, "title": { "en": "United States", "zh": "美国", "ru": "США", "es": "Estados Unidos" } },
+            { "code": "EU", "sets": { "certs": [ "CE" ] }, "title": { "en": "European Union", "zh": "欧盟", "ru": "Евросоюз", "es": "Unión Europea" } },
+            { "code": "GB", "sets": { "certs": [ "UKCA" ] }, "title": { "en": "United Kingdom", "zh": "英国", "ru": "Великобритания", "es": "Reino Unido" } },
+            { "code": "RU", "sets": { "certs": [ "EAC" ] }, "title": { "en": "Russia / EAEU", "zh": "俄罗斯 / 欧亚经济联盟", "ru": "Россия / ЕАЭС", "es": "Rusia / UEEA" } },
+            { "code": "LATAM", "title": { "en": "Latin America", "zh": "拉美", "ru": "Латинская Америка", "es": "Latinoamérica" } },
+            { "code": "ASIA", "title": { "en": "Asia", "zh": "亚洲", "ru": "Азия", "es": "Asia" } },
+            { "code": "CN", "title": { "en": "China", "zh": "中国", "ru": "Китай", "es": "China" } },
+            { "code": "OTHER", "title": { "en": "Other", "zh": "其他", "ru": "Другая", "es": "Otro" } }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "garment",
+      "title": { "en": "Compression garments", "zh": "加压套件", "ru": "Компрессионные манжеты", "es": "Prendas de compresión" },
+      "sub": { "en": "Choose several, then enter quantities", "zh": "可多选，再分别填数量", "ru": "Можно несколько, затем укажите количество", "es": "Puede elegir varias y luego indicar cantidades" },
+      "fields": [
+        {
+          "code": "garments",
+          "type": "cards",
+          "multi": true,
+          "title": { "en": "Garments", "zh": "套件", "ru": "Манжеты", "es": "Prendas" },
+          "help": {
+            "en": "More chambers give a finer sequential compression. Other sizes and chamber counts can be discussed in the note.",
+            "zh": "腔数越多，逐段加压越细。其他尺码和腔数可以写在备注里。",
+            "ru": "Чем больше камер, тем плавнее последовательная компрессия. Другие размеры и число камер можно указать в примечании.",
+            "es": "Más cámaras dan una compresión secuencial más fina. Otras tallas y números de cámaras pueden indicarse en la nota."
+          },
+          "options": [
+            { "code": "leg4", "icon": "🦵", "goods": "12023902", "title": { "en": "Leg sleeve, 4 chambers", "zh": "4 腔腿套", "ru": "Манжета для ног, 4 камеры", "es": "Pernera, 4 cámaras" }, "desc": { "en": "Size M, per pair", "zh": "M 码 · 按双", "ru": "Размер M, пара", "es": "Talla M, por par" } },
+            { "code": "leg6", "icon": "🦵", "goods": "12023907", "title": { "en": "Leg sleeve, 6 chambers", "zh": "6 腔腿套", "ru": "Манжета для ног, 6 камер", "es": "Pernera, 6 cámaras" }, "desc": { "en": "Size M, per pair", "zh": "M 码 · 按双", "ru": "Размер M, пара", "es": "Talla M, por par" } },
+            { "code": "leg8", "icon": "🦵", "goods": "12023916", "title": { "en": "Leg sleeve, 8 chambers", "zh": "8 腔腿套", "ru": "Манжета для ног, 8 камер", "es": "Pernera, 8 cámaras" }, "desc": { "en": "Size L, per pair", "zh": "L 码 · 按双", "ru": "Размер L, пара", "es": "Talla L, por par" } },
+            { "code": "arm6", "icon": "💪", "goods": "12023911", "title": { "en": "Arm sleeve, 6 chambers", "zh": "6 腔手臂", "ru": "Манжета для руки, 6 камер", "es": "Manga, 6 cámaras" }, "desc": { "en": "Per piece", "zh": "按件", "ru": "Штука", "es": "Por pieza" } },
+            { "code": "waist6", "icon": "⭕", "goods": "12023906", "title": { "en": "Waist belt, 6 chambers", "zh": "6 腔腰带", "ru": "Пояс, 6 камер", "es": "Cinturón, 6 cámaras" }, "desc": { "en": "Per piece", "zh": "按件", "ru": "Штука", "es": "Por pieza" } },
+            { "code": "vest6", "icon": "🦺", "goods": "12023914", "title": { "en": "Vest, 6 chambers", "zh": "6 腔背心", "ru": "Жилет, 6 камер", "es": "Chaleco, 6 cámaras" }, "desc": { "en": "Per piece", "zh": "按件", "ru": "Штука", "es": "Por pieza" } },
+            { "code": "trousers6", "icon": "👖", "goods": "12023913", "title": { "en": "Full-leg trousers, 6 chambers", "zh": "6 腔长裤", "ru": "Брюки, 6 камер", "es": "Pantalón, 6 cámaras" }, "desc": { "en": "Per piece", "zh": "按件", "ru": "Штука", "es": "Por pieza" } }
+          ]
+        },
+        {
+          "code": "garmentQty",
+          "type": "goods",
+          "source": "garments",
+          "title": { "en": "Quantities", "zh": "套件数量", "ru": "Количество", "es": "Cantidades" }
+        }
+      ]
+    },
+    {
+      "code": "parts",
+      "title": { "en": "Air circuit and power parts", "zh": "气路与电源配件", "ru": "Пневматика и питание", "es": "Circuito de aire y alimentación" },
+      "sub": { "en": "For assembly or repair", "zh": "组装或维修用", "ru": "Для сборки или ремонта", "es": "Para montaje o reparación" },
+      "fields": [
+        {
+          "code": "parts",
+          "type": "cards",
+          "multi": true,
+          "title": { "en": "Parts", "zh": "配件", "ru": "Комплектующие", "es": "Piezas" },
+          "help": {
+            "en": "Silicone tubes are sold by the metre (4-channel) or by the piece (6- and 8-channel). Choose the EU or US adapter to match your market.",
+            "zh": "硅胶管 4 腔按米、6 腔和 8 腔按根。适配器按目标市场选欧规或美规。",
+            "ru": "Силиконовые трубки: 4-канальная — метрами, 6- и 8-канальные — поштучно. Адаптер выберите европейский или американский под ваш рынок.",
+            "es": "Los tubos de silicona se venden por metro (4 canales) o por pieza (6 y 8 canales). Elija el adaptador UE o EE. UU. según su mercado."
+          },
+          "options": [
+            { "code": "pump", "icon": "🌀", "goods": "12010901", "title": { "en": "Air pump WP36-12", "zh": "气泵 WP36-12", "ru": "Воздушный насос WP36-12", "es": "Bomba de aire WP36-12" } },
+            { "code": "valve", "icon": "🔀", "goods": "12010902", "title": { "en": "Air valve WV33CL-12", "zh": "气阀 WV33CL-12", "ru": "Воздушный клапан WV33CL-12", "es": "Válvula de aire WV33CL-12" } },
+            { "code": "battery", "icon": "🔋", "goods": "12010701", "title": { "en": "Li-ion battery 11.1 V 5000 mAh", "zh": "锂电池 11.1V 5000mAh", "ru": "Li-ion аккумулятор 11,1 В 5000 мА·ч", "es": "Batería Li-ion 11,1 V 5000 mAh" } },
+            { "code": "adapterBody", "icon": "🔌", "goods": "12020101", "title": { "en": "Adapter body JXY50W", "zh": "适配器主体 JXY50W", "ru": "Корпус адаптера JXY50W", "es": "Cuerpo del adaptador JXY50W" } },
+            { "code": "adapterEU", "icon": "🔌", "goods": "12030502", "title": { "en": "Adapter, EU plug", "zh": "欧规适配器", "ru": "Адаптер, вилка EU", "es": "Adaptador, enchufe UE" } },
+            { "code": "adapterUS", "icon": "🔌", "goods": "12030501", "title": { "en": "Adapter, US plug", "zh": "美规适配器", "ru": "Адаптер, вилка US", "es": "Adaptador, enchufe EE. UU." } },
+            { "code": "tube4", "icon": "〰️", "goods": "12010304", "title": { "en": "Silicone tube, 4-channel", "zh": "4 腔硅胶管", "ru": "Силиконовая трубка, 4 канала", "es": "Tubo de silicona, 4 canales" }, "desc": { "en": "Per metre", "zh": "按米", "ru": "За метр", "es": "Por metro" } },
+            { "code": "tube6", "icon": "〰️", "goods": "12010301", "title": { "en": "Silicone tube, 6-channel", "zh": "6 腔硅胶管", "ru": "Силиконовая трубка, 6 каналов", "es": "Tubo de silicona, 6 canales" }, "desc": { "en": "Per piece", "zh": "按根", "ru": "Штука", "es": "Por pieza" } },
+            { "code": "tube8", "icon": "〰️", "goods": "12010305", "title": { "en": "Silicone tube, 8-channel", "zh": "8 腔硅胶管", "ru": "Силиконовая трубка, 8 каналов", "es": "Tubo de silicona, 8 canales" }, "desc": { "en": "Per piece", "zh": "按根", "ru": "Штука", "es": "Por pieza" } }
+          ]
+        },
+        {
+          "code": "partsQty",
+          "type": "goods",
+          "source": "parts",
+          "title": { "en": "Quantities", "zh": "配件数量", "ru": "Количество", "es": "Cantidades" }
+        }
+      ]
+    },
+    {
+      "code": "devices",
+      "title": { "en": "Other devices", "zh": "其他设备", "ru": "Другие устройства", "es": "Otros equipos" },
+      "sub": { "en": "Optional", "zh": "可选", "ru": "По желанию", "es": "Opcional" },
+      "fields": [
+        {
+          "code": "devices",
+          "type": "cards",
+          "multi": true,
+          "title": { "en": "Devices", "zh": "设备", "ru": "Устройства", "es": "Equipos" },
+          "options": [
+            { "code": "pulseBelt", "icon": "⚡", "goods": "12030101", "title": { "en": "Pulse massage belt 8721-3R", "zh": "脉冲按摩腰带 8721-3R", "ru": "Импульсный массажный пояс 8721-3R", "es": "Cinturón de masaje por pulsos 8721-3R" } },
+            { "code": "coldUnit", "icon": "❄️", "goods": "12030105", "title": { "en": "Cold compression unit 7961-C1", "zh": "冷敷机 7961-C1", "ru": "Аппарат холодовой компрессии 7961-C1", "es": "Equipo de compresión en frío 7961-C1" } }
+          ]
+        },
+        {
+          "code": "devicesQty",
+          "type": "goods",
+          "source": "devices",
+          "title": { "en": "Quantities", "zh": "设备数量", "ru": "Количество", "es": "Cantidades" }
+        }
+      ]
+    },
+    {
+      "code": "custom",
+      "title": { "en": "Customisation", "zh": "个性化", "ru": "Персонализация", "es": "Personalización" },
+      "sub": { "en": "Logo and custom packaging for OEM / ODM", "zh": "OEM / ODM 才开放 logo 和定制包装", "ru": "Логотип и своя упаковка — для OEM / ODM", "es": "Logotipo y embalaje propio para OEM / ODM" },
+      "showIf": [ { "field": "audience", "in": [ "business" ] } ],
+      "fields": [
+        {
+          "code": "logo",
+          "type": "options",
+          "title": { "en": "Logo", "zh": "Logo", "ru": "Логотип", "es": "Logotipo" },
+          "help": {
+            "en": "Printed on the garments. Send your file (AI, PDF, EPS or a sharp PNG) in reply to the confirmation email.",
+            "zh": "印在套件上。logo 文件（AI / PDF / EPS 或清晰的 PNG）请在提交后回复确认邮件发给我们。",
+            "ru": "Наносится на манжеты. Файл (AI, PDF, EPS или чёткий PNG) пришлите ответом на письмо-подтверждение.",
+            "es": "Impreso en las prendas. Envíe su archivo (AI, PDF, EPS o un PNG nítido) respondiendo al correo de confirmación."
+          },
+          "options": [
+            { "code": "none", "title": { "en": "No logo", "zh": "不加 logo", "ru": "Без логотипа", "es": "Sin logotipo" } },
+            { "code": "print", "needs": [ { "field": "mode", "in": [ "oem", "odm" ] } ], "title": { "en": "Printed logo", "zh": "印 logo", "ru": "Печать логотипа", "es": "Logotipo impreso" } }
+          ]
+        },
+        {
+          "code": "pack",
+          "type": "options",
+          "title": { "en": "Packaging", "zh": "包装", "ru": "Упаковка", "es": "Embalaje" },
+          "options": [
+            { "code": "std", "title": { "en": "Standard packaging", "zh": "标准包装", "ru": "Стандартная упаковка", "es": "Embalaje estándar" } },
+            { "code": "neutral", "needs": [ { "field": "mode", "in": [ "oem", "odm" ] } ], "title": { "en": "Plain packaging", "zh": "中性包装", "ru": "Нейтральная упаковка", "es": "Embalaje neutro" } }
+          ]
+        },
+        {
+          "code": "manual",
+          "type": "options",
+          "multi": true,
+          "title": { "en": "Manual languages", "zh": "说明书语言", "ru": "Языки инструкции", "es": "Idiomas del manual" },
+          "options": [
+            { "code": "en", "title": { "en": "English", "zh": "English", "ru": "English", "es": "English" } },
+            { "code": "ru", "title": { "en": "Русский", "zh": "Русский", "ru": "Русский", "es": "Русский" } },
+            { "code": "es", "title": { "en": "Español", "zh": "Español", "ru": "Español", "es": "Español" } },
+            { "code": "zh", "title": { "en": "中文", "zh": "中文", "ru": "中文", "es": "中文" } },
+            { "code": "other", "title": { "en": "Other (in the note)", "zh": "其他（写在备注里）", "ru": "Другой (в примечании)", "es": "Otro (en la nota)" } }
+          ]
+        },
+        {
+          "code": "odmNeed",
+          "type": "text",
+          "required": true,
+          "showIf": [ { "field": "mode", "in": [ "odm" ] } ],
+          "title": { "en": "What you want to change", "zh": "要改什么", "ru": "Что нужно изменить", "es": "Qué quiere cambiar" },
+          "hint": {
+            "en": "Number of chambers, sizes, tube length, connectors, pressure range… Send drawings or photos in reply to the confirmation email.",
+            "zh": "比如腔数、尺码、管长、接头、压力范围。图纸或参考照片请回复确认邮件发给我们。",
+            "ru": "Число камер, размеры, длина трубок, разъёмы, диапазон давления… Чертежи или фото пришлите ответом на письмо-подтверждение.",
+            "es": "Número de cámaras, tallas, longitud de tubo, conectores, rango de presión… Envíe planos o fotos respondiendo al correo de confirmación."
+          }
+        }
+      ]
+    },
+    {
+      "code": "cert",
+      "title": { "en": "Certifications", "zh": "认证", "ru": "Сертификаты", "es": "Certificaciones" },
+      "sub": { "en": "Suggested by country", "zh": "按目的国家自动建议", "ru": "Подбираются по стране", "es": "Sugeridas según el país" },
+      "showIf": [ { "field": "audience", "in": [ "business" ] } ],
+      "fields": [
+        {
+          "code": "certs",
+          "type": "options",
+          "multi": true,
+          "title": { "en": "Required certifications", "zh": "需要的认证", "ru": "Нужные сертификаты", "es": "Certificaciones necesarias" },
+          "help": {
+            "en": "This is your requirement. Which certificates we can provide is confirmed in writing in the quote.",
+            "zh": "这里填的是你的需求。我们能提供哪些证书，会在报价时书面确认。",
+            "ru": "Это ваше требование. Какие сертификаты мы можем предоставить, подтвердим письменно в предложении.",
+            "es": "Es su requisito. Los certificados que podemos aportar se confirman por escrito en el presupuesto."
+          },
+          "options": [
+            { "code": "CE", "title": { "en": "CE", "zh": "CE", "ru": "CE", "es": "CE" } },
+            { "code": "UKCA", "title": { "en": "UKCA", "zh": "UKCA", "ru": "UKCA", "es": "UKCA" } },
+            { "code": "FCC", "title": { "en": "FCC", "zh": "FCC", "ru": "FCC", "es": "FCC" } },
+            { "code": "FDA", "title": { "en": "FDA", "zh": "FDA", "ru": "FDA", "es": "FDA" } },
+            { "code": "EAC", "title": { "en": "EAC", "zh": "EAC", "ru": "EAC", "es": "EAC" } },
+            { "code": "RoHS", "title": { "en": "RoHS", "zh": "RoHS", "ru": "RoHS", "es": "RoHS" } }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "delivery",
+      "title": { "en": "Sample and timing", "zh": "打样与交期", "ru": "Образец и сроки", "es": "Muestra y plazo" },
+      "fields": [
+        {
+          "code": "sample",
+          "type": "options",
+          "required": true,
+          "showIf": [ { "field": "audience", "in": [ "business" ] } ],
+          "title": { "en": "Sample first?", "zh": "先打样吗", "ru": "Сначала образец?", "es": "¿Muestra primero?" },
+          "help": {
+            "en": "For OEM or ODM we recommend approving samples before mass production.",
+            "zh": "OEM / ODM 建议先打样确认，再做大货。",
+            "ru": "Для OEM и ODM советуем сначала утвердить образцы.",
+            "es": "Para OEM u ODM recomendamos aprobar muestras antes de producir en serie."
+          },
+          "options": [
+            { "code": "sample", "title": { "en": "Samples first", "zh": "先打样", "ru": "Сначала образцы", "es": "Primero muestras" } },
+            { "code": "bulk", "title": { "en": "Straight to production", "zh": "直接做大货", "ru": "Сразу партия", "es": "Directo a producción" } }
+          ]
+        },
+        {
+          "code": "wantDate",
+          "type": "date",
+          "title": { "en": "Wanted by", "zh": "期望到货", "ru": "Желаемая дата", "es": "Entrega deseada" },
+          "hint": {
+            "en": "For reference only; lead time is confirmed in the quote.",
+            "zh": "只是参考，交期以报价为准。",
+            "ru": "Ориентир; срок подтвердим в предложении.",
+            "es": "Solo orientativo; el plazo se confirma en el presupuesto."
+          }
+        }
+      ]
+    }
+  ]
+}

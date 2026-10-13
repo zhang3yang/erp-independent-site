@@ -1,0 +1,30 @@
+{
+  // 这个文件只做一件事：把 Nuxt 生成的四份 tsconfig 指给编辑器。
+  //
+  // 在这之前 station-site 下**没有** tsconfig.json（git 历史里也没有过），于是 IDE
+  // 找不到任何配置，`.nuxt/types/` 里那些自动导入的声明它就看不见——表现是
+  // server/routes 和 app/ 下一大片标红：`defineEventHandler`、`useRuntimeConfig`、
+  // `getRequestURL`、`onBuyerHost`、`useCart` 这些全都「找不到名称」。
+  //
+  // ⚠ 红的只是编辑器，`nuxt build` 一直是好的：构建不走 tsc，自动导入是 Nuxt 在
+  //   打包时注入的。所以这个文件不影响产物，也不改任何运行时行为。
+  //
+  // ⚠ 四条 references 缺一不可，它们的职责不一样：
+  //     app     —— app/ 下的页面、组件、composables（浏览器 + SSR）
+  //     server  —— server/ 下的 Nitro 路由和 utils（`../server/**/*`）
+  //     shared  —— 两边共用的类型
+  //     node    —— nuxt.config.ts 和构建期脚本
+  //   只留 app 的话，server/routes 里照样全红。
+  //
+  // ⚠ 引的是 ./.nuxt，不是 node_modules/.cache/nuxt/.nuxt。Nuxt 4 默认把构建产物放在
+  //   后者，但**类型**同时也写到项目根的 .nuxt 下，编辑器该看的是这一份。
+  //   这些文件由 `nuxt dev` / `nuxt build` / `nuxt prepare` 生成，
+  //   拉完代码发现还是红的，先跑一次 `npx nuxt prepare`。
+  "files": [],
+  "references": [
+    { "path": "./.nuxt/tsconfig.app.json" },
+    { "path": "./.nuxt/tsconfig.server.json" },
+    { "path": "./.nuxt/tsconfig.shared.json" },
+    { "path": "./.nuxt/tsconfig.node.json" }
+  ]
+}

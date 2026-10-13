@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  商品组合（详情页那排「组合」选项卡）。
+
+  结构和 SiteGoodsMapper.xml 一模一样地对称：主表 + 语言表，名称按
+  「当前语言 l → 站点默认语言 d」两次 join 回退。照着那份看就行，这里只记不同的地方。
+
+  ==================== 和商品那份的两处不同 ====================
+
+  1. **没有第三层回退。** 商品的文案回退到最后还有 sg.goodsname 兜底
+     （coalesce(l.title, d.title, sg.goodsname)）；组合没有这个兜底列，
+     两种语言都没填就是 null。前台那边约定：title 为空的组合**不渲染**，
+     而不是显示一个空按钮——见 station-site 详情页的 combos computed。
+
+     为什么不拿 combocode 兜底：那是给机器看的码（CB01），显示在选项卡上
+     等于让客户去猜。宁可少一个选项，也不要一个看不懂的选项。
+
+  2. **对外那条永远带 status = '可选'。** 和商品的 publishstatus 同一条规矩，
+     不做成参数。
+
+  ==================== shop_code / sitecode ====================
+
+  照例不在任何 where 里：一个部署一个站，那两列不是筛选维度。
+  写入时由 SiteContext 填，主键里有它们，值飘了就会出现同一个组合两行。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteGoodsComboMapper">
+
+  <resultMap id="ComboResult" type="com.ruoyi.station.console.domain.SiteGoodsCombo">
+    <result property="shopCode"   column="shop_code"/>
+    <result property="siteCode"   column="sitecode"/>
+    <result property="goodsCode"  column="goodscode"/>
+    <result property="comboCode"  column="combocode"/>
+    <result property="opt1"       column="opt1"/>
+    <result property="opt2"       column="opt2"/>
+    <result property="price"      column="price"/>
+    <result property="image"      column="image"/>
+    <result property="model3d"    column="model3d"/>
+    <result property="model3dMarks" column="model3d_marks"/>
+    <result property="model3dStates" column="model3d_states"/>
+    <result property="sortNum"    column="sortnum"/>
+    <result property="status"     column="status"/>
+    <result property="createUser" column="createuser"/>
+    <result property="createTime" column="createtime"/>
+    <result property="updateUser" column="updateuser"/>
+    <result property="updateTime" column="updatetime"/>
+    <!-- 不是本表的列：按语言回退从 u_s_sitegoods_combo_lang 取到的名称 -->
+    <result property="title"      column="title"/>
+  </resultMap>
+
+  <resultMap id="ComboLangResult" type="com.ruoyi.station.console.domain.SiteGoodsComboLang">
+    <result property="shopCode"  column="shop_code"/>
+    <result property="siteCode"  column="sitecode"/>
+    <result property="goodsCode" column="goodscode"/>
+    <result property="comboCode" column="combocode"/>
+    <result property="lang"      column="lang"/>
+    <result property="title"     column="title"/>
+  </resultMap>
+
+  <sql id="ownColumns">
+    c.shop_code, c.sitecode, c.goodscode, c.combocode, c.opt1, c.opt2, c.price, c.image, c.model3d, c.model3d_marks, c.model3d_states, c.sortnum, c.status
+  </sql>
+
+  <!-- 两次 join 的代价可以忽略：语言表的主键就是那五列，走的是主键等值查找 -->
+  <sql id="langJoins">
+      from u_s_sitegoods_combo c
+      left join u_s_sitegoods_combo_lang l
+        on l.shop_code = c.shop_code and l.sitecode = c.sitecode
+       and l.goodscode = c.goodscode and l.combocode = c.combocode and l.lang = #{lang}
+      left join u_s_sitegoods_combo_lang d
+        on d.shop_code = c.shop_code and d.sitecode = c.sitecode
+       and d.goodscode = c.goodscode and d.combocode = c.combocode and d.lang = #{defaultLang}
+  </sql>
+
+  <!-- ==================== 对外 ==================== -->
+
+  <select id="selectPublicByGoods" resultMap="ComboResult">
+    select <include refid="ownColumns"/>,
+           coalesce(l.title, d.title) as title
+    <include refid="langJoins"/>
+    where c.goodscode = #{goodsCode}
+      and c.status = '可选'
+    order by c.sortnum, c.combocode
+  </select>
+
+  <select id="selectPublicOne" resultMap="ComboResult">
+    select <include refid="ownColumns"/>,
+           coalesce(l.title, d.title) as title
+    <include refid="langJoins"/>
+    where c.goodscode = #{goodsCode}
+      and c.combocode = #{comboCode}
+      and c.status = '可选'
+  </select>
+
+  <!-- ==================== 后台：不带 status 过滤 ==================== -->
+
+  <!--
+    只 join 一次：后台列表显示的是站点默认语言那一份，不需要回退——
+    这一格空着本身就是要让商家看见的信息（「这条组合还没起名」）。
+  -->
+  <select id="selectAdminByGoods" resultMap="ComboResult">
+    select <include refid="ownColumns"/>, c.createuser, c.createtime, c.updateuser, c.updatetime,
+           l.title as title
+      from u_s_sitegoods_combo c
+      left join u_s_sitegoods_combo_lang l
+        on l.shop_code = c.shop_code and l.sitecode = c.sitecode
+       and l.goodscode = c.goodscode and l.combocode = c.combocode and l.lang = #{lang}
+     where c.goodscode = #{goodsCode}
+     order by c.sortnum, c.combocode
+  </select>
+
+  <select id="selectLangsByGoods" resultMap="ComboLangResult">
+    select shop_code, sitecode, goodscode, combocode, lang, title
+      from u_s_sitegoods_combo_lang
+     where goodscode = #{goodsCode}
+     order by combocode, lang
+  </select>
+
+  <!-- ==================== 写 ==================== -->
+
+  <insert id="upsert" parameterType="com.ruoyi.station.console.domain.SiteGoodsCombo">
+    insert into u_s_sitegoods_combo(
+      shop_code, sitecode, goodscode, combocode, opt1, opt2, price, image, model3d, model3d_marks, model3d_states, sortnum, status,
+      createuser, createtime
+    ) values(
+      #{shopCode}, #{siteCode}, #{goodsCode}, #{comboCode}, #{opt1}, #{opt2},
+      coalesce(#{price}, 0), #{image}, #{model3d}, #{model3dMarks}, #{model3dStates}, coalesce(#{sortNum}, 0), coalesce(#{status}, '可选'),
+      #{createUser}, sysdate()
+    )
+    on duplicate key update
+      opt1 = values(opt1), opt2 = values(opt2),
+      price = values(price), image = values(image), model3d = values(model3d),
+      model3d_marks = values(model3d_marks), model3d_states = values(model3d_states), sortnum = values(sortnum),
+      status = values(status), updateuser = values(createuser)
+  </insert>
+
+  <insert id="upsertLang" parameterType="com.ruoyi.station.console.domain.SiteGoodsComboLang">
+    insert into u_s_sitegoods_combo_lang(
+      shop_code, sitecode, goodscode, combocode, lang, title, createtime
+    ) values(
+      #{shopCode}, #{siteCode}, #{goodsCode}, #{comboCode}, #{lang}, #{title}, sysdate()
+    )
+    on duplicate key update title = values(title)
+  </insert>
+
+  <!--
+    ⚠ comboCodes 为空时 delete 掉这个商品的全部组合——这是**对的**，
+    「一条都不提交」就是「这个商品不要组合了」。所以下面没有
+    `<if test="comboCodes != null and size > 0">` 那种保护：加上它反而会让
+    「删掉最后一条组合」这个操作静默失效。
+
+    MyBatis 的 foreach 遇到空集合会生成 `not in ()`，那是语法错误，
+    所以用 `<if>` 把整个 not in 子句去掉，而不是去掉整条语句。
+  -->
+  <delete id="deleteMissing">
+    delete from u_s_sitegoods_combo
+     where goodscode = #{goodsCode}
+    <if test="comboCodes != null and comboCodes.size() > 0">
+      and combocode not in
+      <foreach collection="comboCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+    </if>
+  </delete>
+
+  <delete id="deleteLangsMissing">
+    delete from u_s_sitegoods_combo_lang
+     where goodscode = #{goodsCode}
+    <if test="comboCodes != null and comboCodes.size() > 0">
+      and combocode not in
+      <foreach collection="comboCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+    </if>
+  </delete>
+
+  <delete id="deleteByGoods">
+    delete from u_s_sitegoods_combo where goodscode in
+    <foreach collection="goodsCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+  </delete>
+
+  <delete id="deleteLangsByGoods">
+    delete from u_s_sitegoods_combo_lang where goodscode in
+    <foreach collection="goodsCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+  </delete>
+
+
+  <!-- ==================== 改结算币种时的批量换算 ====================
+
+       ⚠ 只有这一条语句带 sitecode 条件，上面那些都不带。
+
+       不是写漏了也不是写多了：上面每一条都有 `goodscode = #{goodsCode}` 兜着，
+       撞上邻站同编码的商品最多波及那一个；这一条**没有 goodscode**，
+       少了 sitecode 就是把同一个库里其他站的型号价全部乘一遍汇率——
+       而且不报错、没有任何现象，等对方站长发现自己的价格集体变了才知道。
+
+       子查询和 SiteGoodsMapper.xml 里的 thisSite 是同一句，那边有完整解释。
+       这里不做成共享片段：MyBatis 的 <include> 不跨文件，抽出去要单开一个
+       公共 mapper 文件，为一行 SQL 不值当。
+  -->
+  <update id="convertPrice">
+    update u_s_sitegoods_combo
+       set price = round(price * #{rate}, 4),
+           updateuser = #{updateUser},
+           updatetime = sysdate()
+     where sitecode = (select sitecode from u_s_siteinfo limit 1)
+       and price > 0
+  </update>
+</mapper>

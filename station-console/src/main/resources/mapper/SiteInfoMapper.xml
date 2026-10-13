@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  本站档案，表里只有一行。
+
+  ⚠ 全文没有库限定名。站点后端只连一个库（sdsstation），写 `from u_s_siteinfo`
+  而不是 `from sdsstation.u_s_siteinfo`——不写库名就物理上不可能再指到别的库去。
+  ERP 那边搬迁前踩的就是这个坑：跨库限定名一旦跨了机器，当场失效，不是变慢，是报错。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteInfoMapper">
+
+  <resultMap id="SiteInfoResult" type="com.ruoyi.station.console.domain.SiteInfo">
+    <result property="id"          column="id"/>
+    <result property="siteCode"    column="sitecode"/>
+    <result property="siteName"    column="sitename"/>
+    <result property="shopCode"    column="shop_code"/>
+    <result property="domain"      column="domain"/>
+    <result property="langs"       column="langs"/>
+    <result property="consoleLang" column="consolelang"/>
+    <result property="theme"       column="theme"/>
+    <result property="currency"    column="currency"/>
+    <result property="currencies"  column="currencies"/>
+    <result property="status"      column="status"/>
+    <!--
+      expiredays 没有对应的列，也不在这里用 SQL 现算（ERP 那边是 datediff 现算的）：
+      这个对象会被 SiteInfoService 缓存在进程里，SQL 算出来的天数会跟着一起冻住。
+      改成 SiteInfo#getExpireDays() 每次调用现算，理由写在那个方法上。
+    -->
+    <result property="expireDate"  column="expiredate"/>
+    <result property="contentJson" column="contentjson"/>
+    <result property="draftJson"   column="draftjson"/>
+    <result property="draftUser"   column="draftuser"/>
+    <result property="draftTime"   column="drafttime"/>
+    <result property="notifyEmail" column="notifyemail"/>
+    <result property="consoleSecret"  column="consolesecret"/>
+    <result property="remark"      column="remark"/>
+    <result property="createTime"  column="createtime"/>
+    <result property="updateUser"  column="updateuser"/>
+    <result property="updateTime"  column="updatetime"/>
+  </resultMap>
+
+  <!--
+    limit 1 不是防御性写法，是说明性的：这张表按设计只有一行（主键 id 恒为 1）。
+    真出现第二行说明建站脚本被跑了两遍且改过 id，那时候取第一行也比抛异常好——
+    站长至少还进得去管理台，能把它删掉。
+  -->
+  <select id="selectSite" resultMap="SiteInfoResult">
+    select id, sitecode, sitename, shop_code, domain, langs, consolelang, theme, currency, currencies, status,
+           expiredate, contentjson, draftjson, draftuser, drafttime, notifyemail, consolesecret, remark,
+           createtime, updateuser, updatetime
+      from u_s_siteinfo
+     order by id
+     limit 1
+  </select>
+
+  <insert id="insert" parameterType="com.ruoyi.station.console.domain.SiteInfo">
+    insert into u_s_siteinfo(
+      id, sitecode, sitename, shop_code, domain, langs, consolelang, currency, currencies, status,
+      expiredate, contentjson, notifyemail, consolesecret, remark, createtime
+    ) values(
+      1, #{siteCode}, #{siteName}, #{shopCode}, #{domain}, #{langs}, #{consoleLang},
+      coalesce(#{currency}, 'USD'), #{currencies}, coalesce(#{status}, '建设中'),
+      #{expireDate}, #{contentJson}, #{notifyEmail}, #{consoleSecret}, #{remark}, sysdate()
+    )
+  </insert>
+
+  <!--
+    sitecode 不在 set 里：跳转令牌的 site 声明要和它对齐（boundary §4.3），
+    改了它，ERP 那边发的令牌就全都验不过——而表现是「点进入管理没反应」，
+    没人会想到是有人在管理台里改了个看着无害的编码。要改只能改库。
+
+    consolesecret 同理不在这里改：它必须和 ERP 登记的那份一致，两边同时改才有意义，
+    单改一边就是把自己锁在门外。
+  -->
+  <update id="update" parameterType="com.ruoyi.station.console.domain.SiteInfo">
+    update u_s_siteinfo
+       set sitename   = coalesce(#{siteName}, sitename),
+           <!--
+             coalesce 而不是直赋值：请求体里**没带** domain 时保持原值。
+
+             「站点设置」表单现在会送它（送空串也照样清得掉——'' 不是 null），
+             但曾经不送：那阵子这里是直赋值，于是每保存一次站点设置就把域名写成 NULL。
+             表现极难联想到原因——操作的人改的是币种，从没碰过域名那一栏，
+             而后果是顶栏「访问前台」链接消失，加上买家的验证邮件和找回密码邮件
+             一起发不出去（BuyerAuthService#siteBase 拼不出链接就抛 500）。
+             这条 UPDATE 是全站唯一会写 domain 的地方，防线放在这儿最省。
+
+             remark 同理，而且它在管理台上既没有编辑入口、现在连显示都撤了
+             （摆它的那张「登记信息」卡整张删了），被抹掉的话没有任何地方看得出来。
+           -->
+           domain     = coalesce(#{domain}, domain),
+           langs      = #{langs},
+           <!--
+             consolelang 走 coalesce，理由和 domain 那条一样：**老版管理台不送它**。
+
+             这个前端是打包成 dist 单独发的，后端先发、前端后发是常事（两个站现在
+             线上跑的就不是同一版）。直赋值的话，一个还没更新的管理台每保存一次
+             站点设置，就把管理台语言抹成 NULL = 中文。对一个法国站长来说，表现是
+             「我设了法语，改完询盘邮箱又变回中文了」，而他改的那一栏跟语言毫无关系。
+
+             ⚠ 代价是这一列在这条 SQL 上**清不掉**（送 null 等于不改）。这正是想要的：
+             它没有「空」这个有意义的状态，空就是 zh，要回中文就送 'zh'——
+             管理台那个下拉本来也只送这三个码里的一个。
+           -->
+           consolelang = coalesce(#{consoleLang}, consolelang),
+           currency   = coalesce(#{currency}, currency),
+           <!--
+             currencies 用直赋值而不是 coalesce：运营要能把它清空
+             （「不给买家切币种了」），coalesce 的话清空这个动作根本做不到。
+             currency 用 coalesce 是因为它是基准、不允许为空。
+           -->
+           currencies = #{currencies},
+           status     = coalesce(#{status}, status),
+           <!--
+             expiredate 直赋值：清空要做得到（「这个站不再设到期提醒了」）。
+             表单里是个日期选择器，清掉时前端送的是 null 不是空串——
+             送空串的话 Jackson 那一关就把它变成 null 了，落库结果一样，
+             但别指望这一点，前端已经显式转过。
+           -->
+           expiredate = #{expireDate},
+           notifyemail = #{notifyEmail},
+           remark     = coalesce(#{remark}, remark),
+           updateuser = #{updateUser},
+           updatetime = sysdate()
+     where id = 1
+  </update>
+
+  <!--
+    存草稿。⚠ 只动 draftjson，contentjson 一个字不改——前台继续渲染已发布那份，
+    这正是「草稿」这两个字的全部含义。写错成 contentjson 的话不会报任何错，
+    只是商家一按保存就见客了，和改之前一模一样。
+  -->
+  <update id="updateDraft">
+    update u_s_siteinfo
+       set draftjson = #{draftJson},
+           draftuser = #{updateUser},
+           drafttime = sysdate()
+     where id = 1
+  </update>
+
+  <!--
+    发布：把草稿整份拷进 contentjson，然后把草稿清掉。
+
+    ⚠ `and draftjson is not null` 不是防御性写法，是**语义**：没有草稿就没什么可发布的，
+      这时候必须影响 0 行，好让 service 回一句「没有待发布的改动」。
+      去掉这个条件的话，空草稿会把 contentjson 刷成 NULL —— 整个首页退回内置默认内容，
+      而商家只是手滑点了一下「发布」。
+  -->
+  <update id="publishDraft">
+    update u_s_siteinfo
+       set contentjson = draftjson,
+           draftjson   = null,
+           draftuser   = null,
+           drafttime   = null,
+           updateuser  = #{updateUser},
+           updatetime  = sysdate()
+     where id = 1
+       and draftjson is not null
+  </update>
+
+  <!-- 放弃草稿。只清草稿三列，已发布那份不动 -->
+  <update id="discardDraft">
+    update u_s_siteinfo
+       set draftjson = null,
+           draftuser = null,
+           drafttime = null
+     where id = 1
+  </update>
+</mapper>

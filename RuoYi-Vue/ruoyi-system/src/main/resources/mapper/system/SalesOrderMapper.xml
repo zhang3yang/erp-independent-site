@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.SalesOrderMapper">
+
+  <resultMap id="OrderResult" type="SalesOrder">
+    <result property="id" column="id"/><result property="shopCode" column="shop_code"/>
+    <result property="orderCode" column="ordercode"/>
+    <result property="platCode" column="platcode"/><result property="platName" column="platname"/>
+    <!-- shopcode 是「商家店铺代码」，与租户列 shop_code 是两码事，属性名特意错开成 shopStoreCode -->
+    <result property="shopStoreCode" column="shopcode"/><result property="shopStoreName" column="shopname"/>
+    <result property="staffCode" column="staffcode"/><result property="staffName" column="staffname"/>
+    <result property="buyerShop" column="buyershop"/><result property="buyerUser" column="buyeruser"/>
+    <!-- 客户快照，建单时从 u_m_buyer 拷入，之后不跟客户档案联动 -->
+    <result property="buyerCode" column="buyercode"/><result property="buyerName" column="buyername"/>
+    <result property="buyerImage" column="buyerimage"/><result property="shopImage" column="shopimage"/>
+    <result property="buyer2Code" column="buyer2code"/><result property="buyer2Name" column="buyer2name"/>
+    <result property="buyer2User" column="buyer2user"/><result property="buyer2Image" column="buyer2image"/>
+    <!-- 出口信息：客户国家取字典 order_country 的键，客户地址是整段自由文本 -->
+    <result property="buyerCountry" column="buyercountry"/><result property="buyerAddress" column="buyeraddress"/>
+    <result property="platOrderId" column="platorderid"/><result property="platBuyerId" column="platbuyerid"/>
+    <result property="platOrderUrl" column="platorderurl"/><result property="platOrderTime" column="platordertime"/>
+    <result property="platOrderLeave" column="platorderleave"/>
+    <result property="goodsAmount" column="goodsamount"/><result property="freightAmount" column="freightamount"/>
+    <result property="totalAmount" column="totalamount"/><result property="paidAmount" column="paidamount"/>
+    <result property="currency" column="currency"/>
+    <result property="orderState" column="orderstate"/><result property="payStatus" column="paystatus"/>
+    <result property="receiveStatus" column="receivestatus"/><result property="sendPercent" column="sendpercent"/>
+    <result property="receivePerson" column="receiveperson"/><result property="receiveAddress" column="receiveaddress"/>
+    <result property="receiveTelephone" column="receivetelephone"/><result property="receiveZipCode" column="receivezipcode"/>
+    <result property="receiveType" column="receivetype"/>
+    <result property="markNeeded" column="markneeded"/><result property="markFile" column="markfile"/>
+    <result property="createTime" column="createtime"/><result property="payTime" column="paytime"/>
+    <result property="updateTime" column="updatetime"/>
+    <result property="goodsInfo" column="goodsinfo"/><result property="goodsSummary" column="goodssummary"/>
+    <result property="remark" column="remark"/>
+    <!-- descitems 落到 descItemsJson（JSON 文本），接口进出的 descItems 由服务层转换 -->
+    <result property="descItemsJson" column="descitems"/><result property="orderFiles" column="orderfiles"/>
+    <result property="rejectReason" column="rejectreason"/><result property="closeReason" column="closereason"/>
+  </resultMap>
+
+  <select id="selectOrderTableSuffixes" resultType="string">
+    select substring(table_name, length('u_o_order_') + 1)
+      from information_schema.tables
+     where table_schema = 'sdsorder' and table_name like 'u_o_order_%'
+  </select>
+
+  <sql id="columns">
+    id, shop_code, ordercode, platcode, platname, shopcode, shopname, staffcode, staffname,
+    buyershop, buyeruser, buyercode, buyername, buyerimage, shopimage,
+    buyer2code, buyer2name, buyer2user, buyer2image,
+    buyercountry, buyeraddress,
+    platorderid, platbuyerid, platorderurl, platordertime, platorderleave,
+    goodsamount, freightamount, totalamount, paidamount, currency,
+    orderstate, paystatus, receivestatus, sendpercent,
+    receiveperson, receiveaddress, receivetelephone, receivezipcode,
+    receivetype, markneeded, markfile,
+    createtime, paytime, updatetime, goodsinfo, goodssummary, remark,
+    descitems, orderfiles, rejectreason, closereason
+  </sql>
+
+  <select id="selectList" resultMap="OrderResult">
+    select <include refid="columns"/>
+      from sdsorder.u_o_order_${tableSuffix}
+     where shop_code = #{query.shopCode}
+    <if test="query.orderCode != null and query.orderCode != ''"> and ordercode like concat('%', #{query.orderCode}, '%')</if>
+    <if test="query.orderState != null and query.orderState != ''"> and orderstate = #{query.orderState}</if>
+    <if test="query.payStatus != null and query.payStatus != ''"> and paystatus = #{query.payStatus}</if>
+    <if test="query.shopStoreCode != null and query.shopStoreCode != ''"> and shopcode = #{query.shopStoreCode}</if>
+    <if test="query.staffCode != null and query.staffCode != ''"> and staffcode = #{query.staffCode}</if>
+    <!--
+      按「业务员名称」搜：姓名不在这张表里，服务层已经把它反查成一批登录账号放进 staffCodes。
+
+      空集合要落成 1 = 0，<b>不能当成没有条件</b>：名字填了却没匹配上任何员工，正确结果是
+      「一条都搜不到」；把条件悄悄丢掉会把全月的订单都列出来，看着像搜索没生效。
+      不在服务层提前 return 空列表，是因为控制器用了 PageHelper 的 startPage()，
+      SQL 不执行的话那个 ThreadLocal 不会被消费掉。
+    -->
+    <if test="query.staffCodes != null">
+      <choose>
+        <when test="query.staffCodes.size() > 0"> and staffcode in
+          <foreach collection="query.staffCodes" item="staff" open="(" separator="," close=")">#{staff}</foreach>
+        </when>
+        <otherwise> and 1 = 0</otherwise>
+      </choose>
+    </if>
+    <!-- 按客户筛订单走快照列，不 join u_m_buyer：客户改了名，历史单还得按当时的名字搜得到 -->
+    <if test="query.buyerCode != null and query.buyerCode != ''"> and buyercode = #{query.buyerCode}</if>
+    <if test="query.buyerName != null and query.buyerName != ''"> and buyername like concat('%', #{query.buyerName}, '%')</if>
+    <if test="query.platCode != null and query.platCode != ''"> and platcode = #{query.platCode}</if>
+    <if test="query.platOrderId != null and query.platOrderId != ''"> and platorderid = #{query.platOrderId}</if>
+    <if test="query.receivePerson != null and query.receivePerson != ''"> and receiveperson like concat('%', #{query.receivePerson}, '%')</if>
+    <if test="query.beginTime != null"> and createtime &gt;= #{query.beginTime}</if>
+    <!-- 传进来的是日期起点（当天 00:00），要包含当天就得加一天再取小于 -->
+    <if test="query.endTime != null"> and createtime &lt; date_add(#{query.endTime}, interval 1 day)</if>
+     order by createtime desc, ordercode desc
+  </select>
+
+
+  <!--
+    按履约状态批量取单。order by 里的 field() 把结果按 states 传进来的先后分组，
+    保持「已备货 → 备货中 → 发货中」的下拉顺序；组内仍是建单时间倒序。
+    states 走 in 而不是逐状态发一次查询，明细由调用方用 selectByOrderCodes 一次取回。
+  -->
+  <select id="selectByStates" resultMap="OrderResult">
+    select <include refid="columns"/>
+      from sdsorder.u_o_order_${tableSuffix}
+     where shop_code = #{shopCode}
+       and orderstate in
+       <foreach collection="states" item="state" open="(" separator="," close=")">#{state}</foreach>
+     order by field(orderstate<foreach collection="states" item="state">, #{state}</foreach>),
+              createtime desc, ordercode desc
+  </select>
+
+  <select id="selectByCodes" resultMap="OrderResult">
+    select <include refid="columns"/>
+      from sdsorder.u_o_order_${tableSuffix}
+     where shop_code = #{shopCode}
+       and ordercode in
+       <foreach collection="orderCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+     order by createtime desc, ordercode desc
+  </select>
+
+  <!--
+    可回款订单。「还欠着钱」是 SQL 能判的，就别拉回来再筛：
+    不传月份时这个查询会落到每一张订单月表上，多读的行数随历史数据一起涨。
+    paidamount 与 totalamount 都可能为 null，比较前先 coalesce。
+  -->
+  <select id="selectReceivableOrders" resultMap="OrderResult">
+    select <include refid="columns"/>
+      from sdsorder.u_o_order_${tableSuffix}
+     where shop_code = #{shopCode}
+       and orderstate not in
+       <foreach collection="excludedStates" item="state" open="(" separator="," close=")">#{state}</foreach>
+       and coalesce(paidamount, 0) &lt; coalesce(totalamount, 0)
+     order by createtime desc, ordercode desc
+  </select>
+
+  <!--
+    可退款订单。收过钱才谈得上退，同样下推。
+    已取消的单<b>要</b>留着——取消后把客户已付的钱退回去正是退款最常见的场景，
+    所以排除清单里只有草稿，别照抄可回款的那一份。
+    退款时效窗口要查资金流水，留在服务层判断。
+  -->
+  <select id="selectRefundableOrders" resultMap="OrderResult">
+    select <include refid="columns"/>
+      from sdsorder.u_o_order_${tableSuffix}
+     where shop_code = #{shopCode}
+       and orderstate not in
+       <foreach collection="excludedStates" item="state" open="(" separator="," close=")">#{state}</foreach>
+       and coalesce(paidamount, 0) &gt; 0
+     order by createtime desc, ordercode desc
+  </select>
+
+  <select id="selectByCode" resultMap="OrderResult">
+    select <include refid="columns"/>
+      from sdsorder.u_o_order_${tableSuffix}
+     where shop_code = #{shopCode} and ordercode = #{orderCode}
+  </select>
+
+  <select id="selectByCodeForUpdate" resultMap="OrderResult">
+    select <include refid="columns"/>
+      from sdsorder.u_o_order_${tableSuffix}
+     where shop_code = #{shopCode} and ordercode = #{orderCode}
+     for update
+  </select>
+
+  <!-- paidamount 与 paytime 一律建单置零/置空，收款只能从 applyPayment 走：
+       建单时就带着已收金额，会让财务回款的累加对不上账。 -->
+  <insert id="insert" useGeneratedKeys="true" keyProperty="order.id">
+    insert into sdsorder.u_o_order_${tableSuffix}
+      (shop_code, ordercode, platcode, platname, shopcode, shopname, staffcode, staffname,
+       buyershop, buyeruser, buyercode, buyername, buyerimage, shopimage,
+       buyer2code, buyer2name, buyer2user, buyer2image,
+       buyercountry, buyeraddress,
+       platorderid, platbuyerid, platorderurl, platordertime, platorderleave,
+       goodsamount, freightamount, totalamount, paidamount, currency,
+       orderstate, paystatus, receivestatus, sendpercent,
+       receiveperson, receiveaddress, receivetelephone, receivezipcode,
+       receivetype, markneeded, markfile,
+       createtime, paytime, goodsinfo, goodssummary, remark, descitems, orderfiles)
+    values
+      (#{order.shopCode}, #{order.orderCode}, #{order.platCode}, #{order.platName},
+       #{order.shopStoreCode}, #{order.shopStoreName}, #{order.staffCode}, #{order.staffName},
+       <!-- coalesce 到空串不是多余的：这两列在 20260903_station_erp_split.sql 第 3 节
+            被收成了 NOT NULL DEFAULT ''（boundary 要点 6），而两边订单不关联之后
+            前端根本不再传它们。DEFAULT 只在「列不出现在 insert 里」时生效，
+            显式传 null 照样报 Column 'buyershop' cannot be null。 -->
+       coalesce(#{order.buyerShop}, ''), coalesce(#{order.buyerUser}, ''),
+       #{order.buyerCode}, #{order.buyerName}, #{order.buyerImage}, #{order.shopImage},
+       #{order.buyer2Code}, #{order.buyer2Name}, #{order.buyer2User}, #{order.buyer2Image},
+       #{order.buyerCountry}, #{order.buyerAddress},
+       #{order.platOrderId}, #{order.platBuyerId},
+       #{order.platOrderUrl}, #{order.platOrderTime}, #{order.platOrderLeave},
+       coalesce(#{order.goodsAmount}, 0), coalesce(#{order.freightAmount}, 0),
+       coalesce(#{order.totalAmount}, 0), 0, coalesce(#{order.currency}, 'CNY'),
+       #{order.orderState}, '未支付', '未收款', 0,
+       #{order.receivePerson}, #{order.receiveAddress}, #{order.receiveTelephone}, #{order.receiveZipCode},
+       <!-- 这两列是 NOT NULL：服务层一定会填，coalesce 只是兜住漏改的调用方，
+            显式传 null 时 DEFAULT 是不生效的（与上面 buyershop 同一个坑） -->
+       coalesce(#{order.receiveType}, '货代地址'), coalesce(#{order.markNeeded}, 0), #{order.markFile},
+       sysdate(), null, #{order.goodsInfo}, #{order.goodsSummary}, #{order.remark},
+       #{order.descItemsJson}, #{order.orderFiles})
+  </insert>
+
+  <!-- 只改草稿。金额由服务层按明细重算后传进来，不接受前端直接给的合计。 -->
+  <update id="updateDraft">
+    update sdsorder.u_o_order_${tableSuffix}
+       set platcode = #{order.platCode}, platname = #{order.platName},
+           shopcode = #{order.shopStoreCode}, shopname = #{order.shopStoreName},
+           <!-- staffcode / staffname 故意不在这条 update 里：归属业务员是建单时定下的，
+                改单不该动它。以前写在这儿，而前端的改单表单并不一定把这两个值带回来，
+                漏带一次就把归属冲成 NULL——这个字段以后要拿来算提成，不能靠调用方
+                每次都记得回传。要转单请另开一个带权限、留痕的动作。 -->
+
+           <!-- 同 insert：这两列已是 NOT NULL DEFAULT ''，改草稿时前端也不传 -->
+           buyershop = coalesce(#{order.buyerShop}, ''), buyeruser = coalesce(#{order.buyerUser}, ''),
+           <!-- 快照跟着草稿一起改：草稿阶段换客户是正常操作，重刷一遍才对得上。
+                过了审核就走不到这条 update（下面的 where 卡了状态），快照自然冻结。 -->
+           buyercode = #{order.buyerCode}, buyername = #{order.buyerName},
+           buyerimage = #{order.buyerImage}, shopimage = #{order.shopImage},
+           buyer2code = #{order.buyer2Code}, buyer2name = #{order.buyer2Name},
+           buyer2user = #{order.buyer2User}, buyer2image = #{order.buyer2Image},
+           buyercountry = #{order.buyerCountry}, buyeraddress = #{order.buyerAddress},
+           platorderid = #{order.platOrderId}, platbuyerid = #{order.platBuyerId},
+           platorderurl = #{order.platOrderUrl}, platordertime = #{order.platOrderTime},
+           platorderleave = #{order.platOrderLeave},
+           goodsamount = #{order.goodsAmount}, freightamount = #{order.freightAmount},
+           totalamount = #{order.totalAmount}, currency = #{order.currency},
+           receiveperson = #{order.receivePerson}, receiveaddress = #{order.receiveAddress},
+           receivetelephone = #{order.receiveTelephone}, receivezipcode = #{order.receiveZipCode},
+           receivetype = coalesce(#{order.receiveType}, '货代地址'),
+           markneeded = coalesce(#{order.markNeeded}, 0), markfile = #{order.markFile},
+           goodsinfo = #{order.goodsInfo}, goodssummary = #{order.goodsSummary}, remark = #{order.remark},
+           descitems = #{order.descItemsJson}, orderfiles = #{order.orderFiles},
+           updatetime = sysdate()
+    <!-- 已驳回也允许改单：驳回的意义就是打回去改，改完重新提交 -->
+     where shop_code = #{order.shopCode} and ordercode = #{order.orderCode}
+       and orderstate in ('草稿', '已驳回')
+  </update>
+
+  <update id="updateOrderState">
+    update sdsorder.u_o_order_${tableSuffix}
+       set orderstate = #{orderState}, updatetime = sysdate()
+     where shop_code = #{shopCode} and ordercode = #{orderCode}
+    <if test="expectedState != null and expectedState != ''"> and orderstate = #{expectedState}</if>
+  </update>
+
+  <!--
+    状态与原因一起写，并且允许一次给多个合法前置状态。
+
+    两个原因列各自独立：驳回落 rejectreason，关闭落 closereason。传 null 的那一列
+    不动——重新提交时不必先把上一轮的驳回原因清掉，留着正好用来对照这轮改了什么。
+  -->
+  <update id="updateStateWithReason">
+    update sdsorder.u_o_order_${tableSuffix}
+       set orderstate = #{orderState}, updatetime = sysdate()
+    <if test="rejectReason != null"> , rejectreason = #{rejectReason}</if>
+    <if test="closeReason != null"> , closereason = #{closeReason}</if>
+     where shop_code = #{shopCode} and ordercode = #{orderCode}
+    <if test="expectedStates != null and expectedStates.size() > 0">
+       and orderstate in
+       <foreach item="state" collection="expectedStates" open="(" separator="," close=")">#{state}</foreach>
+    </if>
+  </update>
+
+  <update id="updateShipProgress">
+    update sdsorder.u_o_order_${tableSuffix}
+       set sendpercent = #{sendPercent}, orderstate = #{orderState}, updatetime = sysdate()
+     where shop_code = #{shopCode} and ordercode = #{orderCode}
+  </update>
+
+  <!-- 金额在 SQL 内自增，多笔回款并发不丢数；退款传负数。
+       greatest(...,0) 兜住回款被冲掉后又多退一笔的情况，不让已收金额变负。 -->
+  <update id="applyPayment">
+    update sdsorder.u_o_order_${tableSuffix}
+       set paidamount = greatest(coalesce(paidamount, 0) + #{paidDelta}, 0),
+           paystatus = #{payStatus},
+           receivestatus = #{receiveStatus},
+           paytime = coalesce(paytime, #{payTime}),
+           updatetime = sysdate()
+     where shop_code = #{shopCode} and ordercode = #{orderCode}
+  </update>
+
+  <!--
+    只删还没过审的订单。允许的状态由 Service 传进来（草稿与已驳回），
+    这里再带一次做并发兜底：拿到行锁到执行删除之间若被人提交了，这里会删 0 行。
+  -->
+  <delete id="deleteDraft">
+    delete from sdsorder.u_o_order_${tableSuffix}
+     where shop_code = #{shopCode} and ordercode = #{orderCode}
+       and orderstate in
+       <foreach collection="allowedStates" item="state" open="(" separator="," close=")">#{state}</foreach>
+  </delete>
+</mapper>

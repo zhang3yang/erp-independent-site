@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.InventoryStockMapper">
+
+    <resultMap type="InventoryStock" id="InventoryStockResult">
+        <result property="shopCode"        column="shop_code" />
+        <result property="goodsCode"       column="goodscode" />
+        <result property="goodsName"       column="goodsname" />
+        <result property="spec"            column="spec" />
+        <result property="unit"            column="unit" />
+        <result property="wareCode"        column="warecode" />
+        <result property="wareName"        column="warename" />
+        <result property="qualityFlag"     column="qualityflag" />
+        <result property="onhandFlag"      column="onhandflag" />
+        <result property="physicalQty"     column="physicalqty" />
+        <result property="lockedQty"       column="lockedqty" />
+        <result property="totalCostAmount" column="totalcostamount" />
+        <result property="avgCostPrice"    column="avgcostprice" />
+        <result property="version"         column="version" />
+        <result property="lastUpdated"     column="lastupdated" />
+    </resultMap>
+
+    <sql id="selectStockVo">
+        select shop_code, goodscode, goodsname, spec, unit,
+               warecode, warename, qualityflag, onhandflag,
+               physicalqty, lockedqty, totalcostamount, avgcostprice, version, lastupdated
+          from sdsshop.u_m_stock
+    </sql>
+
+    <!-- 三维状态主键条件，参数名为 state 的方法共用 -->
+    <sql id="stateKey">
+           and qualityflag = #{state.qualityFlag}
+           and onhandflag = #{state.onhandFlag}
+    </sql>
+
+    <select id="selectStockByKey" resultMap="InventoryStockResult">
+        <include refid="selectStockVo" />
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+           and warecode = #{wareCode}
+        <include refid="stateKey" />
+    </select>
+
+    <select id="selectStockByKeyForUpdate" resultMap="InventoryStockResult">
+        <include refid="selectStockVo" />
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+           and warecode = #{wareCode}
+        <include refid="stateKey" />
+         for update
+    </select>
+
+    <select id="selectStockList" resultMap="InventoryStockResult">
+        <include refid="selectStockVo" />
+         where shop_code = #{shopCode}
+        <if test="goodsCode != null and goodsCode != ''">
+           and goodscode = #{goodsCode}
+        </if>
+        <if test="goodsName != null and goodsName != ''">
+           and goodsname like concat('%', #{goodsName}, '%')
+        </if>
+        <if test="wareCode != null and wareCode != ''">
+           and warecode = #{wareCode}
+        </if>
+        <if test="qualityFlag != null">
+           and qualityflag = #{qualityFlag}
+        </if>
+        <if test="onhandFlag != null">
+           and onhandflag = #{onhandFlag}
+        </if>
+         order by lastupdated desc, goodscode, warecode
+    </select>
+
+    <insert id="insertStock" parameterType="InventoryStock">
+        insert into sdsshop.u_m_stock(
+            shop_code, goodscode, goodsname, spec, unit,
+            warecode, warename, qualityflag, onhandflag,
+            physicalqty, lockedqty, totalcostamount, avgcostprice, version, lastupdated
+        ) values(
+            #{shopCode}, #{goodsCode}, #{goodsName}, #{spec}, #{unit},
+            #{wareCode}, #{wareName}, #{qualityFlag}, #{onhandFlag},
+            #{physicalQty}, coalesce(#{lockedQty, jdbcType=DECIMAL}, 0),
+            #{totalCostAmount}, #{avgCostPrice}, 0, sysdate()
+        )
+    </insert>
+
+    <update id="updateStock" parameterType="InventoryStock">
+        update sdsshop.u_m_stock
+           set goodsname = #{goodsName},
+               spec = #{spec},
+               unit = #{unit},
+               warename = #{wareName},
+               physicalqty = #{physicalQty},
+               lockedqty = #{lockedQty},
+               totalcostamount = #{totalCostAmount},
+               avgcostprice = #{avgCostPrice},
+               lastupdated = sysdate()
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+           and warecode = #{wareCode}
+           and qualityflag = #{qualityFlag}
+           and onhandflag = #{onhandFlag}
+    </update>
+
+    <delete id="deleteStockByKey">
+        delete from sdsshop.u_m_stock
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+           and warecode = #{wareCode}
+        <include refid="stateKey" />
+    </delete>
+
+    <delete id="deleteStockByGoodsCodes">
+        delete from sdsshop.u_m_stock
+         where shop_code = #{shopCode}
+           and goodscode in
+        <foreach item="goodsCode" collection="goodsCodes" open="(" separator="," close=")">
+            #{goodsCode}
+        </foreach>
+    </delete>
+
+    <!--
+      当前没有调用方：手工调整库存的入口 InventoryStockController./adjust 已被
+      DIRECT_WRITE_DISABLED 关掉。守卫仍与下面 adjustStockQtyNoVersion 保持同一口径，
+      否则哪天恢复手工调整、顺手调了这个方法，就是一条没有非负约束的写库存路径。
+    -->
+    <update id="adjustStockQty">
+        update sdsshop.u_m_stock
+           set avgcostprice = case
+                   when (physicalqty + #{adjustQty}) > 0
+                   then greatest(totalcostamount + #{costAmount}, 0) / (physicalqty + #{adjustQty})
+                   else 0
+               end,
+               totalcostamount = case
+                   when (physicalqty + #{adjustQty}) = 0 then 0
+                   else greatest(totalcostamount + #{costAmount}, 0)
+               end,
+               physicalqty = physicalqty + #{adjustQty},
+               version = version + 1,
+               lastupdated = sysdate()
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+           and warecode = #{wareCode}
+        <include refid="stateKey" />
+           and (physicalqty + #{adjustQty}) >= 0
+           and (physicalqty + #{adjustQty}) >= lockedqty
+    </update>
+
+    <!-- 调整锁定数量（带乐观锁），用于出库单创建时锁定库存 -->
+    <update id="adjustStockLockedQty">
+        update sdsshop.u_m_stock
+           set lockedqty = lockedqty + #{adjustLockedQty},
+               version = version + 1,
+               lastupdated = sysdate()
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+           and warecode = #{wareCode}
+        <include refid="stateKey" />
+           and (lockedqty + #{adjustLockedQty}) >= 0
+           and (physicalqty - lockedqty - #{adjustLockedQty}) >= 0
+    </update>
+
+    <update id="adjustStockLockedQtyNoVersion">
+        update sdsshop.u_m_stock
+           set lockedqty = lockedqty + #{adjustLockedQty},
+               version = version + 1,
+               lastupdated = sysdate()
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+           and warecode = #{wareCode}
+        <include refid="stateKey" />
+           and (lockedqty + #{adjustLockedQty}) >= 0
+           and (physicalqty - lockedqty - #{adjustLockedQty}) >= 0
+    </update>
+
+    <!--
+        这里原先有 adjustStockReservedQty：订单确认 +N、建发货批次开出库单 -N。
+        订单预占整个取消了——销售订单从头到尾不占货，可用量口径也从
+        「物理 − 锁定 − 预占」简化成「物理 − 锁定」。reservedqty 列还在库里
+        （迁移脚本已清零），但不再有任何语句读写它。
+    -->
+
+    <!-- 出库审核时同步减少物理库存和锁定数量 -->
+    <update id="adjustStockQtyWithUnlock">
+        update sdsshop.u_m_stock
+           set avgcostprice = case
+                   when (physicalqty + #{adjustQty}) > 0
+                   then greatest(totalcostamount + #{costAmount}, 0) / (physicalqty + #{adjustQty})
+                   else 0
+               end,
+               totalcostamount = case
+                   when (physicalqty + #{adjustQty}) = 0 then 0
+                   else greatest(totalcostamount + #{costAmount}, 0)
+               end,
+               physicalqty = physicalqty + #{adjustQty},
+               lockedqty = lockedqty + #{adjustLockedQty},
+               version = version + 1,
+               lastupdated = sysdate()
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+           and warecode = #{wareCode}
+        <include refid="stateKey" />
+           and (physicalqty + #{adjustQty}) >= 0
+           and (lockedqty + #{adjustLockedQty}) >= 0
+           and (physicalqty + #{adjustQty}) >= (lockedqty + #{adjustLockedQty})
+    </update>
+
+    <update id="adjustStockQtyWithUnlockNoVersion">
+        update sdsshop.u_m_stock
+           set avgcostprice = case
+                   when (physicalqty + #{adjustQty}) > 0
+                   then greatest(totalcostamount + #{costAmount}, 0) / (physicalqty + #{adjustQty})
+                   else 0
+               end,
+               totalcostamount = case
+                   when (physicalqty + #{adjustQty}) = 0 then 0
+                   else greatest(totalcostamount + #{costAmount}, 0)
+               end,
+               physicalqty = physicalqty + #{adjustQty},
+               lockedqty = lockedqty + #{adjustLockedQty},
+               version = version + 1,
+               lastupdated = sysdate()
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+           and warecode = #{wareCode}
+        <include refid="stateKey" />
+           and (physicalqty + #{adjustQty}) >= 0
+           and (lockedqty + #{adjustLockedQty}) >= 0
+           and (physicalqty + #{adjustQty}) >= (lockedqty + #{adjustLockedQty})
+    </update>
+
+    <update id="adjustStockQtyNoVersion">
+        update sdsshop.u_m_stock
+           set avgcostprice = case
+                   when (physicalqty + #{adjustQty}) > 0
+                   then greatest(totalcostamount + #{costAmount}, 0) / (physicalqty + #{adjustQty})
+                   else 0
+               end,
+               totalcostamount = case
+                   when (physicalqty + #{adjustQty}) = 0 then 0
+                   else greatest(totalcostamount + #{costAmount}, 0)
+               end,
+               physicalqty = physicalqty + #{adjustQty},
+               version = version + 1,
+               lastupdated = sysdate()
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+           and warecode = #{wareCode}
+        <include refid="stateKey" />
+           and (physicalqty + #{adjustQty}) >= 0
+           and (physicalqty + #{adjustQty}) >= lockedqty
+    </update>
+
+</mapper>

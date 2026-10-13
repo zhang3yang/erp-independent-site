@@ -1,0 +1,85 @@
+# Local tools and IDE
+.agents/
+.codex-tmp/
+.idea/
+**/.idea/
+**/.vscode/
+
+# Dependencies
+**/node_modules/
+
+# Build output
+**/dist/
+**/target/
+**/*.class
+
+# Logs and runtime files
+**/*.log
+LOG_PATH_IS_UNDEFINED/
+
+# Local backups
+# 数据库 dump 带业务数据和用户密码哈希，一律不进版本库。
+# 原来只写了 /backups/（仅根目录），RuoYi-Vue/sql/backups/ 匹配不到，漏进去过一次。
+database-backups/
+/backups/
+backups/
+*.dump.sql
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local config overrides
+# 本地开发的个人配置（管理台联调密钥、Cookie secure 开关之类）。
+# 由各自 application.yml 里的 spring.config.import 可选导入，生产上没有这个文件。
+**/application-local.yml
+
+# SQL 脚本
+# 数据库脚本只在 sql/ 下，而且只有 01/02 两个基线加 migration/ 里的增量（见 sql/README.md）。
+# 这两类之外的 .sql 一律是本地 dump 或临时脚本，别让它们再攒回一百多个。
+# RuoYi-Vue/sql/ 是合并前的旧脚本目录，已经清空，留一条规则免得又被当成放脚本的地方。
+*.backup.sql
+*.local.sql
+RuoYi-Vue/sql/
+
+# 邮件配置（询盘通知）。含 SMTP 密码，绝不进版本库。模板是 application-mail.yml.example
+**/application-mail.yml
+
+# 独立站前台的本地环境变量（含 siteKey），不进版本库。模板是 .env.example
+station-site/.env
+
+# 上传到服务器用的构建产物打包。
+# 前端在本机构建、打成 tgz 传上去（见 docs/独立站部署手册（Windows）.md §5.2：
+# 服务器只有 4 GB 内存，跑不动 nuxt build）。这些包每次构建都变、体积上兆，
+# 属于中间产物不属于源码——2026-09-06 把 station-console-ui/console-ui-dist.tgz
+# 和 station-site/site-output.tgz 从版本库里移出来时加的这条。
+*.tgz
+
+# Nuxt 的构建产物和生成物。
+# .output 是部署上传的东西（SSR 产物，157 个文件），.nuxt 是 nuxt dev/build 生成的
+# 类型和虚拟模块（41 个）。两个都被跟踪过，后果是**每跑一次 npm run build，
+# git status 里就多出两百多个改动**，真正的源码改动被埋在里面看不见。
+# 2026-09-06 一起移出版本库。
+station-site/.output/
+station-site/.nuxt/
+
+# 私钥、公钥、证书私钥——一律不进版本库。
+#
+# 2026-09-08 加这一条是因为真的进过：67d4ac91 里提交了
+# `station-site/<U+F03A>USERPROFILE.sshid_ed25519`（一把 OpenSSH 私钥）和它的 .pub。
+# 名字长这样是因为原本要写的是 `$USERPROFILE\.ssh\id_ed25519`——脚本里那个变量没展开，
+# 整串被当成文件名，Windows 不允许的 `:` 和 `\` 被映射成私用区字符。
+# 所以它既不显眼、也不会被 `*.pem`、`id_*` 这类常规规则挡住。
+#
+# ⚠ 文件已于 2026-09-08 删除，但**它还在 git 历史里**（67d4ac91 及其后的提交都能取出来）。
+#   按用户 2026-09-08 的决定，这次只删文件、不改历史、不轮换密钥。
+#   要彻底清掉得走 git filter-repo + 强推，那是一次要和所有人对时间的独立动作。
+*.pem
+*.key
+id_rsa
+id_ed25519
+id_ecdsa
+*id_rsa*
+*id_ed25519*
+*id_ecdsa*
+*.ppk

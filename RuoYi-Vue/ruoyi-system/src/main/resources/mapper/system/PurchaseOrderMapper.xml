@@ -1,0 +1,319 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.PurchaseOrderMapper">
+
+    <resultMap type="PurchaseOrder" id="PurchaseOrderResult">
+        <result property="id"            column="id" />
+        <result property="shopCode"      column="shop_code" />
+        <result property="purchaseCode"  column="purchase_code" />
+        <result property="partnerCode"   column="partner_code" />
+        <result property="partnerName"   column="partner_name" />
+        <result property="goodsSummary"  column="goods_summary" />
+        <result property="purchaseDate"  column="purchase_date" />
+        <result property="expectDate"    column="expect_date" />
+        <result property="totalAmount"   column="total_amount" />
+        <result property="freightType"   column="freight_type" />
+        <result property="estimatedFreight" column="estimated_freight" />
+        <result property="actualFreight"    column="actual_freight" />
+        <result property="paidAmount"    column="paid_amount" />
+        <result property="payStatus"     column="pay_status" />
+        <result property="logisticsNo"   column="logistics_no" />
+        <result property="carrier"       column="carrier" />
+        <result property="confirmUser"   column="confirm_user" />
+        <result property="confirmTime"   column="confirm_time" />
+        <result property="status"        column="status" />
+        <result property="rejectReason"  column="reject_reason" />
+        <result property="remark"        column="remark" />
+        <result property="createUser"    column="create_user" />
+        <result property="createTime"    column="create_time" />
+        <result property="updateUser"    column="update_user" />
+        <result property="updateTime"    column="update_time" />
+        <result property="createUserName"  column="create_user_name" />
+        <result property="confirmUserName" column="confirm_user_name" />
+    </resultMap>
+
+    <sql id="purchaseOrderColumns">
+        p.id, p.shop_code, p.purchasecode as purchase_code, p.partnercode as partner_code,
+        p.partnername as partner_name, p.goodssummary as goods_summary,
+        p.purchasedate as purchase_date,
+        p.expectdate as expect_date,
+        p.totalamount as total_amount, p.freighttype as freight_type,
+        p.estimatedfreight as estimated_freight, p.actualfreight as actual_freight,
+        p.paidamount as paid_amount, p.paystatus as pay_status,
+        p.logisticsno as logistics_no, p.carrier,
+        p.confirmuser as confirm_user, p.confirmtime as confirm_time, p.status,
+        p.rejectreason as reject_reason, p.remark,
+        p.createuser as create_user, p.createtime as create_time,
+        p.updateuser as update_user, p.updatetime as update_time
+    </sql>
+
+    <!--
+      展示用查询。左连 sys_user 把创建人、审核人的账号换成昵称带给前端，
+      账号本身仍原样返回，业务判断不受影响。user_name 上有唯一索引，不会放大结果行数。
+      加锁查询不能走这里：连出来的 sys_user 行会被一并锁住。
+    -->
+    <sql id="selectPurchaseOrderVo">
+        select <include refid="purchaseOrderColumns" />,
+               cu.nick_name as create_user_name,
+               fu.nick_name as confirm_user_name
+          from sdsshop.u_p_purchase p
+          left join sys_user cu on cu.user_name = p.createuser
+          left join sys_user fu on fu.user_name = p.confirmuser
+    </sql>
+
+    <select id="selectPurchaseOrderById" resultMap="PurchaseOrderResult">
+        <include refid="selectPurchaseOrderVo" />
+         where p.shop_code = #{shopCode}
+           and p.id = #{id}
+    </select>
+
+    <select id="selectPurchaseOrderByCode" resultMap="PurchaseOrderResult">
+        <include refid="selectPurchaseOrderVo" />
+         where p.shop_code = #{shopCode}
+           and p.purchasecode = #{purchaseCode}
+    </select>
+
+    <select id="selectPurchaseOrderByCodeForUpdate" resultMap="PurchaseOrderResult">
+        select <include refid="purchaseOrderColumns" />
+          from sdsshop.u_p_purchase p
+         where p.shop_code = #{shopCode}
+           and p.purchasecode = #{purchaseCode}
+         for update
+    </select>
+
+    <select id="selectPurchaseOrderList" resultMap="PurchaseOrderResult">
+        <include refid="selectPurchaseOrderVo" />
+         where p.shop_code = #{shopCode}
+        <if test="purchaseCode != null and purchaseCode != ''">
+           and p.purchasecode = #{purchaseCode}
+        </if>
+        <if test="partnerCode != null and partnerCode != ''">
+           and p.partnercode = #{partnerCode}
+        </if>
+        <if test="partnerName != null and partnerName != ''">
+           and p.partnername like concat('%', #{partnerName}, '%')
+        </if>
+        <!--
+          pending_receive 是个「合成状态」，库里不存在这个值。
+
+          「待收货」在数据上是两种状态：已审核（一件没到）和部分到货（到了一半还在等）。
+          页面上的状态下拉是单选，首页看板那张「待收货采购」卡片也要能一键筛出这批单，
+          与其让两边各拼一次 in 列表，不如在这里认一个合成值。
+
+          只认这一个合成值，别顺手再加：状态筛选一旦变成一套自己的词汇表，
+          就得有人去维护它和真实状态之间的映射。
+        -->
+        <choose>
+            <when test="status == 'pending_receive'">
+               and p.status in ('approved', 'partial_received')
+            </when>
+            <when test="status != null and status != ''">
+               and p.status = #{status}
+            </when>
+        </choose>
+        <if test="purchaseDate != null">
+           and p.purchasedate = #{purchaseDate}
+        </if>
+        <!-- createtime 同秒的采购单要靠 purchasecode 兜底，否则分页顺序不稳定会漏行/重行 -->
+         order by p.createtime desc, p.purchasecode desc
+    </select>
+
+    <!--
+      还要付款的采购单，供财务建采购付款流水时选单。三类不出现：
+        1. 草稿、已取消 —— 前者还没成立，后者已作废，都谈不上付款；
+        2. 已付货款 ≥ 订单总额 —— 这张单的货款已经结清，再绑一笔进去只会记成超额支付；
+        3. （不含）待审核、已驳回 —— 保留原有口径，先付定金再补审是真实存在的做法，不在这里挡。
+      总额为 0（明细还没填）的单按「未结清」处理：无从判断付没付满，不该直接从下拉里消失。
+      与服务层 requireWithinPayable 的放行条件是同一个口径。
+    -->
+    <select id="selectPayableOrders" resultMap="PurchaseOrderResult">
+        <include refid="selectPurchaseOrderVo" />
+         where p.shop_code = #{shopCode}
+           and (
+        <!--
+          includeCode 是「这一张无论如何都要带上」：改一笔已存草稿时，
+          它绑的那张单可能在草稿存下之后才被付满，按上面的条件已经不在候选里了。
+          不带上它，编辑框一打开单号就空了，等于逼人重选一遍。
+        -->
+        <if test="includeCode != null and includeCode != ''">
+               p.purchasecode = #{includeCode} or
+        </if>
+               (p.status not in ('draft', 'cancelled')
+                and (coalesce(p.totalamount, 0) &lt;= 0
+                     or coalesce(p.paidamount, 0) &lt; coalesce(p.totalamount, 0)))
+           )
+         order by p.createtime desc, p.purchasecode desc
+    </select>
+
+    <!--
+      可退款的采购单：已经付过钱的。与 selectPayableOrders 是相反的集合，
+      已取消的单<b>要</b>列出来——采购单取消后把预付款要回来，正是采购退款最常见的场景。
+    -->
+    <select id="selectRefundableOrders" resultMap="PurchaseOrderResult">
+        <include refid="selectPurchaseOrderVo" />
+         where p.shop_code = #{shopCode}
+           and (
+        <if test="includeCode != null and includeCode != ''">
+               p.purchasecode = #{includeCode} or
+        </if>
+               (p.status &lt;&gt; 'draft' and coalesce(p.paidamount, 0) &gt; 0)
+           )
+         order by p.createtime desc, p.purchasecode desc
+    </select>
+
+    <insert id="insertPurchaseOrder" parameterType="PurchaseOrder" useGeneratedKeys="true" keyProperty="id">
+        insert into sdsshop.u_p_purchase(
+            shop_code, purchasecode, partnercode, partnername, goodssummary, purchasedate, expectdate,
+            totalamount, freighttype, estimatedfreight, actualfreight,
+            status, remark, createuser, createtime
+        ) values(
+            #{shopCode}, #{purchaseCode}, #{partnerCode}, #{partnerName}, #{goodsSummary},
+            #{purchaseDate}, #{expectDate},
+            #{totalAmount}, #{freightType}, coalesce(#{estimatedFreight}, 0), 0,
+            #{status}, #{remark}, #{createUser}, sysdate()
+        )
+    </insert>
+
+    <!--
+      草稿内容更新。参数对象是前端提交的表单，所以这里<b>只写业务员真的能改的那几列</b>：
+
+        - status / confirmuser / confirmtime 不在这里。它们由提交、审核、取消三个动作
+          经 updatePurchaseOrderStatus 写入。放进来的话，只有「修改」权限的人 PUT 一个
+          status=approved 就能跳过提交与审核两步自己把单子批了，还能把审核人写成别人。
+        - rejectreason 不在这里。驳回原因是审核动作的产物，改单不该碰它。
+        - actualfreight 不在这里。它由到货完成时累加，走 increaseActualFreight，
+          放进来会被前端提交的表单值覆盖掉已汇总的运费。
+        - paidamount / paystatus 不在这里。它们由财务的付款流水经 increasePaidAmount 维护。
+
+      where 上的 status = 'draft' 是并发守卫：服务层读到草稿之后、写回之前，
+      这张单可能已经被别人提交了。影响行数为 0 时由服务层抛「状态已变化」。
+    -->
+    <update id="updatePurchaseOrder" parameterType="PurchaseOrder">
+        update sdsshop.u_p_purchase
+           set partnercode = #{partnerCode},
+               partnername = #{partnerName},
+               goodssummary = #{goodsSummary},
+               purchasedate = #{purchaseDate},
+               expectdate = #{expectDate},
+               totalamount = #{totalAmount},
+               freighttype = #{freightType},
+               estimatedfreight = coalesce(#{estimatedFreight}, 0),
+               remark = #{remark},
+               updateuser = #{updateUser},
+               updatetime = sysdate()
+         where id = #{id}
+           and shop_code = #{shopCode}
+           and status = 'draft'
+    </update>
+
+    <!--
+      状态流转。提交、审核（通过/驳回）、取消三个动作共用这一条，与库存单据的
+      confirmDocument、资金流水的 updateTransactionStatus 是同一套写法：
+      期望状态写进 where，影响行数为 0 就说明有人抢先改了状态。
+
+      rejectreason 无条件写入：审核通过要把上一轮的驳回原因清成 null，
+      用 <if> 的话 null 会被当成「不动这一列」，清不掉。其余调用方传库里的原值即可。
+
+      confirmuser / confirmtime 只有审核动作会给值，传 null 表示不动这两列——
+      提交和取消都不该覆盖已有的审核痕迹。
+    -->
+    <update id="updatePurchaseOrderStatus">
+        update sdsshop.u_p_purchase
+           set status = #{status},
+               rejectreason = #{rejectReason},
+        <if test="confirmUser != null">
+               confirmuser = #{confirmUser},
+        </if>
+        <if test="confirmTime != null">
+               confirmtime = #{confirmTime},
+        </if>
+               updateuser = #{updateUser},
+               updatetime = sysdate()
+         where shop_code = #{shopCode}
+           and purchasecode = #{purchaseCode}
+           and status in
+        <foreach item="expected" collection="expectedStatuses" open="(" separator="," close=")">
+            #{expected}
+        </foreach>
+    </update>
+
+    <!--
+      累加实际运费。说明书 3.4 流程2：到货单记录本次运费，采购单汇总实际运费。
+      用 SQL 内自增而不是「读出来加完再写回」，同一采购单多次到货并发完成时不会丢数。
+    -->
+    <update id="increaseActualFreight">
+        update sdsshop.u_p_purchase
+           set actualfreight = coalesce(actualfreight, 0) + #{amount},
+               updatetime = sysdate()
+         where shop_code = #{shopCode}
+           and purchasecode = #{purchaseCode}
+    </update>
+
+    <!--
+      累加已付货款并同步付款状态。说明书 5.4 流程1 的最后一步：财务打款完成后回写采购单。
+      paystatus 在同一条语句里按新的 paidamount 算出来，不走「读出来判断再写回」，
+      同一张采购单并发完成多笔付款时不会算错状态。
+      状态取值来自说明书 3.3.1：未支付/部分支付/已支付/超额支付。
+    -->
+    <update id="increasePaidAmount">
+        update sdsshop.u_p_purchase
+           <!--
+             amount 可以是负数：供应商退款会把已付货款冲回去。greatest(...,0) 兜住下界，
+             退回来的钱多于付出去的钱时已付货款归 0，不会出现负数的「已付」。
+             销售订单侧的 applyPayment 用的是同一套写法，两边口径保持一致。
+           -->
+           set paidamount = greatest(coalesce(paidamount, 0) + #{amount}, 0),
+               <!--
+                 注意：MySQL 的 UPDATE 赋值从左到右依次生效，走到这一行时 paidamount
+                 已经是累加之后的新值，所以这里直接拿它和订单金额比，不能再加一次 #{amount}
+                 （那样会把本次金额算两遍，付满的单子会被判成超额支付）。
+               -->
+               paystatus = case
+                   when coalesce(paidamount, 0) &lt;= 0 then '未支付'
+                   when coalesce(paidamount, 0) &lt; coalesce(totalamount, 0) then '部分支付'
+                   when coalesce(paidamount, 0) = coalesce(totalamount, 0) then '已支付'
+                   else '超额支付'
+               end,
+               updatetime = sysdate()
+         where shop_code = #{shopCode}
+           and purchasecode = #{purchaseCode}
+    </update>
+
+    <update id="updateStatus">
+        update sdsshop.u_p_purchase
+           set status = #{status},
+               updatetime = sysdate()
+         where shop_code = #{shopCode}
+           and purchasecode = #{purchaseCode}
+    </update>
+
+    <!-- 录入物流信息。只允许已审核或部分到货的订单，状态条件写在 SQL 里防并发改状态。 -->
+    <update id="updateLogistics">
+        update sdsshop.u_p_purchase
+           set logisticsno = #{logisticsNo},
+               carrier = #{carrier},
+               updateuser = #{updateUser},
+               updatetime = sysdate()
+         where shop_code = #{shopCode}
+           and purchasecode = #{purchaseCode}
+           and status in ('approved', 'partial_received')
+    </update>
+
+    <delete id="deletePurchaseOrderById">
+        delete from sdsshop.u_p_purchase
+         where shop_code = #{shopCode}
+           and id = #{id}
+    </delete>
+
+    <delete id="deletePurchaseOrderByIds">
+        delete from sdsshop.u_p_purchase
+         where shop_code = #{shopCode}
+           and id in
+        <foreach item="id" collection="ids" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>

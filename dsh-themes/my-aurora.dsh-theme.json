@@ -1,0 +1,41 @@
+{
+  "format": "dsh-dream-skin/pack",
+  "version": 1,
+  "manifest": {
+    "id": "my-aurora",
+    "name": "My Aurora",
+    "nameZh": "我的极光",
+    "author": "me",
+    "version": "1.0.0",
+    "description": "A calm aurora dark theme.",
+    "colorScheme": "dark",
+    "accent": "#34d399",
+    "tokens": {
+      "--dsw-alias-bg-base": "#04120f",
+      "--dsw-alias-bg-layer-1": "#0a1d18",
+      "--dsw-alias-bg-layer-2": "#102a23",
+      "--dsw-alias-bg-overlay": "#0d231d",
+
+      "--dsw-alias-brand-primary": "#34d399",
+      "--dsw-alias-label-primary": "#eafaf2",
+      "--dsw-alias-label-secondary": "#92d5b8",
+      "--dsw-alias-label-tertiary": "#5f9b83",
+
+      "--dsw-alias-border-l1": "#0f2a22",
+      "--dsw-alias-border-l2": "#1a3a30",
+
+      "--dsw-alias-state-success-primary": "#34d399",
+      "--dsw-alias-state-warn-primary": "#f7ad31",
+      "--dsw-alias-state-error-primary": "#f87171",
+
+      "--dsw-alias-interactive-bg-hover": "#14332a",
+      "--dsw-alias-interactive-bg-active": "#1b4136",
+
+      "--dsw-alias-markdown-code-block": "#071813",
+      "--dsw-alias-markdown-inline-code": "#123028",
+
+      "--dsw-specific-sidebar-fill": "#071813",
+      "--dsw-specific-sidebar-nav-item-active": "#14332a"
+    }
+  }
+}

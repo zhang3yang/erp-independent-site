@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.InventoryPartnerMapper">
+
+    <resultMap type="InventoryPartner" id="InventoryPartnerResult">
+        <result property="shopCode"      column="shop_code" />
+        <result property="partnerCode"   column="partnercode" />
+        <result property="partnerName"   column="partnername" />
+        <result property="partnerType"   column="partnertype" />
+        <result property="address"       column="address" />
+        <result property="contactPerson" column="contactperson" />
+        <result property="mobile"        column="mobile" />
+        <result property="telephone"     column="telephone" />
+        <result property="activeFlag"    column="activeflag" />
+        <result property="remark"        column="remark" />
+        <result property="createUser"    column="createuser" />
+        <result property="createTime"    column="createtime" />
+        <result property="updateUser"    column="updateuser" />
+        <result property="updateTime"    column="updatetime" />
+    </resultMap>
+
+    <sql id="selectPartnerVo">
+        select shop_code, partnercode, partnername, partnertype, address,
+               contactperson, mobile, telephone, activeflag, remark,
+               createuser, createtime, updateuser, updatetime
+          from sdsshop.u_m_partner
+    </sql>
+
+    <select id="selectPartnerByCode" resultMap="InventoryPartnerResult">
+        <include refid="selectPartnerVo" />
+         where shop_code = #{shopCode}
+           and partnercode = #{partnerCode}
+    </select>
+
+    <select id="selectPartnerList" resultMap="InventoryPartnerResult">
+        <include refid="selectPartnerVo" />
+         where shop_code = #{shopCode}
+        <if test="partnerCode != null and partnerCode != ''">
+           and partnercode = #{partnerCode}
+        </if>
+        <if test="partnerName != null and partnerName != ''">
+           and partnername like concat('%', #{partnerName}, '%')
+        </if>
+        <if test="partnerType != null and partnerType != ''">
+           and partnertype = #{partnerType}
+        </if>
+        <if test="activeFlag != null">
+           and activeflag = #{activeFlag}
+        </if>
+        <!-- 供应商选择弹窗的搜索框：一个输入框同时匹配编码和名称 -->
+        <if test="keyword != null and keyword != ''">
+           and (partnercode like concat('%', #{keyword}, '%')
+                or partnername like concat('%', #{keyword}, '%'))
+        </if>
+         order by partnercode
+    </select>
+
+    <insert id="insertPartner" parameterType="InventoryPartner">
+        insert into sdsshop.u_m_partner(
+            shop_code, partnercode, partnername, partnertype, address,
+            contactperson, mobile, telephone, activeflag, remark,
+            createuser, createtime
+        ) values(
+            #{shopCode}, #{partnerCode}, #{partnerName}, #{partnerType}, #{address},
+            #{contactPerson}, #{mobile}, #{telephone}, #{activeFlag}, #{remark},
+            #{createUser}, sysdate()
+        )
+    </insert>
+
+    <update id="updatePartner" parameterType="InventoryPartner">
+        update sdsshop.u_m_partner
+           set partnername = #{partnerName},
+               partnertype = #{partnerType},
+               address = #{address},
+               contactperson = #{contactPerson},
+               mobile = #{mobile},
+               telephone = #{telephone},
+               activeflag = #{activeFlag},
+               remark = #{remark},
+               updateuser = #{updateUser},
+               updatetime = sysdate()
+         where shop_code = #{shopCode}
+           and partnercode = #{partnerCode}
+    </update>
+
+    <delete id="deletePartnerByCode">
+        delete from sdsshop.u_m_partner
+         where shop_code = #{shopCode}
+           and partnercode = #{partnerCode}
+    </delete>
+
+    <delete id="deletePartnerByCodes">
+        delete from sdsshop.u_m_partner
+         where shop_code = #{shopCode}
+           and partnercode in
+        <foreach item="partnerCode" collection="partnerCodes" open="(" separator="," close=")">
+            #{partnerCode}
+        </foreach>
+    </delete>
+
+    <select id="checkPartnerCodeUnique" resultType="int">
+        select count(1) from sdsshop.u_m_partner
+         where shop_code = #{shopCode}
+           and partnercode = #{partnerCode}
+    </select>
+
+</mapper>

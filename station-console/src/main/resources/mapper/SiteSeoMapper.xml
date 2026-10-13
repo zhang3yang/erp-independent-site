@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  站长工具。u_s_seo 只有一行。
+
+  ⚠⚠ 这张表整体是公开的：每一列都会出现在匿名接口 /openapi/site/info 的返回里。
+  必须如此——sitemap.xml / robots.txt 是 station-site（Nitro）生成的，不是后端生成的。
+  所以将来要存密钥类的东西，必须另建一张表。见表注释。
+
+  ⚠ 文件末尾那两条语句查的是 u_s_sitegoods，不是本表。理由写在
+  SiteSeoMapper 的类注释里（按模块归属，不按表归属）。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteSeoMapper">
+
+  <resultMap id="SeoResult" type="com.ruoyi.station.console.domain.SiteSeo">
+    <result property="id"            column="id"/>
+    <result property="noindexAll"    column="noindexall"/>
+    <result property="disallowPaths" column="disallowpaths"/>
+    <result property="robotsExtra"   column="robotsextra"/>
+    <result property="sitemapOn"     column="sitemapon"/>
+    <result property="sitemapMax"    column="sitemapmax"/>
+    <result property="homeFreq"      column="homefreq"/>
+    <result property="goodsFreq"     column="goodsfreq"/>
+    <result property="googleVerify"  column="googleverify"/>
+    <result property="bingVerify"    column="bingverify"/>
+    <result property="baiduVerify"   column="baiduverify"/>
+    <result property="ga4Id"         column="ga4id"/>
+    <result property="gtmId"         column="gtmid"/>
+    <result property="baiduHmId"     column="baiduhmid"/>
+    <result property="remark"        column="remark"/>
+    <result property="createTime"    column="createtime"/>
+    <result property="updateUser"    column="updateuser"/>
+    <result property="updateTime"    column="updatetime"/>
+  </resultMap>
+
+  <sql id="columns">
+    id, noindexall, disallowpaths, robotsextra, sitemapon, sitemapmax,
+    homefreq, goodsfreq, googleverify, bingverify, baiduverify,
+    ga4id, gtmid, baiduhmid, remark, createtime, updateuser, updatetime
+  </sql>
+
+  <!--
+    id 恒为 1。写死而不是传参：一个部署一个站，这张表只有一行，
+    留一个参数进来只会让人以为可以有第二行。
+  -->
+  <select id="selectSeo" resultMap="SeoResult">
+    select <include refid="columns"/>
+      from u_s_seo
+     where id = 1
+  </select>
+
+  <!--
+    ⚠ 全部字段直赋值，**没有一个走 coalesce**。
+
+    和 u_s_storage 那张表刻意相反：那边 access_key_secret 要 coalesce，因为密钥从不
+    下发到浏览器、前端保存时传的是 null，直接写会把配好的密钥清掉。
+
+    这张表没有那种字段——每一个值都会原样回显到界面上，所以「前端传上来什么就是什么」
+    是对的。要清空某一项（比如撤掉 GA），前端传空串，就该真的写进去。
+
+    加了 coalesce 反而会造出一个改不回来的状态：把 ga4id 清空的请求会被当成
+    「没传这个字段」，界面上看着清掉了、库里还留着，前台继续在每个页面注入统计脚本。
+  -->
+  <insert id="upsert" parameterType="com.ruoyi.station.console.domain.SiteSeo">
+    insert into u_s_seo(
+      id, noindexall, disallowpaths, robotsextra, sitemapon, sitemapmax,
+      homefreq, goodsfreq, googleverify, bingverify, baiduverify,
+      ga4id, gtmid, baiduhmid, remark, createtime, updateuser, updatetime
+    ) values(
+      1, #{noindexAll}, #{disallowPaths}, #{robotsExtra}, #{sitemapOn}, #{sitemapMax},
+      #{homeFreq}, #{goodsFreq}, #{googleVerify}, #{bingVerify}, #{baiduVerify},
+      #{ga4Id}, #{gtmId}, #{baiduHmId}, #{remark}, sysdate(), #{updateUser}, sysdate()
+    )
+    on duplicate key update
+      noindexall    = values(noindexall),
+      disallowpaths = values(disallowpaths),
+      robotsextra   = values(robotsextra),
+      sitemapon     = values(sitemapon),
+      sitemapmax    = values(sitemapmax),
+      homefreq      = values(homefreq),
+      goodsfreq     = values(goodsfreq),
+      googleverify  = values(googleverify),
+      bingverify    = values(bingverify),
+      baiduverify   = values(baiduverify),
+      ga4id         = values(ga4id),
+      gtmid         = values(gtmid),
+      baiduhmid     = values(baiduhmid),
+      remark        = values(remark),
+      updateuser    = values(updateuser),
+      updatetime    = sysdate()
+  </insert>
+
+
+  <!-- ==================================================================
+       SEO 体检的取数。查 u_s_sitegoods / u_s_sitegoods_lang，不是本表。
+       ================================================================== -->
+
+  <resultMap id="AuditRowResult" type="com.ruoyi.station.console.domain.SeoAuditRow">
+    <result property="goodsCode" column="goodscode"/>
+    <result property="goodsName" column="goodsname"/>
+    <result property="hasImage"  column="hasimage"/>
+    <result property="lang"      column="lang"/>
+    <result property="title"     column="title"/>
+    <result property="subtitle"  column="subtitle"/>
+    <result property="descLen"   column="desclen"/>
+  </resultMap>
+
+  <!--
+    每个已上架商品 × 每一条已有译文。
+
+    ⚠ left join，不是 inner join：一个商品如果**一条译文都没有**也必须出现在结果里
+      （lang 为 null）。那正是最严重的一种问题，inner join 会让它安静地消失，
+      于是体检报「一切正常」。这一条测试的时候要专门造一个数据验。
+
+    ⚠ 只算 publishstatus = '已上架'。草稿和已下架的商品对外不可见，它们的 SEO 问题
+      不是问题；算进来只会让体检表堆满「还在做的商品缺日语标题」这种噪音，
+      然后没人再看这张表。
+
+    ⚠ desclen 用 char_length 在 SQL 里算完，不把 description 读回来——那是 mediumtext，
+      体检要一次看全站所有商品的所有语言，把富文本全传回来只为数长度，
+      几百个商品就是几十兆的无用传输。
+
+    ⚠ hasimage 看三列回退：siteimgs → imgurl → mainimgs，顺序和前台取图一致
+      （见 u_s_sitegoods 的列注释）。任一非空即算有图。
+      在 Java 里判就要把三个 2000 字符的列都读回来。
+
+    不带 shop_code / sitecode 条件：一个部署一个站，这个库里只有这一个站的商品，
+    那两列不是筛选维度（boundary §5.3）。
+  -->
+  <select id="selectAuditRows" resultMap="AuditRowResult">
+    select g.goodscode                                  as goodscode,
+           g.goodsname                                  as goodsname,
+           case when coalesce(nullif(trim(g.siteimgs), ''),
+                              nullif(trim(g.imgurl),   ''),
+                              nullif(trim(g.mainimgs), '')) is null
+                then 0 else 1 end                       as hasimage,
+           l.lang                                       as lang,
+           l.title                                      as title,
+           l.subtitle                                   as subtitle,
+           char_length(coalesce(l.description, ''))     as desclen
+      from u_s_sitegoods g
+      left join u_s_sitegoods_lang l
+        on l.shop_code = g.shop_code
+       and l.sitecode  = g.sitecode
+       and l.goodscode = g.goodscode
+     where g.publishstatus = '已上架'
+     order by g.sortnum, g.goodscode, l.lang
+  </select>
+
+  <select id="countPublishedGoods" resultType="int">
+    select count(*) from u_s_sitegoods where publishstatus = '已上架'
+  </select>
+</mapper>

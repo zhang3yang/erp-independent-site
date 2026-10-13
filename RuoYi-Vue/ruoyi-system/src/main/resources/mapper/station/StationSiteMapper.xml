@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  独立站登记表。
+
+  ==================== ⚠ 库换了，现在是 sdsshop ====================
+
+  docs/独立站与ERP的边界.md §5.2：独立站原来那个库整个搬到站点服务器上，
+  ERP 这边不再有它；u_s_site 留下来，进 sdsshop。
+
+  §10.2 把这件事标成「搬库那一步在 ERP 侧唯一的代码改动」：那 9 处库限定名
+  全部改成 sdsshop.u_s_site，漏一处就是运行期一句「Unknown database」。
+
+  改完之后 ERP 全仓应当搜不到那个旧库名（§13 第 3 条的第二条 grep）。
+
+  ==================== 这张表现在只是一张登记表 ====================
+
+  站里的业务数据（首页装修 contentjson、语言 langs、币种 currency、
+  询盘通知邮箱 notifyemail）都搬到站点服务器的 u_s_siteinfo 去了（§7.2），
+  所以下面的 SQL 里没有它们。
+
+  删掉的三列：sitekey、apienabled、adminuser。
+  新增的六列：serverip、datadomain、filedomain、consoledomain、buyerdomain、consolesecret。
+-->
+<mapper namespace="com.ruoyi.system.mapper.StationSiteMapper">
+
+  <resultMap id="StationSiteResult" type="com.ruoyi.system.domain.StationSite">
+    <result property="shopCode"       column="shop_code"/>
+    <result property="siteCode"       column="sitecode"/>
+    <result property="siteName"       column="sitename"/>
+    <result property="domain"         column="domain"/>
+    <result property="dataDomain"     column="datadomain"/>
+    <result property="fileDomain"     column="filedomain"/>
+    <result property="consoleDomain"  column="consoledomain"/>
+    <result property="buyerDomain"    column="buyerdomain"/>
+    <result property="serverIp"       column="serverip"/>
+    <!-- 由 secretFlag 现算，不是表上的列。密钥本身永远不查、更不下发 -->
+    <result property="secretConfigured" column="secretconfigured"/>
+    <result property="ownerName"      column="ownername"/>
+    <result property="expireDate"     column="expiredate"/>
+    <result property="status"         column="status"/>
+    <result property="lastAccessTime" column="lastaccesstime"/>
+    <result property="sortNum"        column="sortnum"/>
+    <result property="remark"         column="remark"/>
+    <result property="createUser"     column="createuser"/>
+    <result property="createTime"     column="createtime"/>
+    <result property="updateUser"     column="updateuser"/>
+    <result property="updateTime"     column="updatetime"/>
+    <!-- 非数据库列，由 select 现算 -->
+    <result property="expireDays"     column="expiredays"/>
+  </resultMap>
+
+  <!--
+    ⚠ consolesecret 不在这里。
+
+    它是密文，但仍然是凭据：拿到它就能给这个站签任意身份的跳转令牌。列表和详情
+    一律不查它，只有 selectSecret 那一条专门取——少一处出现，
+    就少一处被顺手序列化到浏览器的机会（domain 上的 @JsonIgnore 是第二道）。
+  -->
+  <sql id="columns">
+    shop_code, sitecode, sitename, domain, datadomain, filedomain, consoledomain, buyerdomain,
+    serverip, ownername, expiredate, status, lastaccesstime, sortnum, remark,
+    createuser, createtime, updateuser, updatetime
+  </sql>
+
+  <!--
+    前端要显示「密钥配过没有」，但不能拿到密钥本身。
+    查一个布尔值出来，比把密文查出来再在 Java 里判空安全——密文根本不进内存。
+  -->
+  <sql id="secretFlag">
+    case when consolesecret is null or consolesecret = '' then 0 else 1 end secretconfigured
+  </sql>
+
+  <!--
+    expiredays 现算不落库：落库就得每天跑一遍刷新，而它只是个展示值。
+    没填到期日时 datediff 返回 null，前端按「不提醒」处理。
+
+    排序把「快到期的」顶上来：先按 sortnum，再按剩余天数升序（null 排最后），
+    最后按创建时间。控制台上最该被看见的就是快过期的站。
+  -->
+  <select id="selectList" resultMap="StationSiteResult">
+    select <include refid="columns"/>,
+           datediff(expiredate, curdate()) expiredays,
+           <include refid="secretFlag"/>
+      from sdsshop.u_s_site
+     where shop_code = #{query.shopCode}
+    <if test="query.siteName != null and query.siteName != ''">
+      and sitename like concat('%', #{query.siteName}, '%')</if>
+    <if test="query.domain != null and query.domain != ''">
+      and domain like concat('%', #{query.domain}, '%')</if>
+    <if test="query.status != null and query.status != ''">
+      and status = #{query.status}</if>
+    <if test="query.ownerName != null and query.ownerName != ''">
+      and ownername like concat('%', #{query.ownerName}, '%')</if>
+     order by sortnum asc,
+              case when expiredate is null then 1 else 0 end asc,
+              expiredate asc,
+              createtime desc, sitecode desc
+  </select>
+
+  <select id="selectByCode" resultMap="StationSiteResult">
+    select <include refid="columns"/>,
+           datediff(expiredate, curdate()) expiredays,
+           <include refid="secretFlag"/>
+      from sdsshop.u_s_site
+     where shop_code = #{shopCode} and sitecode = #{siteCode}
+  </select>
+
+  <!--
+    单独取密钥。**只有签跳转令牌那一条路径能调**（StationConsoleSsoServiceImpl）。
+
+    和 selectByCode 分开是有意的：那一条的结果会被直接序列化给前端，
+    这一条的结果只在服务端存活几毫秒——两条路径分开，
+    「密钥会不会跟着响应体出去」这个问题就有一个一眼能看完的答案。
+  -->
+  <select id="selectSecret" resultType="String">
+    select consolesecret
+      from sdsshop.u_s_site
+     where shop_code = #{shopCode} and sitecode = #{siteCode}
+  </select>
+
+  <!-- domain 为空直接返回空集：没填域名不算占用 -->
+  <select id="selectByDomain" resultMap="StationSiteResult">
+    select <include refid="columns"/>
+      from sdsshop.u_s_site
+     where shop_code = #{shopCode}
+       and domain = #{domain}
+       and #{domain} is not null
+     limit 1
+  </select>
+
+  <insert id="insert" parameterType="com.ruoyi.system.domain.StationSite">
+    insert into sdsshop.u_s_site(
+      shop_code, sitecode, sitename, domain, datadomain, filedomain, consoledomain, buyerdomain,
+      serverip, consolesecret, ownername, expiredate, status, sortnum, remark,
+      createuser, createtime
+    ) values(
+      #{shopCode}, #{siteCode}, #{siteName}, #{domain}, #{dataDomain}, #{fileDomain},
+      #{consoleDomain}, #{buyerDomain}, #{serverIp}, #{consoleSecret}, #{ownerName}, #{expireDate},
+      coalesce(#{status}, '启用'), coalesce(#{sortNum}, 0), #{remark}, #{createUser}, sysdate()
+    )
+  </insert>
+
+  <!--
+    sitecode / shop_code 不在可改列里，它们是主键；lastaccesstime 只由 touchAccessTime 改。
+
+    ⚠ consolesecret 走 coalesce，理由和 s_m_shop_storage 那边一样：
+    它从来不下发到浏览器，前端保存站点时传上来的就是 null。写成 #{} 的话，
+    每改一次站点名就会把跳转密钥清成 null——而表现是「从此以后点进入管理都进不去」，
+    没人会把它和「刚才改了个站点名」联系起来。要换密钥走 rotateSecret。
+  -->
+  <update id="update" parameterType="com.ruoyi.system.domain.StationSite">
+    update sdsshop.u_s_site
+       set sitename = #{siteName},
+           domain = #{domain},
+           datadomain = #{dataDomain},
+           filedomain = #{fileDomain},
+           consoledomain = #{consoleDomain},
+           buyerdomain = #{buyerDomain},
+           serverip = #{serverIp},
+           consolesecret = coalesce(#{consoleSecret}, consolesecret),
+           ownername = #{ownerName},
+           expiredate = #{expireDate},
+           status = coalesce(#{status}, status),
+           sortnum = coalesce(#{sortNum}, sortnum),
+           remark = #{remark},
+           updateuser = #{updateUser},
+           updatetime = sysdate()
+     where shop_code = #{shopCode} and sitecode = #{siteCode}
+  </update>
+
+  <!--
+    单独换密钥。和 update 分开，因为它是一个有后果的动作：
+    换完之后必须同步改站点服务器上的 u_s_siteinfo.consolesecret，
+    否则那个站的「进入管理」立刻失效。
+  -->
+  <update id="rotateSecret">
+    update sdsshop.u_s_site
+       set consolesecret = #{consoleSecret},
+           updateuser = #{updateUser},
+           updatetime = sysdate()
+     where shop_code = #{shopCode} and sitecode = #{siteCode}
+  </update>
+
+  <!--
+    「点了进入管理」的打点。
+
+    ⚠ 语义变了（§4.5）：以前打在「票据兑换成功」那一刻，ERP 知道人真的进去了；
+    现在打在**发令牌**这一步——新协议下验签在站点侧、不回调 ERP，
+    ERP 只知道有人点了按钮。拿它当活跃度指标会算多。
+
+    不碰 updateuser / updatetime：「谁最后改过这条档案」和「谁最后点过进入」
+    是两回事，混在一起以后查不清。
+  -->
+  <update id="touchAccessTime">
+    update sdsshop.u_s_site
+       set lastaccesstime = sysdate()
+     where shop_code = #{shopCode} and sitecode = #{siteCode}
+  </update>
+
+  <delete id="deleteByCodes">
+    delete from sdsshop.u_s_site
+     where shop_code = #{shopCode}
+       and sitecode in
+       <foreach collection="siteCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+  </delete>
+</mapper>

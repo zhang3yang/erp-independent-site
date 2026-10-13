@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.SalesReshipItemMapper">
+  <resultMap id="ItemResult" type="SalesReshipItem">
+    <result property="id" column="id"/><result property="shopCode" column="shop_code"/>
+    <result property="detailCode" column="detailcode"/><result property="reshipCode" column="reshipcode"/>
+    <result property="originalOrderDetailCode" column="originalorderdetailcode"/>
+    <result property="lineNo" column="lineno"/><result property="goodsCode" column="goodscode"/>
+    <result property="goodsName" column="goodsname"/><result property="spec" column="spec"/>
+    <result property="unit" column="unit"/><result property="qty" column="qty"/>
+    <result property="remark" column="remark"/>
+  </resultMap>
+
+  <select id="selectByReshipCode" resultMap="ItemResult">
+    select id, shop_code, detailcode, reshipcode, originalorderdetailcode, lineno,
+           goodscode, goodsname, spec, unit, qty, remark
+      from sdsorder.u_o_sales_reship_detail
+     where shop_code = #{shopCode} and reshipcode = #{reshipCode}
+     order by lineno, detailcode
+  </select>
+
+  <insert id="batchInsert">
+    insert into sdsorder.u_o_sales_reship_detail
+      (shop_code, detailcode, reshipcode, originalorderdetailcode, lineno,
+       goodscode, goodsname, spec, unit, qty, remark)
+    values
+    <foreach collection="items" item="item" separator=",">
+      (#{item.shopCode}, #{item.detailCode}, #{item.reshipCode}, #{item.originalOrderDetailCode},
+       #{item.lineNo}, #{item.goodsCode}, #{item.goodsName}, #{item.spec}, #{item.unit},
+       #{item.qty}, #{item.remark})
+    </foreach>
+  </insert>
+
+  <delete id="deleteByReshipCode">
+    delete from sdsorder.u_o_sales_reship_detail
+     where shop_code = #{shopCode} and reshipcode = #{reshipCode}
+  </delete>
+</mapper>

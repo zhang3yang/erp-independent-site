@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!--
+    独立站后端。前台（Nuxt）和管理台（station-console-ui）都从这里取数。
+
+    ⚠ 这是一个**独立的 Maven 工程，不是 RuoYi-Vue 的子模块**，也不该被加进那个 reactor。
+
+    ==================== 这道闸的含义变了，读之前先看清 ====================
+
+    以前这里写的是：「整套设计的前提是『管理台不直连数据库，读写 ERP 的数据全走 S2S 接口』，
+    所以依赖列表里没有 MyBatis、没有数据源。」
+
+    **那个前提已经反过来了。** 依据是 docs/独立站与ERP的边界.md 要点 1：
+
+        ERP 和独立站完全分开部署，独立站与 ERP 的后端没有任何互通。
+
+    独立站现在有自己的库（本机 sdsstation）、自己的用户表、自己的登录页，能在 ERP
+    整个停掉的情况下照常工作。所以 MyBatis 和数据源不但可以有，而且**必须有**。
+
+    ==================== 现在的闸是这一条 ====================
+
+        依赖列表里没有任何指向 ERP 的 HTTP 客户端，也没有 ERP 的任何一个包。
+
+    RestTemplate / WebClient / OkHttp 一个都不引；ruoyi-common、ruoyi-system 一个都不依赖。
+    下一个赶进度的人想加一条「顺便去 ERP 查一下」，得先动这个文件——那一刻他会看到这段注释。
+
+    验收方式见 boundary §13 第 2 条：
+
+        grep -rn "openapi/console\|ErpClient\|erp\.base-url" station-console/src
+
+    必须零结果。
+
+    ==================== 数据源只配一个库 ====================
+
+    application.yml 里只有一个数据源，指着本机的 sdsstation。mapper XML 里
+    **一律不写库限定名**（写 `from u_s_sitegoods`，不写 `from sdsstation.u_s_sitegoods`）——
+    不写库名就物理上不可能再指到别的库去，这比写一句注释管用。
+  -->
+
+  <groupId>com.ruoyi</groupId>
+  <artifactId>station-console</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+  <name>station-console</name>
+  <description>独立站后端：前台开放接口 + 管理台接口 + 本站用户体系</description>
+
+  <properties>
+    <java.version>17</java.version>
+    <maven.compiler.release>17</maven.compiler.release>
+    <spring-boot.version>4.0.6</spring-boot.version>
+    <mybatis-spring-boot.version>3.0.4</mybatis-spring-boot.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <!--
+    用 BOM import 而不是继承 spring-boot-starter-parent，和 RuoYi-Vue 的根 pom 一个写法：
+    版本号统一由这一个 BOM 决定。
+  -->
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring-boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!--
+      ⚠ 从 ERP 往这边移植代码时的一个坑：**Jackson 版本不一样**。
+
+      RuoYi-Vue 跑在 Spring Boot 3 上，用 Jackson 2（`com.fasterxml.jackson.databind`）；
+      这个工程是 Spring Boot 4，starter-web 带进来的是 **Jackson 3**，包名变了：
+
+          com.fasterxml.jackson.databind.ObjectMapper   →  tools.jackson.databind.ObjectMapper
+          com.fasterxml.jackson.databind.JsonNode       →  tools.jackson.databind.JsonNode
+          com.fasterxml.jackson.core.type.TypeReference →  tools.jackson.core.type.TypeReference
+
+      **注解不变**：@JsonFormat / @JsonIgnore / @JsonProperty 仍然在
+      com.fasterxml.jackson.annotation 下（Jackson 3 沿用了 jackson-annotations 那个包）。
+
+      所以从 ERP 抄一个 Service 过来，改完包名之后还要改这三行 import，
+      否则报的是「程序包 com.fasterxml.jackson.databind 不存在」——
+      看着像少了个依赖，其实是版本换代了，加依赖是错误的修法。
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
+    <!--
+      数据访问。只有这一个数据源，指着本机的 sdsstation。
+
+      没引 Druid：ERP 那边用它是为了那套监控页，这个服务一个库、一台机器，
+      HikariCP（starter-jdbc 自带）够用，少一个要配的东西就少一个要维护的东西。
+    -->
+    <dependency>
+      <groupId>org.mybatis.spring.boot</groupId>
+      <artifactId>mybatis-spring-boot-starter</artifactId>
+      <version>${mybatis-spring-boot.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.mysql</groupId>
+      <artifactId>mysql-connector-j</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!--
+      BCryptPasswordEncoder。只为一件事：**前台买家的密码**（u_s_buyer.passwordhash）。
+
+      ## 这个依赖被删过一次，又加回来了——两次的理由不冲突
+
+      删它的时候这里写着：
+
+      > 它当时只为 §6a 那版**管理台**账号密码登录算哈希。那一版撤掉了——
+      > 本站没有登录页，唯一入口是从 ERP 免密进来，u_s_user 里一个密码都不存。
+      > **要加回来之前先想清楚**：加回这个依赖基本等于要加回登录页。
+
+      那句警告仍然有效，而这次加回来**不是**那件事：
+
+      | | 管理台操作员（u_s_user） | 前台买家（u_s_buyer） |
+      | :-: | :-: | :-: |
+      （分隔行写成 :-: 不是笔误：XML 注释里只要出现连续两个减号，整个 pom 就解析不了）
+      | 谁 | 自己人 | 客户 |
+      | 怎么进 | 只能从 ERP 点「进入管理」免密进 | 前台自助注册 + 邮箱验证 + 密码登录 |
+      | 存密码 | **不存**（那一列已废弃） | 存，就是这个编码器算的 |
+
+      买家没有 ERP 账号，也不该有——让客户为了看自己的订单去 ERP 登一下，
+      是荒谬的。所以买家必须有本站的密码，而管理台仍然一个密码都不存。
+
+      ⚠ **判据**：`grep -rn "PasswordEncoder" src/main/java` 的结果里只能出现
+      BuyerAuthService。哪天它又出现在 SiteUserService 或者某个 LoginController 里，
+      那就是登录页要回来了——去读 docs/独立站与ERP的边界.md §6d。
+
+      ## 为什么不引 spring-boot-starter-security
+
+      引了会顺带把整条 Spring Security 过滤链装上，然后这个服务的每一个接口都要在那套
+      SecurityFilterChain 里再配一遍——而管理台的权限判定已经在 AuthInterceptor 里
+      按 u_s_role 做了，买家会话又是自己那一套（BuyerSession）。
+      三套鉴权并存是「这里放行那里 403」的根源。
+      spring-security-crypto 是一个不含 Servlet 集成的独立小包，只有密码编码器。
+    -->
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-crypto</artifactId>
+    </dependency>
+
+
+    <!-- 询盘邮件通知。原来在 ERP 侧，跟着询盘模块一起搬过来 -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-mail</artifactId>
+    </dependency>
+
+    <!--
+      会话存 Redis，不存单机内存。两个理由：
+        1. 服务重启不会把所有人踢下线；
+        2. 将来要多开一个实例时不用改代码。
+      跳转令牌的 jti 防重放也用它（boundary §4.2 第③步）。
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-redis</artifactId>
+    </dependency>
+
+    <!--
+      ⚠ 这里原来直接引 `org.springframework.session:spring-session-data-redis`。
+        依赖能解析、编译能过、`spring.session.redis.*` 那几行配置也不报错——
+        **但会话根本没进 Redis**，走的是 Tomcat 内存。查的时候是这样发现的：
+
+            redis-cli keys '*' | grep station:console:session   → 一条都没有
+            而登录拿到的 CONSOLE_SESSION 会话是能用的
+
+        原因和 MybatisConfig 那次是同一类（见那个类的头注释）：Spring Boot 4 把
+        `spring-boot-autoconfigure` 按技术拆成了几十个 `spring-boot-<tech>` 模块，
+        session 的自动配置搬进了 **spring-boot-session**，而它不在 classpath 上——
+        光有 `spring-session-data-redis` 这个「实现」，没有那份「自动配置」，
+        谁也不会去建 RedisIndexedSessionRepository，于是静默退回内存会话。
+
+        Boot 4 里 session 的 starter 是按存储后端拆开的，Redis 这一档就是下面这个。
+        它会把 spring-session-data-redis 和 spring-boot-session 一起带进来，
+        所以上面那条手写依赖删掉了——留着只会让人以为是它在起作用。
+
+      判断有没有真的生效，别看日志（它不打），看 Redis：
+          redis-cli keys 'station:console:session*'
+      登录一次之后应当有 key。没有就是又退回内存了。
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-session-data-redis</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!--
+        ⚠ -parameters 必须显式打开。
+
+        这个工程是 BOM import，不是继承 spring-boot-starter-parent——而 -parameters
+        恰恰是 parent 里的 maven-compiler-plugin 配置带进来的，BOM 只管依赖版本、不管插件。
+        少了它，class 文件里没有参数名，Spring MVC 解析
+        @PathVariable / @RequestParam / @RequestHeader 时拿不到要绑哪个名字，运行期直接抛：
+
+            Name for argument of type [java.lang.String] not specified,
+            and parameter name information not available via reflection.
+
+        这个错只在**真发请求**时才出现，编译和启动都不报——所以除了这个开关，
+        Controller 里每个注解也一律写死名字，两道保险。
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <parameters>true</parameters>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <version>${spring-boot.version}</version>
+        <configuration>
+          <mainClass>com.ruoyi.station.console.StationConsoleApplication</mainClass>
+        </configuration>
+        <executions>
+          <execution>
+            <goals><goal>repackage</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

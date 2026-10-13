@@ -1,0 +1,719 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.TenantShopMapper">
+
+    <!--
+      本文件里有 11 处「商家业务权限前缀」白名单：
+        m.perms like 'tenant:%' / 'purchase:%' / 'inventory:%' / 'production:%' / 'finance:%' / 'order:%' / 'site:%' / 'price:%' / 'dashboard:%'
+
+      price: 是纯权限点（price:cost / price:sale，金额按岗位可见），一个页面都没有，
+      但同样要走这份名单——漏掉它，商家侧就拿不到这两个权限，所有人的金额一律遮蔽。
+
+      它与 Java 侧的 com.ruoyi.common.constant.TenantPermissionPrefixes 是同一份名单的两个副本，
+      **新增业务模块时两边都要改**。只改一边的后果：菜单和授权都在库里，
+      但接口对商家一律 403（Java 侧漏改）或菜单授权不到商家（SQL 侧漏改），
+      而且报错信息完全不指向这里，很难查。
+    -->
+
+    <resultMap type="TenantShop" id="TenantShopResult">
+        <result property="shopCode"    column="shop_code" />
+        <result property="shopName"    column="shop_name" />
+        <result property="province"    column="province" />
+        <result property="city"        column="city" />
+        <result property="district"    column="district" />
+        <result property="address"     column="address" />
+        <result property="telephone"   column="telephone" />
+        <result property="description" column="description" />
+        <result property="imageUrl"    column="image_url" />
+        <result property="consoleUrl"  column="console_url" />
+        <result property="status"      column="status" />
+        <result property="memberUserCode" column="member_user_code" />
+        <result property="deptId"      column="dept_id" />
+        <result property="jobNo"       column="job_no" />
+        <result property="jobName"     column="job_name" />
+        <result property="roleCodes"   column="role_codes" />
+        <result property="roleNames"   column="role_names" />
+    </resultMap>
+
+    <resultMap type="SysRole" id="TenantSysRoleResult">
+        <id property="roleCode" column="role_code" />
+        <result property="roleName" column="role_name" />
+        <result property="roleKey" column="role_key" />
+        <result property="roleSort" column="role_sort" />
+        <result property="dataScope" column="data_scope" />
+        <result property="menuCheckStrictly" column="menu_check_strictly" />
+        <result property="deptCheckStrictly" column="dept_check_strictly" />
+        <result property="status" column="status" />
+        <result property="delFlag" column="del_flag" />
+    </resultMap>
+
+    <resultMap type="SysMenu" id="TenantMenuResult">
+        <id property="funCode" column="fun_code" />
+        <result property="menuName" column="menu_name" />
+        <result property="parentId" column="parent_id" />
+        <result property="orderNum" column="order_num" />
+        <result property="path" column="path" />
+        <result property="component" column="component" />
+        <result property="query" column="query" />
+        <result property="routeName" column="route_name" />
+        <result property="isFrame" column="is_frame" />
+        <result property="isCache" column="is_cache" />
+        <result property="menuType" column="menu_type" />
+        <result property="visible" column="visible" />
+        <result property="status" column="status" />
+        <result property="perms" column="perms" />
+        <result property="icon" column="icon" />
+    </resultMap>
+
+    <resultMap type="TenantShopAdmin" id="TenantShopAdminResult">
+        <id property="roleCode" column="role_code" />
+        <result property="shopCode" column="shop_code" />
+        <result property="shopName" column="shop_name" />
+        <result property="shopStatus" column="shop_status" />
+        <result property="roleName" column="role_name" />
+        <result property="roleKey" column="role_key" />
+        <result property="roleStatus" column="role_status" />
+        <result property="adminUserCode" column="admin_user_code" />
+        <result property="adminUserName" column="admin_user_name" />
+        <result property="adminNickName" column="admin_nick_name" />
+        <result property="adminPhonenumber" column="admin_phonenumber" />
+        <result property="adminStatus" column="admin_status" />
+    </resultMap>
+
+    <sql id="selectTenantShopVo">
+        select s.shop_code,
+               s.shop_name,
+               s.province,
+               s.city,
+               s.district,
+               s.address,
+               s.telephone,
+               s.description,
+               s.image_url,
+               s.status,
+               su.user_code as member_user_code,
+               su.dept_id,
+               su.job_no,
+               null as job_name,
+               group_concat(distinct r.role_key order by r.role_sort separator ',') as role_codes,
+               group_concat(distinct r.role_name order by r.role_sort separator ',') as role_names
+          from sys_shop_user su
+          join s_m_shop s on s.shop_code = su.shop_code
+          left join sys_shop_user_role sur
+            on sur.shop_code = su.shop_code and sur.user_code = su.user_code
+          left join sys_role r
+            on r.role_code = sur.role_code
+           and r.shop_code = su.shop_code
+           and r.role_type = 'TENANT'
+           and r.status = '0'
+           and r.del_flag = '0'
+    </sql>
+
+    <select id="selectShopsByAccount" resultMap="TenantShopResult">
+        <include refid="selectTenantShopVo" />
+         where su.user_code = #{userCode}
+           and su.status = '0'
+           and su.del_flag = '0'
+           and s.status = 1
+         group by s.shop_code, s.shop_name, s.province, s.city, s.district, s.address,
+                  s.telephone, s.description, s.image_url, s.status, su.user_code,
+                  su.dept_id, su.job_no
+         order by s.createtime, s.shop_code
+    </select>
+
+    <select id="selectShopByAccountAndCode" resultMap="TenantShopResult">
+        <include refid="selectTenantShopVo" />
+         where su.user_code = #{userCode}
+           and su.shop_code = #{shopCode}
+           and su.status = '0'
+           and su.del_flag = '0'
+           and s.status = 1
+         group by s.shop_code, s.shop_name, s.province, s.city, s.district, s.address,
+                  s.telephone, s.description, s.image_url, s.status, su.user_code,
+                  su.dept_id, su.job_no
+         limit 1
+    </select>
+
+    <select id="selectRolesByMember" resultMap="TenantSysRoleResult">
+        select distinct r.role_code, r.role_name, r.role_key, r.role_sort, r.data_scope,
+               r.menu_check_strictly, r.dept_check_strictly, r.status, r.del_flag
+          from sys_shop_user_role sur
+          join sys_shop_user su
+            on su.shop_code = sur.shop_code
+           and su.user_code = sur.user_code
+           and su.status = '0'
+           and su.del_flag = '0'
+          join sys_role r on r.role_code = sur.role_code and r.shop_code = sur.shop_code
+         where sur.shop_code = #{shopCode}
+           and sur.user_code = #{userCode}
+           and r.role_type = 'TENANT'
+           and r.status = '0'
+           and r.del_flag = '0'
+         order by r.role_sort, r.role_code
+    </select>
+
+    <select id="countShopAdminMembership" resultType="int">
+        select count(1)
+          from sys_shop_user_role sur
+          join sys_shop_user su
+            on su.shop_code = sur.shop_code
+           and su.user_code = sur.user_code
+           and su.status = '0'
+           and su.del_flag = '0'
+          join sys_role r
+            on r.role_code = sur.role_code
+           and r.shop_code = sur.shop_code
+         where sur.shop_code = #{shopCode}
+           and sur.user_code = #{userCode}
+           and r.role_type = 'TENANT'
+           and r.system_flag = 1
+           and r.status = '0'
+           and r.del_flag = '0'
+    </select>
+
+    <select id="selectRoleCodesByMember" resultType="String">
+        select distinct r.role_key
+          from sys_shop_user_role sur
+          join sys_shop_user su
+            on su.shop_code = sur.shop_code
+           and su.user_code = sur.user_code
+           and su.status = '0'
+           and su.del_flag = '0'
+          join sys_role r on r.role_code = sur.role_code and r.shop_code = sur.shop_code
+         where sur.shop_code = #{shopCode}
+           and sur.user_code = #{userCode}
+           and r.role_type = 'TENANT'
+           and r.status = '0'
+           and r.del_flag = '0'
+         order by r.role_key
+    </select>
+
+    <select id="selectPermissionsByMember" resultType="String">
+        select distinct m.perms
+          from sys_shop_user_role sur
+          join sys_shop_user su
+            on su.shop_code = sur.shop_code
+           and su.user_code = sur.user_code
+           and su.status = '0'
+           and su.del_flag = '0'
+          join sys_role r on r.role_code = sur.role_code and r.shop_code = sur.shop_code
+          join sys_role_menu rm on rm.role_code = r.role_code
+          join sys_menu m on m.fun_code = rm.fun_code
+          join sys_shop_menu sm
+            on sm.shop_code = sur.shop_code
+           and sm.fun_code = m.fun_code
+           and sm.status = '0'
+         where sur.shop_code = #{shopCode}
+           and sur.user_code = #{userCode}
+           and r.role_type = 'TENANT'
+           and r.status = '0'
+           and r.del_flag = '0'
+           and m.status = '0'
+           and m.perms is not null
+           and m.perms != ''
+           <!--
+             商家域的权限前缀白名单，挡住 system:/monitor:/tool: 这些平台侧权限。
+             采购曾经写成 (r.system_flag = 1 and m.perms like 'purchase:%')，即只有内置的
+             商家管理员角色才认；那样商家自建的采购员角色就算被勾上采购权限也用不了。
+             现在与 selectPermissionsByShop 同口径：能不能用只看有没有授到这个角色上。
+           -->
+           and (m.perms like 'tenant:%'
+                or m.perms like 'purchase:%'
+                or m.perms like 'inventory:%'
+                or m.perms like 'production:%'
+                or m.perms like 'finance:%'
+                or m.perms like 'order:%' or m.perms like 'site:%' or m.perms like 'price:%' or m.perms like 'dashboard:%')
+          order by m.perms
+    </select>
+
+    <select id="selectPermissionsByShop" resultType="String">
+        select distinct m.perms
+          from sys_shop_menu sm
+          join sys_menu m on m.fun_code = sm.fun_code
+         where sm.shop_code = #{shopCode}
+           and sm.status = '0'
+           and m.status = '0'
+           and m.perms is not null
+           and m.perms != ''
+           and (m.perms like 'tenant:%' or m.perms like 'purchase:%'
+                or m.perms like 'inventory:%' or m.perms like 'production:%'
+                or m.perms like 'finance:%' or m.perms like 'order:%' or m.perms like 'site:%' or m.perms like 'price:%' or m.perms like 'dashboard:%')
+         order by m.perms
+    </select>
+
+    <select id="selectFunCodesByMember" resultType="String">
+        select distinct m.fun_code
+          from sys_shop_user_role sur
+          join sys_shop_user su
+            on su.shop_code = sur.shop_code
+           and su.user_code = sur.user_code
+           and su.status = '0'
+           and su.del_flag = '0'
+          join sys_role r on r.role_code = sur.role_code and r.shop_code = sur.shop_code
+          join sys_role_menu rm on rm.role_code = r.role_code
+          join sys_menu m on m.fun_code = rm.fun_code
+          join sys_shop_menu sm
+            on sm.shop_code = sur.shop_code
+           and sm.fun_code = m.fun_code
+           and sm.status = '0'
+         where sur.shop_code = #{shopCode}
+           and sur.user_code = #{userCode}
+           and r.role_type = 'TENANT'
+           and r.status = '0'
+           and r.del_flag = '0'
+           and m.status = '0'
+    </select>
+
+    <select id="selectFunCodesByShop" resultType="String">
+        select distinct m.fun_code
+          from sys_shop_menu sm
+          join sys_menu m on m.fun_code = sm.fun_code
+         where sm.shop_code = #{shopCode}
+           and sm.status = '0'
+           and m.status = '0'
+         order by m.fun_code
+    </select>
+
+    <select id="selectMenuTreeByMember" resultMap="TenantMenuResult">
+        select distinct m.fun_code, m.parent_id, m.menu_name, m.path, m.component, m.`query`,
+               m.route_name, m.visible, m.status, ifnull(m.perms, '') as perms,
+               m.is_frame, m.is_cache, m.menu_type, m.icon, m.order_num
+          from sys_shop_user_role sur
+          join sys_shop_user su
+            on su.shop_code = sur.shop_code
+           and su.user_code = sur.user_code
+           and su.status = '0'
+           and su.del_flag = '0'
+          join sys_role r on r.role_code = sur.role_code and r.shop_code = sur.shop_code
+          join sys_role_menu rm on rm.role_code = r.role_code
+          join sys_menu m on m.fun_code = rm.fun_code
+          join sys_shop_menu sm
+            on sm.shop_code = sur.shop_code
+           and sm.fun_code = m.fun_code
+           and sm.status = '0'
+         where sur.shop_code = #{shopCode}
+           and sur.user_code = #{userCode}
+           and r.role_type = 'TENANT'
+           and r.status = '0'
+           and r.del_flag = '0'
+           and m.menu_type in ('M', 'C')
+           and m.status = '0'
+         order by m.parent_id, m.order_num
+    </select>
+
+    <select id="selectMenuTreeByShop" resultMap="TenantMenuResult">
+        select distinct m.fun_code, m.parent_id, m.menu_name, m.path, m.component, m.`query`,
+               m.route_name, m.visible, m.status, ifnull(m.perms, '') as perms,
+               m.is_frame, m.is_cache, m.menu_type, m.icon, m.order_num
+          from sys_shop_menu sm
+          join sys_menu m on m.fun_code = sm.fun_code
+         where sm.shop_code = #{shopCode}
+           and sm.status = '0'
+           and m.menu_type in ('M', 'C')
+           and m.status = '0'
+         order by m.parent_id, m.order_num
+    </select>
+
+    <select id="selectShopAdminRoles" resultMap="TenantShopAdminResult">
+        select s.shop_code, s.shop_name, s.status as shop_status,
+               r.role_code, r.role_name, r.role_key, r.status as role_status,
+               admin_user.user_code as admin_user_code,
+               admin_user.user_name as admin_user_name,
+               admin_user.nick_name as admin_nick_name,
+               admin_user.phonenumber as admin_phonenumber,
+               admin_user.status as admin_status
+          from s_m_shop s
+          join sys_role r on r.shop_code = s.shop_code
+          left join sys_shop_user admin_member
+            on admin_member.shop_code = s.shop_code
+           and admin_member.is_owner = 1
+           and admin_member.status = '0'
+           and admin_member.del_flag = '0'
+           and admin_member.user_code &lt;&gt; 'us1'
+          left join sys_shop_user_role admin_relation
+            on admin_relation.shop_code = admin_member.shop_code
+           and admin_relation.user_code = admin_member.user_code
+           and admin_relation.role_code = r.role_code
+          left join sys_user admin_user
+            on admin_user.user_code = admin_relation.user_code
+           and admin_user.del_flag = '0'
+         where r.role_type = 'TENANT'
+           and r.system_flag = 1
+           and r.del_flag = '0'
+         order by s.createtime, s.shop_code
+    </select>
+
+    <select id="selectShopAdminRoleByCode" resultMap="TenantShopAdminResult">
+        select s.shop_code, s.shop_name, s.status as shop_status,
+               r.role_code, r.role_name, r.role_key, r.status as role_status,
+               admin_user.user_code as admin_user_code,
+               admin_user.user_name as admin_user_name,
+               admin_user.nick_name as admin_nick_name,
+               admin_user.phonenumber as admin_phonenumber,
+               admin_user.status as admin_status
+          from sys_role r
+          join s_m_shop s on s.shop_code = r.shop_code
+          left join sys_shop_user admin_member
+            on admin_member.shop_code = s.shop_code
+           and admin_member.is_owner = 1
+           and admin_member.status = '0'
+           and admin_member.del_flag = '0'
+           and admin_member.user_code &lt;&gt; 'us1'
+          left join sys_shop_user_role admin_relation
+            on admin_relation.shop_code = admin_member.shop_code
+           and admin_relation.user_code = admin_member.user_code
+           and admin_relation.role_code = r.role_code
+          left join sys_user admin_user
+            on admin_user.user_code = admin_relation.user_code
+           and admin_user.del_flag = '0'
+         where r.role_code = #{roleCode}
+           and r.role_type = 'TENANT'
+           and r.system_flag = 1
+           and r.del_flag = '0'
+         limit 1
+    </select>
+
+    <select id="selectShopAdminFunCodes" resultType="String">
+        with recursive assignable_menu as (
+            select m.fun_code, m.parent_id
+              from sys_menu m
+             where m.status = '0'
+               and (m.perms like 'tenant:%' or m.perms like 'purchase:%' or m.perms like 'inventory:%'
+                    or m.perms like 'production:%' or m.perms like 'finance:%' or m.perms like 'order:%' or m.perms like 'site:%' or m.perms like 'price:%' or m.perms like 'dashboard:%')
+            union distinct
+            select parent.fun_code, parent.parent_id
+              from sys_menu parent
+              join assignable_menu child on child.parent_id = parent.fun_code
+             where parent.status = '0'
+        )
+        select rm.fun_code
+          from sys_role_menu rm
+          join sys_role r on r.role_code = rm.role_code
+          join sys_menu m on m.fun_code = rm.fun_code
+         where r.role_code = #{roleCode}
+           and r.role_type = 'TENANT'
+           and r.system_flag = 1
+           and r.del_flag = '0'
+           and m.fun_code in (select fun_code from assignable_menu)
+         order by rm.fun_code
+    </select>
+
+    <select id="selectTenantAssignableMenus" resultMap="TenantMenuResult">
+        with recursive assignable_menu as (
+            select m.fun_code, m.parent_id
+              from sys_menu m
+             where m.status = '0'
+               and (m.perms like 'tenant:%' or m.perms like 'purchase:%' or m.perms like 'inventory:%'
+                    or m.perms like 'production:%' or m.perms like 'finance:%' or m.perms like 'order:%' or m.perms like 'site:%' or m.perms like 'price:%' or m.perms like 'dashboard:%')
+            union distinct
+            select parent.fun_code, parent.parent_id
+              from sys_menu parent
+              join assignable_menu child on child.parent_id = parent.fun_code
+             where parent.status = '0'
+        )
+        select m.fun_code, m.parent_id, m.menu_name, m.path, m.component, m.`query`,
+               m.route_name, m.visible, m.status, ifnull(m.perms, '') as perms,
+               m.is_frame, m.is_cache, m.menu_type, m.icon, m.order_num
+          from sys_menu m
+          join assignable_menu scoped on scoped.fun_code = m.fun_code
+         order by m.parent_id, m.order_num, m.fun_code
+    </select>
+
+    <delete id="deleteShopAdminRoleMenus">
+        delete rm from sys_role_menu rm
+        inner join sys_role r on r.role_code = rm.role_code
+         where r.role_code = #{roleCode}
+           and r.role_type = 'TENANT'
+           and r.system_flag = 1
+           and r.del_flag = '0'
+    </delete>
+
+    <insert id="batchInsertShopAdminRoleMenus">
+        insert into sys_role_menu(role_code, fun_code)
+        with recursive assignable_menu as (
+            select m.fun_code, m.parent_id
+              from sys_menu m
+             where m.status = '0'
+               and (m.perms like 'tenant:%' or m.perms like 'purchase:%' or m.perms like 'inventory:%'
+                    or m.perms like 'production:%' or m.perms like 'finance:%' or m.perms like 'order:%' or m.perms like 'site:%' or m.perms like 'price:%' or m.perms like 'dashboard:%')
+            union distinct
+            select parent.fun_code, parent.parent_id
+              from sys_menu parent
+              join assignable_menu child on child.parent_id = parent.fun_code
+             where parent.status = '0'
+        )
+        select r.role_code, requested.fun_code
+          from sys_role r
+          join (
+        <foreach collection="funCodes" item="funCode" separator=" union all ">
+            select #{funCode} as fun_code
+        </foreach>
+          ) requested
+          join sys_menu m on m.fun_code = requested.fun_code
+         where r.role_code = #{roleCode}
+           and r.role_type = 'TENANT'
+           and r.system_flag = 1
+           and r.del_flag = '0'
+           and m.fun_code in (select fun_code from assignable_menu)
+    </insert>
+
+    <delete id="deleteShopBusinessMenus">
+        with recursive business_menu as (
+            select m.fun_code, m.parent_id
+              from sys_menu m
+             where m.perms like 'purchase:%' or m.perms like 'inventory:%' or m.perms like 'production:%'
+                or m.perms like 'finance:%' or m.perms like 'order:%' or m.perms like 'site:%' or m.perms like 'price:%' or m.perms like 'dashboard:%'
+            union distinct
+            select parent.fun_code, parent.parent_id
+              from sys_menu parent
+              join business_menu child on child.parent_id = parent.fun_code
+             where parent.status = '0'
+        ), tenant_menu as (
+            select m.fun_code, m.parent_id
+              from sys_menu m
+             where m.status = '0' and m.perms like 'tenant:%'
+            union distinct
+            select parent.fun_code, parent.parent_id
+              from sys_menu parent
+              join tenant_menu child on child.parent_id = parent.fun_code
+             where parent.status = '0'
+        )
+        delete from sys_shop_menu
+         where shop_code = #{shopCode}
+           and fun_code in (select fun_code from business_menu)
+           and fun_code not in (select fun_code from tenant_menu)
+    </delete>
+
+    <insert id="insertShopBusinessMenus">
+        insert into sys_shop_menu(shop_code, fun_code, status, create_by, create_time)
+        with recursive business_menu as (
+            select m.fun_code, m.parent_id
+              from sys_menu m
+             where m.status = '0'
+               and (m.perms like 'purchase:%' or m.perms like 'inventory:%' or m.perms like 'production:%'
+                    or m.perms like 'finance:%' or m.perms like 'order:%' or m.perms like 'site:%' or m.perms like 'price:%' or m.perms like 'dashboard:%')
+            union distinct
+            select parent.fun_code, parent.parent_id
+              from sys_menu parent
+              join business_menu child on child.parent_id = parent.fun_code
+             where parent.status = '0'
+        )
+        select #{shopCode}, m.fun_code, '0', #{operator}, sysdate()
+          from sys_menu m
+          join business_menu scoped on scoped.fun_code = m.fun_code
+           and m.fun_code in
+        <foreach collection="funCodes" item="funCode" open="(" separator="," close=")">
+            #{funCode}
+        </foreach>
+    </insert>
+
+    <select id="selectShopRootDeptId" resultType="Long">
+        select min(dept_id)
+          from sys_dept
+         where shop_code = #{shopCode}
+           and parent_id = 0
+           and status = '0'
+           and del_flag = '0'
+    </select>
+
+    <insert id="upsertShopAdminMembership">
+        insert into sys_shop_user(shop_code, user_code, dept_id, status, is_owner, del_flag,
+                                  create_by, create_time, update_by, update_time)
+        values(#{shopCode}, #{userCode}, #{deptId}, '0', 1, '0',
+               #{operator}, sysdate(), #{operator}, sysdate())
+        on duplicate key update dept_id = values(dept_id), status = '0', is_owner = 1,
+                                del_flag = '0', update_by = values(update_by),
+                                update_time = values(update_time)
+    </insert>
+
+    <update id="demoteOtherShopOwners">
+        update sys_shop_user
+           set is_owner = 0, status = '1', update_by = #{operator}, update_time = sysdate()
+         where shop_code = #{shopCode}
+           and user_code &lt;&gt; #{userCode}
+           and user_code &lt;&gt; 'us1'
+           and is_owner = 1
+           and del_flag = '0'
+    </update>
+
+    <delete id="deleteOtherShopAdminRoleMembers">
+        delete relation_row
+          from sys_shop_user_role relation_row
+         where relation_row.shop_code = #{shopCode}
+           and relation_row.role_code = #{roleCode}
+           and relation_row.user_code &lt;&gt; #{userCode}
+           and relation_row.user_code &lt;&gt; 'us1'
+    </delete>
+
+    <insert id="insertShopAdminRoleMember">
+        insert into sys_shop_user_role(shop_code, user_code, role_code, create_by, create_time)
+        select #{shopCode}, #{userCode}, #{roleCode}, #{operator}, sysdate()
+         where not exists (
+             select 1 from sys_shop_user_role
+              where shop_code = #{shopCode}
+                and user_code = #{userCode}
+                and role_code = #{roleCode}
+         )
+    </insert>
+
+    <update id="updateShopAdminUser" parameterType="SysUser">
+        update sys_user
+           set user_name = #{userName},
+               nick_name = #{nickName},
+               phonenumber = #{phonenumber},
+               status = #{status},
+               <if test="password != null and password != ''">
+               password = #{password}, pwd_update_date = sysdate(),
+               </if>
+               update_by = #{updateBy}, update_time = sysdate()
+         where user_code = #{userCode}
+           and user_code &lt;&gt; 'us1'
+           and del_flag = '0'
+    </update>
+
+    <!--
+      权限链路（PermissionService.hasBusinessShop 等）高频调用这条，每个带商家头的请求都会走。
+      这里不查 console_url：那一列只有「进入管理」和商家编辑用得上，
+      放进来会让整个权限校验依赖 station_console_shop_20260826.sql 是否已执行——
+      漏跑一次 DDL 就是全站 500，代价和收益完全不成比例。要那一列的走下面两条。
+    -->
+    <select id="selectShopByCode" resultMap="TenantShopResult">
+        select shop_code, shop_name, province, city, district, address, telephone,
+               description, image_url, status
+          from s_m_shop
+         where shop_code = #{shopCode}
+           and status &lt;&gt; -1
+         limit 1
+    </select>
+
+    <!-- 商家编辑表单用：比上面多一个 console_url，好让界面能回显、能改 -->
+    <select id="selectShopDetailByCode" resultMap="TenantShopResult">
+        select shop_code, shop_name, province, city, district, address, telephone,
+               description, image_url, console_url, status
+          from s_m_shop
+         where shop_code = #{shopCode}
+           and status &lt;&gt; -1
+         limit 1
+    </select>
+
+    <!--
+      「进入管理」定跳转地址用，见 StationConsoleSsoServiceImpl.resolveBaseUrl。
+      只取一列，不映射整个 TenantShop：这条在发票链路上，越轻越好。
+    -->
+    <select id="selectShopConsoleUrl" resultType="String">
+        select console_url
+          from s_m_shop
+         where shop_code = #{shopCode}
+           and status &lt;&gt; -1
+         limit 1
+    </select>
+
+    <insert id="insertShop" parameterType="TenantShopBody">
+        insert into s_m_shop(shop_code, shop_name, province, city, district, address,
+                             telephone, description, image_url, console_url, status,
+                             createtime, updatetime)
+        values(#{shopCode}, #{shopName}, #{province}, #{city}, #{district}, #{address},
+               #{telephone}, #{description}, #{imageUrl}, #{consoleUrl}, #{status},
+               sysdate(), sysdate())
+    </insert>
+
+    <update id="updateShop">
+        update s_m_shop
+           set shop_name = #{shop.shopName}, province = #{shop.province}, city = #{shop.city},
+               district = #{shop.district}, address = #{shop.address}, telephone = #{shop.telephone},
+               description = #{shop.description}, image_url = #{shop.imageUrl},
+               console_url = #{shop.consoleUrl},
+               status = #{shop.status}, updatetime = sysdate()
+         where shop_code = #{shopCode} and status &lt;&gt; -1
+    </update>
+
+    <insert id="insertShopRootDept">
+        insert into sys_dept(shop_code, parent_id, ancestors, dept_name, order_num, status,
+                             del_flag, create_by, create_time)
+        values(#{shopCode}, 0, '0', #{deptName}, 0, '0', '0', #{operator}, sysdate())
+    </insert>
+
+    <insert id="insertBuiltInAdminRole">
+        insert into sys_role(role_code, shop_code, role_type, system_flag, role_name, role_key, role_sort,
+                             data_scope, menu_check_strictly, dept_check_strictly, status,
+                             del_flag, create_by, create_time, remark)
+        values(#{roleCode}, #{shopCode}, 'TENANT', 1, '商家管理员', #{roleKey}, 1, '1', 1, 1, '0',
+               '0', #{operator}, sysdate(), '平台创建的内置商家管理员角色')
+    </insert>
+
+    <insert id="provisionAllTenantMenus">
+        insert into sys_shop_menu(shop_code, fun_code, status, create_by, create_time)
+        select #{shopCode}, m.fun_code, '0', #{operator}, sysdate()
+          from sys_menu m
+         where m.status = '0'
+           and (m.perms like 'tenant:%'
+                or m.perms like 'purchase:%'
+                or m.perms like 'inventory:%'
+                or m.perms like 'production:%'
+                or m.perms like 'finance:%'
+                or m.perms like 'order:%' or m.perms like 'site:%' or m.perms like 'price:%' or m.perms like 'dashboard:%'
+                or m.fun_code in (
+                    select distinct child.parent_id from sys_menu child
+                     where child.status = '0'
+                       and (child.perms like 'tenant:%'
+                            or child.perms like 'purchase:%'
+                            or child.perms like 'inventory:%'
+                            or child.perms like 'production:%'
+                            or child.perms like 'finance:%'
+                            or child.perms like 'order:%' or child.perms like 'site:%' or child.perms like 'price:%' or child.perms like 'dashboard:%')
+                ))
+    </insert>
+
+    <insert id="insertDefaultAdminRoleMenus">
+        insert into sys_role_menu(role_code, fun_code)
+        select #{roleCode}, m.fun_code
+          from sys_menu m
+         where m.status = '0'
+           and (m.perms like 'tenant:%'
+                or m.perms like 'purchase:%'
+                or m.perms like 'inventory:%'
+                or m.perms like 'production:%'
+                or m.perms like 'finance:%'
+                or m.perms like 'order:%' or m.perms like 'site:%' or m.perms like 'price:%' or m.perms like 'dashboard:%')
+    </insert>
+
+    <insert id="insertSuperAdminMembership">
+        insert into sys_shop_user(shop_code, user_code, dept_id, status, is_owner, del_flag,
+                                  create_by, create_time, update_by, update_time)
+        values(#{shopCode}, #{userCode}, #{deptId}, '0', 0, '0',
+               #{operator}, sysdate(), #{operator}, sysdate())
+    </insert>
+
+    <insert id="insertSuperAdminRole">
+        insert into sys_shop_user_role(shop_code, user_code, role_code, create_by, create_time)
+        values(#{shopCode}, #{userCode}, #{roleCode}, #{operator}, sysdate())
+    </insert>
+
+    <delete id="deleteShopUserPosts">delete from sys_shop_user_post where shop_code = #{shopCode}</delete>
+    <delete id="deleteShopUserRoles">delete from sys_shop_user_role where shop_code = #{shopCode}</delete>
+    <delete id="deleteShopUsers">delete from sys_shop_user where shop_code = #{shopCode}</delete>
+    <delete id="deleteShopMenus">delete from sys_shop_menu where shop_code = #{shopCode}</delete>
+    <delete id="deleteShopRoleMenus">
+        delete rm from sys_role_menu rm inner join sys_role r on r.role_code = rm.role_code
+         where r.shop_code = #{shopCode} and r.role_type = 'TENANT'
+    </delete>
+    <delete id="deleteShopRoleDepts">
+        delete rd from sys_role_dept rd inner join sys_role r on r.role_code = rd.role_code
+         where r.shop_code = #{shopCode} and r.role_type = 'TENANT'
+    </delete>
+    <delete id="deleteShopRoles">
+        delete from sys_role where shop_code = #{shopCode} and role_type = 'TENANT'
+    </delete>
+    <delete id="deleteShopPosts">delete from sys_post where shop_code = #{shopCode}</delete>
+    <delete id="deleteShopDepts">delete from sys_dept where shop_code = #{shopCode}</delete>
+    <delete id="deleteLegacyShopRoleFunctions">delete from s_shop_role_function where shop_code = #{shopCode}</delete>
+    <delete id="deleteLegacyShopStaffRoles">delete from s_m_staff_role where shop_code = #{shopCode}</delete>
+    <delete id="deleteLegacyShopStaff">delete from s_m_shop_staff where shop_code = #{shopCode}</delete>
+    <delete id="deleteLegacyShopRoles">delete from s_m_shop_role where shop_code = #{shopCode}</delete>
+    <delete id="deleteLegacyShopOrganizations">delete from s_u_organize where shop_code = #{shopCode}</delete>
+    <delete id="deleteShopMigrationIssues">delete from sys_tenant_migration_issue where shop_code = #{shopCode}</delete>
+    <delete id="markShopDeleted">delete from s_m_shop where shop_code = #{shopCode}</delete>
+
+</mapper>

@@ -1,0 +1,457 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  前台浏览量。两张表：u_s_pageview（明细）+ u_s_pv_daily（日聚合）。
+
+  设计说明在 sql/station/migration/2026-09-08-pageview.sql 的文件头，先读那个。
+  这里只写和 SQL 直接相关的几条硬规矩。
+
+  ================================================================
+  ⚠ 规矩一：pagetype='_all' 那一行是全站合计，不是一种页面类型
+  ================================================================
+
+  每次上报会往 u_s_pv_daily 写**两行**：
+
+    · ('_all', '')               —— 当天全站合计；
+    · (真实类型, 商品编码或空串) —— 当天这个维度的数字。
+
+  所以：
+    · 查趋势、查「今天多少浏览」→ **只读 _all 那一行**；
+    · 查页面类型分布、商品排行 → **必须排除 _all**，
+      不排除的话总数正好翻倍，而「翻倍」这种错看起来只像「量比想象的大」。
+
+  为什么要存这么一行、而不是把各类型加起来：因为 uv 加不起来（见规矩二）。
+  pv 确实能加，但让 pv 和 uv 走两条不同的路子，迟早有人把它们弄混。
+
+  ================================================================
+  ⚠ 规矩二：uv 不能相加。任何方向都不行
+  ================================================================
+
+  uv 是 COUNT(DISTINCT visitorid)。同一个访客既看了首页又看了商品详情，
+  他在 home 那一行和 detail 那一行里各算一次——把两行的 uv 加起来就把他算了两遍。
+  跨天同理：一个访客周一来、周三又来，两天的 uv 各是 1，加起来不是 2 个人。
+
+  所以：
+    · 全站某天的 uv → 读 _all 那一行；
+    · 一段时间的 uv → **只能从明细现算**（countVisitorsBetween），
+      不存在从日聚合推出来的办法；
+    · 各维度那些 uv 只能单独看，比如「这个商品被 40 个人看了 200 次」。
+
+  ================================================================
+  ⚠ 规矩三：referrer 和 useragent 永远不进聚合表
+  ================================================================
+
+  它们的取值几乎无穷多，进聚合表等于把明细换个名字再存一遍。
+  这两个维度的查询一律扫明细，也就一律只能查保留期（默认 90 天）以内。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SitePageViewMapper">
+
+  <!-- ==================== 写入 ==================== -->
+
+  <!--
+    明细。⚠ 没有 shop_code：新表没建这一列，见基线脚本末尾那段。
+
+    createtime 由库里的 DEFAULT CURRENT_TIMESTAMP(3) 填，这里不传——
+    传的话就是应用服务器的时钟，而聚合和清理都按库的时钟走，两个时钟差几秒
+    就会出现「明细在今天、聚合记在昨天」这种对不上。
+  -->
+  <insert id="insertPageView" parameterType="com.ruoyi.station.console.domain.SitePageView"
+          useGeneratedKeys="true" keyProperty="id">
+    insert into u_s_pageview
+      (sitecode, visitorid, sessionid, pagetype, goodscode,
+       pagepath, lang, referrer, clientip, country, useragent, device, browser, isbot)
+    values
+      (#{siteCode}, #{visitorId}, #{sessionId}, #{pageType}, #{goodsCode},
+       #{pagePath}, #{lang}, #{referrer}, #{clientIp}, #{country}, #{userAgent},
+       #{device}, #{browser}, #{isBot})
+  </insert>
+
+  <!--
+    日聚合累加。
+
+    ⚠ 主键是 (sitecode, statdate, pagetype, goodscode) 四列，upsert 靠它命中。
+      goodscode 用**空串**表示「不是商品页」——NULL 进不了主键，
+      而且 NULL 在唯一性比较里永远不等于 NULL，用 NULL 的话每次上报都会插一行新的，
+      那张表会变成第二份明细。
+
+    human 传 0 时只加 pv 不加 pvhuman：爬虫的量留在 pv 里当分母，看报表看 pvhuman。
+  -->
+  <insert id="upsertDaily">
+    insert into u_s_pv_daily (sitecode, statdate, pagetype, goodscode, pv, pvhuman)
+    values (#{siteCode}, #{statDate}, #{pageType}, #{goodsCode}, 1, #{human})
+    on duplicate key update
+      pv      = pv + 1,
+      pvhuman = pvhuman + #{human}
+  </insert>
+
+  <!-- ==================== 定时任务 ==================== -->
+
+  <!--
+    分批删。⚠ order by id 是必须的：不加的话每一批删的是「任意 limit 行」，
+    InnoDB 可能反复扫到同一段页面；按主键顺序删则每批都从最老的开始，
+    B+ 树上是连续的一段，删起来最便宜。
+  -->
+  <delete id="deleteBefore">
+    delete from u_s_pageview
+     where createtime &lt; #{before}
+     order by id
+     limit #{limit}
+  </delete>
+
+  <!--
+    回填各维度 UV。一句 UPDATE ... JOIN 搞定，不用先查出来再逐行更新。
+
+    ⚠ 只更新已经存在的行（JOIN 的语义）。这是对的：u_s_pv_daily 里没有的维度，
+      说明那天那个维度一次浏览都没有，本来就不该有行。
+  -->
+  <update id="backfillDimensionUv">
+    update u_s_pv_daily d
+      join (select pagetype, goodscode, count(distinct visitorid) uv
+              from u_s_pageview
+             where sitecode = #{siteCode}
+               and isbot = 0
+               and createtime &gt;= #{from}
+               and createtime &lt; #{to}
+             group by pagetype, goodscode) s
+        on s.pagetype  = d.pagetype
+       and s.goodscode = d.goodscode
+       set d.uv = s.uv
+     where d.sitecode = #{siteCode}
+       and d.statdate = #{statDate}
+       and d.pagetype &lt;&gt; '_all'
+  </update>
+
+  <!--
+    回填全站 UV，也就是 _all 那一行。
+
+    ⚠ 这里的 count(distinct visitorid) 是**跨页面类型去重**的，
+      和上面那句算出来的任何一个数字都不相等，也不是它们的和。见文件头规矩二。
+  -->
+  <update id="backfillTotalUv">
+    update u_s_pv_daily
+       set uv = (select count(distinct visitorid)
+                   from u_s_pageview
+                  where sitecode = #{siteCode}
+                    and isbot = 0
+                    and createtime &gt;= #{from}
+                    and createtime &lt; #{to})
+     where sitecode  = #{siteCode}
+       and statdate  = #{statDate}
+       and pagetype  = '_all'
+       and goodscode = ''
+  </update>
+
+  <!-- ==================== 管理台查询 ==================== -->
+
+  <!-- 趋势。只读 _all 那些行，见文件头规矩一 -->
+  <select id="selectTrend" resultType="java.util.LinkedHashMap">
+    select statdate, pv, pvhuman, uv
+      from u_s_pv_daily
+     where sitecode = #{siteCode}
+       and pagetype = '_all'
+       and statdate &gt;= #{fromDate}
+       and statdate &lt;= #{toDate}
+     order by statdate
+  </select>
+
+  <!--
+    某个时间段的独立访客数。今天的 UV 靠它现算。
+
+    ⚠ 走 idx_pv_time (sitecode, createtime)。这是为什么那条索引把 sitecode 放在前面：
+      只按 createtime 建的话，这个查询要先按时间捞出一大段再过滤站点。
+  -->
+  <select id="countVisitorsBetween" resultType="int">
+    select count(distinct visitorid)
+      from u_s_pageview
+     where sitecode = #{siteCode}
+       and isbot = 0
+       and createtime &gt;= #{from}
+       and createtime &lt; #{to}
+  </select>
+
+  <!-- 某一天的全站合计。查不到（那天一次浏览都没有）返回 null -->
+  <select id="selectTotalOfDate" resultType="java.util.LinkedHashMap">
+    select statdate, pv, pvhuman, uv
+      from u_s_pv_daily
+     where sitecode  = #{siteCode}
+       and statdate  = #{statDate}
+       and pagetype  = '_all'
+       and goodscode = ''
+  </select>
+
+  <!-- 页面类型分布。⚠ 必须排除 _all，否则总数翻倍 -->
+  <select id="selectTypeBreakdown" resultType="java.util.LinkedHashMap">
+    select pagetype, sum(pv) pv, sum(pvhuman) pvhuman
+      from u_s_pv_daily
+     where sitecode = #{siteCode}
+       and statdate &gt;= #{fromDate}
+       and pagetype &lt;&gt; '_all'
+     group by pagetype
+     order by pvhuman desc
+  </select>
+
+  <!--
+    ============================================================
+    商品排行。这是整个功能存在的理由
+    ============================================================
+
+    一句 SQL 把「浏览量 / 独立访客 / 询盘数 / 成单数 / 标价」放在同一行里。
+    接 GA4 之类的第三方统计做不到这件事——那边的浏览数据在别人的服务器上，
+    没法和这个库里的 u_s_inquiry / u_s_order join，只能两边各导一份表格
+    然后在 Excel 里按商品编码手工拼。
+
+    读出来的样子：
+
+      商品   浏览  访客  询盘  成单  标价
+      A       200   180     0     0  8.50   ← 看的人多、一个都不问 → 查价格/起订量/详情页
+      B       180   120    12     3  6.20
+      C        15    14     4     2  3.00   ← 转化很好、就是没人看见 → 该给它加曝光
+
+    ============================================================
+    ⚠ pv 来自聚合表，uv 来自明细。两个数据源，两个不同的边界
+    ============================================================
+
+    pv 从 u_s_pv_daily 来（永久保留），uv 从 u_s_pageview 来（默认只留 90 天）。
+    所以窗口一旦超过保留期，pv 是全的、uv 少了一截——两个数字并排放着，
+    看起来只像「回头客特别多」，不像数据缺了。
+
+    PageViewStatService 把窗口压到 retainDays 以内，就是为了这个。改这里之前先看那段。
+
+    为什么 uv 不从聚合表读：日聚合里的 uv 是「那一天」的去重数，跨天加不起来
+    （见文件头规矩二）。一段时间的 uv 只能从明细现算，没有别的办法。
+
+    ============================================================
+    ⚠ 四个 LEFT JOIN 都是子查询先聚合、再 join，不是 join 完再 group by
+    ============================================================
+
+    先 join 后聚合的写法在这里会算错：一个商品有 3 条询盘和 2 行订单明细时，
+    join 出来是 6 行，count 会变成 6/6 而不是 3/2。这类错误的特征是
+    「数字偏大且成倍数」，而且只在有重复数据的行上出现——
+    测试数据里每个商品一条询盘的话，永远发现不了。
+
+    ============================================================
+    ⚠ 订单数按 ordercode 去重，且排除已取消
+    ============================================================
+
+    一张订单里同一个商品可能有多行（不同规格组合），不去重就变成了「行数」。
+    已取消的单不算成交——留着它会让「转化好的商品」里混进一批退掉的。
+  -->
+  <select id="selectTopGoods" resultType="java.util.LinkedHashMap">
+    select v.goodscode,
+           g.goodsname,
+           g.spec,
+           g.price,
+           g.moq,
+           g.unit,
+           g.publishstatus,
+           g.sitecategory,
+           v.pv,
+           ifnull(u.uv, 0)  uv,
+           ifnull(i.cnt, 0) inquirycount,
+           ifnull(o.cnt, 0) ordercount
+      from (select goodscode, sum(pvhuman) pv
+              from u_s_pv_daily
+             where sitecode = #{siteCode}
+               and pagetype = 'detail'
+               and goodscode &lt;&gt; ''
+               and statdate &gt;= #{fromDate}
+             group by goodscode
+            having sum(pvhuman) &gt; 0) v
+      <!--
+        ⚠ join 上带 sitecode：u_s_sitegoods 的主键是 (shop_code, sitecode, goodscode)。
+          只按 goodscode join 的话，历史上存在过两个 shop_code 的库会 join 出重复行。
+          一个部署一个站，现在不会——但这一条不写，将来合库时错得没有痕迹。
+      -->
+      left join u_s_sitegoods g
+        on g.goodscode = v.goodscode
+       and g.sitecode  = #{siteCode}
+      <!-- 独立访客：从明细现算，见上面那段关于两个数据源的注释 -->
+      left join (select goodscode, count(distinct visitorid) uv
+                   from u_s_pageview
+                  where sitecode = #{siteCode}
+                    and isbot = 0
+                    and goodscode &lt;&gt; ''
+                    and createtime &gt;= #{fromTime}
+                  group by goodscode) u
+        on u.goodscode = v.goodscode
+      <!-- 询盘数。u_s_inquiry.goodscode 是「从详情页提交时带上」的意向商品 -->
+      left join (select goodscode, count(*) cnt
+                   from u_s_inquiry
+                  where goodscode is not null
+                    and goodscode &lt;&gt; ''
+                    and createtime &gt;= #{fromTime}
+                  group by goodscode) i
+        on i.goodscode = v.goodscode
+      <!-- 成单数。按订单号去重、排除已取消，见上面那段 -->
+      left join (select oi.goodscode, count(distinct oi.ordercode) cnt
+                   from u_s_orderitem oi
+                   join u_s_order o2
+                     on o2.ordercode = oi.ordercode
+                  where o2.createtime &gt;= #{fromTime}
+                    and o2.status &lt;&gt; '已取消'
+                  group by oi.goodscode) o
+        on o.goodscode = v.goodscode
+     order by v.pv desc
+     limit #{limit}
+  </select>
+
+  <!--
+    来源分布。按 referrer 的主机名归类。
+
+    ⚠ 扫的是明细（referrer 不进聚合表，见文件头规矩三），所以只能查保留期以内。
+
+    主机名的取法：'https://www.google.com/search?q=x'
+      → substring_index(x, '/', 3)   = 'https://www.google.com'
+      → substring_index(y, '//', -1) = 'www.google.com'
+
+    空 referrer 归到 '(direct)'：直接输网址、从书签进来、或者从 https 页面
+    跳到 http 页面（浏览器会把 referrer 抹掉）。这三种分不开，也不需要分开。
+
+    ⚠ 自己站的域名也会出现在这里（站内跳转）。**不在 SQL 里排除**——
+      排除要写死域名，而这个站有四个子域、还随环境变。交给管理台那边显示时区分，
+      SQL 只负责给出原始分布。
+  -->
+  <select id="selectReferrers" resultType="java.util.LinkedHashMap">
+    select case
+             when referrer is null or referrer = '' then '(direct)'
+             else substring_index(substring_index(referrer, '/', 3), '//', -1)
+           end      host,
+           count(*) pv,
+           count(distinct visitorid) uv
+      from u_s_pageview
+     where sitecode = #{siteCode}
+       and isbot = 0
+       and createtime &gt;= #{from}
+     group by host
+     order by pv desc
+     limit #{limit}
+  </select>
+
+  <!--
+    设备分布。⚠ 扫明细（device 没进聚合表，同规矩三），只能查保留期以内。
+
+    device 为空的行排除掉：那是 UA 为空的请求，UserAgentParser 刻意不猜
+    （见它 device() 方法的注释）。留着它们会在报表上多出一档没有名字的东西。
+  -->
+  <select id="selectDeviceBreakdown" resultType="java.util.LinkedHashMap">
+    select device,
+           count(*) pv,
+           count(distinct visitorid) uv
+      from u_s_pageview
+     where sitecode = #{siteCode}
+       and isbot = 0
+       and device is not null
+       and createtime &gt;= #{from}
+     group by device
+     order by pv desc
+  </select>
+
+  <!--
+    国家分布。country 为空的行排除：那是导 u_s_ip_country 之前记的、
+    或者 IP 段查不到的。留着会多出一档没有名字的东西。
+  -->
+  <select id="selectCountryBreakdown" resultType="java.util.LinkedHashMap">
+    select country,
+           count(*) pv,
+           count(distinct visitorid) uv
+      from u_s_pageview
+     where sitecode = #{siteCode}
+       and isbot = 0
+       and country is not null
+       and createtime &gt;= #{from}
+     group by country
+     order by pv desc
+     limit #{limit}
+  </select>
+
+  <!--
+    ============================================================
+    IP 查国家。这条查询的形态是刻意的，别改成 between
+    ============================================================
+
+    写成 `where ipstart &lt;= X order by ipstart desc limit 1` 再判 ipend，
+    而不是 `where X between ipstart and ipend`。
+
+    ⚠ between 那种写法 MySQL 只能用上索引的一侧（ipstart），另一侧要回表逐行判——
+      在 71 万行上是几百毫秒 vs 零点几毫秒的差别。而它**结果是对的**，
+      所以这个问题不会以「查错了」的形式暴露，只会让埋点写入慢慢变慢。
+
+    ⚠ ipend 那一判不能省：IP 段之间有空隙（没分配的地址）。
+      只取「最近的一个起点」会把空隙里的地址错误地归给前一段。
+      这个错很隐蔽——绝大多数地址都落在段内，抽查很可能一次都撞不到空隙。
+
+    ⚠ ipver 必须过滤：IPv4 存 4 字节、IPv6 存 16 字节，varbinary 比较是逐字节的，
+      两种长度混着比大小毫无意义且不报错。
+  -->
+  <select id="selectCountryByIp" resultType="string">
+    select country
+      from u_s_ip_country
+     where ipver = #{ipVer}
+       and ipstart &lt;= inet6_aton(#{ip})
+       and ipend   &gt;= inet6_aton(#{ip})
+     order by ipstart desc
+     limit 1
+  </select>
+
+  <select id="selectBrowserBreakdown" resultType="java.util.LinkedHashMap">
+    select browser,
+           count(*) pv,
+           count(distinct visitorid) uv
+      from u_s_pageview
+     where sitecode = #{siteCode}
+       and isbot = 0
+       and browser is not null
+       and createtime &gt;= #{from}
+     group by browser
+     order by pv desc
+  </select>
+
+  <!--
+    ============================================================
+    来访质量：几次来访、页均浏览、跳出率
+    ============================================================
+
+    一次「来访」= 一个 sessionid（SITE_SESSION Cookie，30 分钟不活动就换一个）。
+
+    ============================================================
+    ⚠ 只统计**已经结束**的来访
+    ============================================================
+
+    内层那个 having 是这条查询的关键：`max(createtime) < #{endedBefore}`，
+    也就是「最后一次浏览距今已经超过一个会话超时」——这次来访肯定结束了。
+
+    不加这一条，跳出率会**虚高**：一个十秒钟前刚落地、正在看第一页的人，
+    在数据里和「看一眼就走了」长得一模一样。流量小的时候这个偏差极大，
+    而它的表现是「跳出率高得吓人」——很容易被当成页面有问题去瞎改。
+
+    ============================================================
+    ⚠ sessionid 为空的行整个排除
+    ============================================================
+
+    它可以为空（浏览器禁了 Cookie，Cookie 没回来）。不排除的话：
+    `count(distinct sessionid)` 忽略 NULL，而 `count(*)` 不忽略——
+    页均浏览数会被抬高，而那个数字看起来只像「访客很投入」。
+
+    ============================================================
+    为什么只回三个整数、不在 SQL 里算比率
+    ============================================================
+
+    除法要处理分母为 0，而且 MySQL 的除法结果是 DECIMAL，到前端是
+    "1.0000" 这种字符串。比率放 Java 里算，SQL 只负责数数。
+  -->
+  <select id="selectEngagement" resultType="java.util.LinkedHashMap">
+    select count(*)                              sessions,
+           ifnull(sum(s.views), 0)               views,
+           ifnull(sum(s.views = 1), 0)           bounces
+      from (select sessionid, count(*) views
+              from u_s_pageview
+             where sitecode = #{siteCode}
+               and isbot = 0
+               and sessionid is not null
+               and createtime &gt;= #{from}
+             group by sessionid
+            having max(createtime) &lt; #{endedBefore}) s
+  </select>
+
+</mapper>

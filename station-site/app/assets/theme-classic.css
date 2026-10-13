@@ -1,0 +1,286 @@
+/* ============================================================
+   classic 主题：紫色 + Fraunces 衬线标题（康辰站在用的那套）
+   ============================================================
+
+   ## 为什么有这个文件
+
+   2026-09-21 法国站（esvafit）改版时，把 site.css 和二十来个组件里的颜色
+   **直接**换成了 Esva 的黑 + 电光蓝（提交 d6f9f9fa）。那是全局改的，没有按站点分——
+   原样发到康辰，康辰的前台也会跟着变成黑蓝、深色顶栏。
+
+   所以主题做成按站点选：`u_s_siteinfo.theme`，经 /openapi/site/info 下发，
+   useSiteInfo 把它挂到 `<html data-theme="…">` 上。
+
+     · 空 / esva  → 什么都不做，就是 site.css 和各组件里写的那套（Esva 黑蓝）
+     · classic    → 本文件生效，把改版前的紫色调一处不落地盖回去
+
+   默认值刻意留给 esva：法国站**不用跑任何迁移**就维持现状，只有康辰要打开 classic。
+
+   ## 怎么盖的
+
+   每条选择器都以 `html[data-theme="classic"]` 开头，特异性比组件里的
+   scoped 选择器（`.x[data-v-…]`）多一个元素选择器，所以不依赖加载顺序。
+   ⚠ 组件里在 @media 里又写了一遍的（首页 Banner 蒙版），这里也要在同一个
+     @media 里再盖一遍——否则桌面版这条会连手机上的也一起盖掉。
+
+   ## 值从哪来
+
+   全部取自 d6f9f9fa 的父提交（改版前）里的原值，不是重新调的。
+   改版后才出现的区块（承诺横条、评价、合作方、常见问题）本来就只用变量，
+   变量盖回紫色它们自然跟着变，不用逐条写。
+
+   ⚠ 以后再往前台加颜色：写变量，别写死 rgba。写死的话这里就得再补一条，
+     而漏补的表现是「康辰站某一块突然是蓝的」，不会有任何报错。
+   ============================================================ */
+
+html[data-theme="classic"] {
+  --brand-blue: #6c4b9c;          /* 新代码里「品牌原色」的位置，classic 下就是主紫 */
+  --primary: #6c4b9c;
+  --primary-dark: #4e3670;
+  --primary-light: #a98fce;
+  --accent-soft: #f3d9e8;
+  --accent-pink: #f3d9e8;
+  --accent-teal: #9e68f8;
+
+  --bg: #f5f3f8;
+  --surface-muted: #efeaf5;
+  --ink-dark: #1f1a2b;
+  --ink-800: #2b2440;
+
+  --text: #2a2530;
+  --text-muted: #6f6880;
+  --text-soft: #948da6;
+  --text-on-dark: #d9d3e4;
+
+  --border: #e7e2ef;
+  --radius-sm: 10px;
+  --radius: 18px;
+  --radius-lg: 28px;
+
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', 'Songti SC', serif;
+
+  --shadow-sm: 0 2px 10px rgba(43, 30, 66, 0.05);
+  --shadow: 0 14px 40px rgba(43, 30, 66, 0.08);
+}
+
+/* ---------------- 全局（site.css） ---------------- */
+
+html[data-theme="classic"] h1,
+html[data-theme="classic"] h2,
+html[data-theme="classic"] h3,
+html[data-theme="classic"] h4 {
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.15;
+}
+
+html[data-theme="classic"] .eyebrow {
+  font-family: var(--font-body);
+  font-style: normal;
+  letter-spacing: .18em;
+  font-weight: 600;
+}
+
+html[data-theme="classic"] .btn,
+html[data-theme="classic"] .btn-primary {
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-family: inherit;
+  font-weight: 600;
+  letter-spacing: normal;
+}
+html[data-theme="classic"] .btn:hover,
+html[data-theme="classic"] .btn-primary:hover {
+  background: var(--primary-dark);
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(108, 75, 156, .35);
+}
+html[data-theme="classic"] .btn[disabled],
+html[data-theme="classic"] .btn-primary[disabled] {
+  box-shadow: none;
+}
+
+html[data-theme="classic"] .btn-ghost {
+  background: rgba(255, 255, 255, .85);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+html[data-theme="classic"] .btn-ghost:hover {
+  background: #fff;
+  color: var(--primary);
+}
+
+html[data-theme="classic"] .link-more { font-weight: 600; }
+
+html[data-theme="classic"] .pill {
+  background: #fff;
+  color: var(--primary);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-style: normal;
+  letter-spacing: .08em;
+}
+
+html[data-theme="classic"] .field input:focus,
+html[data-theme="classic"] .field textarea:focus,
+html[data-theme="classic"] .field select:focus {
+  outline-color: rgba(108, 75, 156, .3);
+}
+
+html[data-theme="classic"] .skeleton-block {
+  background: linear-gradient(100deg, var(--surface-muted) 30%, #f7f4fb 50%, var(--surface-muted) 70%);
+  background-size: 220% 100%;
+}
+
+/* ---------------- 顶栏（SiteHeader.vue）：翻回白底 ---------------- */
+
+html[data-theme="classic"] .hd {
+  background: rgba(255, 255, 255, .92);
+  color: inherit;
+  border-bottom: 1px solid var(--line);
+}
+html[data-theme="classic"] .hd-nav a:hover { color: var(--brand); }
+html[data-theme="classic"] .hd-cart,
+html[data-theme="classic"] .hd-acct { color: var(--text-muted); }
+html[data-theme="classic"] .hd-cart:hover,
+html[data-theme="classic"] .hd-acct:hover { background: var(--surface-muted); color: var(--primary); }
+html[data-theme="classic"] .hd-avatar:hover { box-shadow: 0 0 0 3px rgba(108, 75, 156, .18); }
+html[data-theme="classic"] .hd-lang-btn { color: var(--ink-soft); }
+html[data-theme="classic"] .hd-lang-btn:hover { background: var(--bg-soft); color: var(--ink); }
+
+/* ---------------- 页脚（SiteFooter.vue） ---------------- */
+
+html[data-theme="classic"] .ft { background: #14181d; }
+html[data-theme="classic"] .ft-contact a:hover,
+html[data-theme="classic"] .ft-track:hover { color: #fff; }
+
+/* ---------------- 在线咨询（ChatWidget.client.vue）：改版前是固定的蓝，不跟主题 ---------------- */
+
+html[data-theme="classic"] .cw-ball { background: #1a56db; box-shadow: 0 8px 20px rgba(26, 86, 219, .32); }
+html[data-theme="classic"] .cw-msg.mine .cw-bubble { background: #1a56db; }
+html[data-theme="classic"] .cw-input:focus,
+html[data-theme="classic"] .cw-text:focus { border-color: #1a56db; }
+html[data-theme="classic"] .cw-send:not(:disabled) { background: #1a56db; }
+
+/* ---------------- 地图（GlobalReach.vue） ---------------- */
+
+html[data-theme="classic"] .map-wrap { background: radial-gradient(120% 120% at 50% 0%, #f7f4fb 0%, #efeaf5 100%); }
+html[data-theme="classic"] .sphere { fill: #eae3f3; }
+html[data-theme="classic"] .graticule { stroke: rgba(108, 75, 156, 0.08); }
+html[data-theme="classic"] .country { fill: #d6c9e8; stroke: #f4f1fa; }
+html[data-theme="classic"] .country:hover { fill: #c6b4e0; }
+
+/* ---------------- 没图时的占位底色（卡片 / 购物车 / 订单 / 详情） ---------------- */
+
+html[data-theme="classic"] .pc-noimg,
+html[data-theme="classic"] .prod-noimg,
+html[data-theme="classic"] .line-noimg,
+html[data-theme="classic"] .card-noimg,
+html[data-theme="classic"] .sum-noimg,
+html[data-theme="classic"] .ga-noimg {
+  background: linear-gradient(135deg, #f1ecf8, #e3daf0);
+}
+
+/* ---------------- 3D 展台（products/[code].vue、3d-demo.vue） ---------------- */
+
+html[data-theme="classic"] .showcase-viewport {
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(197, 175, 235, 0.42) 0%, rgba(90, 78, 118, 0) 62%),
+    linear-gradient(160deg, #554a72 0%, #8168b0 100%);
+}
+html[data-theme="classic"] .showcase-floor {
+  background: radial-gradient(50% 50% at 50% 50%, rgba(205, 186, 240, 0.5) 0%, rgba(205, 186, 240, 0) 70%);
+}
+
+/* ---------------- 商品详情（products/[code].vue） ---------------- */
+
+html[data-theme="classic"] .thumb--active { box-shadow: 0 0 0 2px rgba(108, 75, 156, 0.25); }
+html[data-theme="classic"] .combo-opt--active { box-shadow: 0 0 0 2px rgba(108, 75, 156, 0.18); }
+html[data-theme="classic"] .combo-wrap::after { background: linear-gradient(to bottom, rgba(245, 243, 248, 0), var(--bg) 88%); }
+
+/* ---------------- 列表页搜索框（products/index.vue） ---------------- */
+
+html[data-theme="classic"] .ss-input:focus { outline-color: rgba(108, 75, 156, .28); }
+
+/* ---------------- 结算 / 下单成功 / 账户 ---------------- */
+
+html[data-theme="classic"] .pick.on { background: rgba(108, 75, 156, 0.04); }
+html[data-theme="classic"] .pick-radio:focus-visible + .pick-mark { box-shadow: 0 0 0 3px rgba(108, 75, 156, 0.3); }
+html[data-theme="classic"] .orc-tick { background: rgba(108, 75, 156, 0.1); }
+html[data-theme="classic"] .rail-link.on { background: rgba(108, 75, 156, .1); }
+html[data-theme="classic"] .addr-flag { background: rgba(108, 75, 156, .12); }
+
+/* ---------------- 首页（pages/index.vue） ---------------- */
+
+html[data-theme="classic"] .preview-flag {
+  background: rgba(31, 26, 43, .86);
+  box-shadow: 0 6px 20px rgba(31, 26, 43, .28);
+}
+
+/* Banner：深蒙版 + 白字 → 浅蒙版 + 深字 */
+html[data-theme="classic"] .hero-dot { background: rgba(78, 54, 112, .3); }
+html[data-theme="classic"] .hero-dot:hover { background: rgba(78, 54, 112, .5); }
+html[data-theme="classic"] .hero-dot.is-on { background: var(--primary); }
+html[data-theme="classic"] .hero-dot:focus-visible { outline-color: var(--primary); }
+html[data-theme="classic"] .hero-overlay {
+  background: linear-gradient(100deg,
+    rgba(245, 243, 248, .68) 0%,
+    rgba(245, 243, 248, .68) 30%,
+    rgba(245, 243, 248, .55) 46%,
+    rgba(245, 243, 248, 0) 64%);
+}
+html[data-theme="classic"] .hero--center .hero-overlay {
+  background: radial-gradient(120% 90% at 50% 50%,
+    rgba(245, 243, 248, .84) 0%,
+    rgba(245, 243, 248, .64) 46%,
+    rgba(245, 243, 248, 0) 80%);
+}
+html[data-theme="classic"] .hero--plain {
+  background: radial-gradient(120% 120% at 18% 0%, #efeaf5 0%, #f5f3f8 55%, #f7f4fb 100%);
+}
+html[data-theme="classic"] .hero--plain::before {
+  background-image:
+    linear-gradient(to right, rgba(108, 75, 156, .07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(108, 75, 156, .07) 1px, transparent 1px);
+}
+html[data-theme="classic"] .hero--plain::after {
+  background:
+    radial-gradient(34% 42% at 82% 22%, rgba(243, 217, 232, .75) 0%, rgba(243, 217, 232, 0) 100%),
+    radial-gradient(30% 38% at 68% 88%, rgba(169, 143, 206, .30) 0%, rgba(169, 143, 206, 0) 100%);
+}
+html[data-theme="classic"] .hero-pill {
+  background: #fff;
+  border: 0;
+  color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+html[data-theme="classic"] .hero h1 { color: var(--text); }
+html[data-theme="classic"] .hero .accent { color: var(--primary); }
+html[data-theme="classic"] .hero p { color: var(--text-muted); }
+
+/* 数字卡：蓝实底 → 粉底 */
+html[data-theme="classic"] .bento-pink {
+  background: var(--accent-pink);
+  border-color: #e9c8dd;
+}
+html[data-theme="classic"] .stat-mark { color: var(--primary-dark); }
+html[data-theme="classic"] .big-stat {
+  font-size: 3rem;
+  font-weight: 700;
+  letter-spacing: normal;
+}
+html[data-theme="classic"] .stat-caption { color: var(--primary-dark); }
+
+html[data-theme="classic"] .instruments { background: linear-gradient(180deg, #efeaf5 0%, #f3eef8 100%); }
+
+@media (max-width: 640px) {
+  html[data-theme="classic"] .hero-overlay {
+    background: linear-gradient(180deg,
+      rgba(245, 243, 248, .86) 0%,
+      rgba(245, 243, 248, .66) 44%,
+      rgba(245, 243, 248, .34) 74%,
+      rgba(245, 243, 248, .12) 100%);
+  }
+}

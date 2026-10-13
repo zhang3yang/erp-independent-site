@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.GoodsPartnerMapper">
+
+    <resultMap type="com.ruoyi.system.domain.GoodsPartner" id="GoodsPartnerResult">
+        <result property="shopCode"      column="shop_code" />
+        <result property="goodsCode"     column="goodscode" />
+        <result property="partnerCode"   column="partnercode" />
+        <result property="partnerName"   column="partnername" />
+        <result property="inboundTimes"  column="inboundtimes" />
+        <result property="lastDocCode"   column="lastdoccode" />
+        <result property="lastDocDate"   column="lastdocdate" />
+        <result property="lastCostPrice" column="lastcostprice" />
+        <result property="activeFlag"    column="activeflag" />
+    </resultMap>
+
+    <!--
+      供应商名称以 u_m_partner 上的当前值为准（改过名要跟着变），
+      本表的 partnername 只作为兜底——供应商被删掉时还能显示当初进货的名字。
+      左连接不过滤停用：停用的历史供应商照样要出现在供货记录里，只是不给选，
+      由 activeflag 交给前端区分。
+    -->
+    <select id="selectByGoodsCodes" resultMap="GoodsPartnerResult">
+        select gp.shop_code, gp.goodscode, gp.partnercode,
+               coalesce(nullif(trim(p.partnername), ''), gp.partnername) as partnername,
+               gp.inboundtimes, gp.lastdoccode, gp.lastdocdate, gp.lastcostprice,
+               p.activeflag
+          from sdsshop.u_m_goods_partner gp
+          left join sdsshop.u_m_partner p
+                 on p.shop_code = gp.shop_code
+                and p.partnercode = gp.partnercode
+         where gp.shop_code = #{shopCode}
+           and gp.goodscode in
+        <foreach collection="goodsCodes" item="code" open="(" separator="," close=")">
+            #{code}
+        </foreach>
+         order by gp.goodscode, gp.lastdocdate desc, gp.inboundtimes desc, gp.partnercode
+    </select>
+
+    <!--
+      次数无条件 +1；last* 只在本单不早于已记录的最近一单时才覆盖，
+      免得补录一张旧单把「最近一次」顶掉。lastdocdate 为空的是异常数据，一并覆盖。
+
+      ⚠ lastdocdate 必须放在最后一个赋值。MySQL 的 on duplicate key update 是按书写顺序
+        逐个求值的，前面两行读的 lastdocdate 是本次更新前的旧值；把它提到前面去，
+        后两行的判断就永远为真了。
+    -->
+    <insert id="accumulate">
+        insert into sdsshop.u_m_goods_partner(
+            shop_code, goodscode, partnercode, partnername,
+            inboundtimes, lastdoccode, lastdocdate, lastcostprice, createtime
+        ) values(
+            #{shopCode}, #{goodsCode}, #{partnerCode}, #{partnerName},
+            1, #{docCode}, #{docDate}, #{costPrice}, sysdate()
+        )
+        on duplicate key update
+            inboundtimes  = inboundtimes + 1,
+            partnername   = values(partnername),
+            lastdoccode   = if(lastdocdate is null or #{docDate} >= lastdocdate, values(lastdoccode), lastdoccode),
+            lastcostprice = if(lastdocdate is null or #{docDate} >= lastdocdate, values(lastcostprice), lastcostprice),
+            lastdocdate   = if(lastdocdate is null or #{docDate} >= lastdocdate, values(lastdocdate), lastdocdate)
+    </insert>
+
+</mapper>

@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.DashboardMapper">
+
+    <!--
+      首页看板的聚合查询。全部按 shop_code 收口，没有一条不带商家条件。
+
+      这里刻意不做跨库 join：库存在 sdsshop、流水在 sdsorder，虽然同一个实例连得上，
+      但仓库里至今没有跨库 join 的先例，看板不值得开这个头。要合并的数据在服务层合。
+    -->
+
+    <!--
+      在库货值与 SKU 数。
+      货值按「在库」算（onhandflag = 1），良品不良品都算：坏货还在仓库里就还占着钱。
+      借出在外、车间在制的不算——这是「在库」口径，不是会计上的存货总额：
+      那些货仍然是公司的存货，真要报存货总额得另查一个不带 onhandflag 的数。
+
+      用 case 而不是 where，是因为两个指标对「零库存行」的态度不同：
+      SKU 数不能把零库存说成「有这个商品」，所以只数正库存；
+      货值则是拿 case 挡住「数量已清零、金额没清干净」的脏行。正常写入路径下
+      这种行不该存在（InventoryStockMapper 的 adjust 语句里，数量归零时
+      totalcostamount 一起置 0），但 sql/tools 下的维护脚本是直接改库的，留个守卫。
+
+      负库存不在考虑范围内：那几条 adjust 的 WHERE 都带 (physicalqty + adjustQty) >= 0，
+      InventoryStockController 又整个 DIRECT_WRITE_DISABLED，负数行进不了这张表。
+      也就是说 != 0 和 > 0 在当前写入约束下等价，这里不是在为负库存留口子。
+    -->
+    <select id="selectStockStat" resultType="com.ruoyi.system.domain.vo.DashboardSummary">
+        select coalesce(sum(case when s.physicalqty != 0 then s.totalcostamount else 0 end), 0) as stockAmount,
+               count(distinct case when s.physicalqty &gt; 0 then s.goodscode end)              as skuCount
+          from sdsshop.u_m_stock s
+         where s.shop_code = #{shopCode}
+           and s.onhandflag = 1
+    </select>
+
+    <!--
+      待审核单据，按类型拆开。
+
+      分支内先各自 group by 再到外层合并，而不是 union all 出全部明细再数：
+      每张月表只回来「有几种类型」那么几行，跨十几张月表也一样便宜。
+
+      doctypename 用 max() 而不是跟着外层 group by：同一类型的名称理论上一致，
+      但历史单据存过旧名称，跟着分组会让同一个类型裂成两行。
+
+      ⚠ 那个 (doctype != ... or createuser = ...) 不能简化成 createuser = ...。
+
+      u_f_docmain 是一张共享表：采购入库、销售出库、调拨、生产领料退料、借出归还、
+      损坏送修全在里面，只有<b>销售退货入库</b>这一种归建单的业务员（order:salesreturn:all，
+      见 docs/订单只看自己的单（业务员权限）.md）。把归属条件加到整条 where 上，等于宣称
+      「不是我建的入库单我就看不见」——而入库单本来就是仓库建的，那张卡片会当场变成 0。
+    -->
+    <select id="selectPendingDocumentsByType" resultType="com.ruoyi.system.domain.vo.DashboardPendingDoc">
+        select t.doctype as docType,
+               max(t.doctypename) as docTypeName,
+               sum(t.c) as docCount
+          from (
+        <foreach collection="suffixes" item="suffix" separator=" union all ">
+            ( select doctype, doctypename, count(1) as c
+                from sdsorder.u_f_docmain_${suffix}
+               where shop_code = #{shopCode}
+                 and confirmstate = '待审核'
+            <if test="owner != null">
+                 and (doctype != #{ownedDocType} or createuser = #{owner})
+            </if>
+               group by doctype, doctypename )
+        </foreach>
+          ) t
+         group by t.doctype
+         order by docCount desc, t.doctype
+    </select>
+
+    <!--
+      按月汇总出入库金额。
+
+      方向看 change_qty 的正负，不看单据类型的 direction：direction 在
+      u_m_doctypeconfig 里，那是 sdsshop 库，读它就得跨库 join。流水自己带着方向，
+      够用。
+
+      出库流水的 cost_amount 存的是负数（见 InventoryDocumentPostingService），
+      所以 sum 完取绝对值，让前端拿到的两个数都是正的、可以直接比大小。
+
+      excludeTypes 排除方向 N 的单据，理由见 InventoryDocumentTypes.INTERNAL_MOVE_TYPES。
+    -->
+    <select id="selectLedgerAmountByMonths" resultType="com.ruoyi.system.domain.vo.DashboardTrendPoint">
+        <foreach collection="suffixes" item="suffix" separator=" union all ">
+            ( select '${suffix}' as `month`,
+                     coalesce(sum(case when change_qty &gt; 0 then cost_amount else 0 end), 0)      as inboundAmount,
+                     abs(coalesce(sum(case when change_qty &lt; 0 then cost_amount else 0 end), 0)) as outboundAmount
+                from sdsorder.u_f_ledger_${suffix}
+               where shop_code = #{shopCode}
+            <if test="excludeTypes != null and excludeTypes.size() != 0">
+                 and doc_type not in
+                <foreach collection="excludeTypes" item="excludeType" open="(" separator="," close=")">
+                    #{excludeType}
+                </foreach>
+            </if>
+            )
+        </foreach>
+    </select>
+
+    <!--
+      按月汇总收支。只算「已完成」：草稿和待审核的流水钱还没动，
+      放进经营看板会让人以为已经收到了。
+
+      支出金额在库里存的是负数，和出库一样取绝对值。
+    -->
+    <select id="selectFinanceAmountByMonths" resultType="com.ruoyi.system.domain.vo.DashboardTrendPoint">
+        <foreach collection="suffixes" item="suffix" separator=" union all ">
+            ( select '${suffix}' as `month`,
+                     coalesce(sum(case when transtype = '收入' then abs(amount) else 0 end), 0)  as incomeAmount,
+                     coalesce(sum(case when transtype = '支出' then abs(amount) else 0 end), 0)  as expenseAmount
+                from sdsorder.u_f_transaction_${suffix}
+               where shop_code = #{shopCode}
+                 and status = '已完成' )
+        </foreach>
+    </select>
+
+    <!--
+      待审核的销售订单，一张月表一行。
+
+      不在 SQL 里把各月加起来，是因为前端还要用月份定位：销售订单列表按月查，
+      不告诉它哪个月有单，用户点进去只会落在当月的空列表上。
+
+      count(1) = 0 的月份在外层滤掉：绝大多数历史月表都没有待审核的单，
+      留着只会让服务层再遍历一遍。
+
+      ⚠ owner 是订单模块那道行级权限（order:sales:all，见 docs/订单只看自己的单（业务员权限）.md）。
+      不跟着收窄的话，业务员在首页看到「销售订单 6 单」，点进去列表只列他自己的 1 张——
+      而这两个数出自同一块业务，对不上会被一眼看见。
+    -->
+    <select id="selectPendingSalesOrdersByMonth" resultType="com.ruoyi.system.domain.vo.DashboardPendingDoc">
+        select t.docMonth, t.docCount
+          from (
+        <foreach collection="suffixes" item="suffix" separator=" union all ">
+            ( select '${suffix}' as docMonth, count(1) as docCount
+                from sdsorder.u_o_order_${suffix}
+               where shop_code = #{shopCode}
+                 and orderstate = '待审核'
+            <if test="owner != null">
+                 and staffcode = #{owner}
+            </if>
+            )
+        </foreach>
+          ) t
+         where t.docCount &gt; 0
+         order by t.docMonth desc
+    </select>
+
+    <!--
+      待审核的采购订单。状态串是英文小写（draft/submitted/approved/partial_received/
+      completed/rejected/cancelled，见 PurchaseOrder 的 status 注释），
+      和销售订单那边的中文状态不是一套，别照着改。
+    -->
+    <select id="selectPendingPurchaseOrderCount" resultType="int">
+        select count(1)
+          from sdsshop.u_p_purchase
+         where shop_code = #{shopCode}
+           and status = 'submitted'
+    </select>
+
+    <!--
+      本月销售额，按币种分组。
+
+      口径：只算<b>审核通过且没作废</b>的单。草稿、待审核、已驳回的还没成立，
+      已取消、已关闭的已经作废——把它们算进「本月卖了多少」都是虚增。
+
+      分组键把空币种归成 CNY，与前端 normalizeCurrency 的兜底一致：老数据里有
+      currency 为空的单，不兜的话它们会单独成一组，显示成一个没有币种的金额。
+
+      金额取 totalamount（货款 + 运费），与列表页「订单金额」那一列同源。
+
+      owner 的作用同上一条：没有 order:sales:all 的业务员，这里算的是他自己的业绩，
+      不是全店的。
+    -->
+    <select id="selectSalesAmountByCurrency" resultType="com.ruoyi.system.domain.vo.DashboardSalesAmount">
+        select coalesce(nullif(trim(currency), ''), 'CNY') as currency,
+               coalesce(sum(totalamount), 0)               as amount,
+               count(1)                                    as orderCount
+          from sdsorder.u_o_order_${suffix}
+         where shop_code = #{shopCode}
+           and orderstate in ('已备货', '备货中', '发货中', '已完成')
+        <if test="owner != null">
+           and staffcode = #{owner}
+        </if>
+         group by coalesce(nullif(trim(currency), ''), 'CNY')
+         order by amount desc
+    </select>
+
+    <!--
+      待收货的采购单 + 其中超期的。
+
+      「待收货」是两个状态：已审核（一件没到）和部分到货（到了一部分）。只认 approved
+      会把收了一半还在等的单漏掉，而那些恰恰是最该盯的。与前端 overdueDays() 同口径。
+
+      today 传的是业务时区当天的 00:00，所以「预计今天到货」不算超期——
+      货还有一天可以到。
+    -->
+    <select id="selectPurchaseFollowUp" resultType="com.ruoyi.system.domain.vo.DashboardFollowUp">
+        select count(1) as activeCount,
+               coalesce(sum(case when expectdate is not null and expectdate &lt; #{today}
+                                 then 1 else 0 end), 0) as overdueCount
+          from sdsshop.u_p_purchase
+         where shop_code = #{shopCode}
+           and status in ('approved', 'partial_received')
+    </select>
+
+    <!--
+      在产工单 + 其中超期的。
+
+      「在产」= 还没完工也没关闭的三种状态。待领料是分批领料时的中间态，漏掉它
+      就会把领了一半的工单当成不存在。
+    -->
+    <select id="selectProductionFollowUp" resultType="com.ruoyi.system.domain.vo.DashboardFollowUp">
+        select count(1) as activeCount,
+               coalesce(sum(case when plandate is not null and plandate &lt; #{today}
+                                 then 1 else 0 end), 0) as overdueCount
+          from sdsshop.u_p_production
+         where shop_code = #{shopCode}
+           and status in ('待生产', '待领料', '生产中')
+    </select>
+
+</mapper>

@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.ShipBatchItemMapper">
+
+  <resultMap id="ItemResult" type="ShipBatchItem">
+    <result property="id" column="id"/><result property="shopCode" column="shop_code"/>
+    <result property="detailCode" column="detailcode"/><result property="shipCode" column="shipcode"/>
+    <result property="orderDetailCode" column="orderdetailcode"/>
+    <result property="goodsCode" column="goodscode"/><result property="goodsName" column="goodsname"/>
+    <result property="spec" column="spec"/><result property="unit" column="unit"/>
+    <result property="qty" column="qty"/>
+    <result property="sourceCode" column="sourcecode"/>
+    <result property="remark" column="remark"/>
+    <!-- 商品档案带出来的，不在本表里：发货时判断要不要选序列号 / 出库批次 -->
+    <result property="batchStrategy" column="batchstrategy"/>
+    <result property="costCalculation" column="costcalculation"/>
+  </resultMap>
+
+  <!--
+    批次策略与计价方式 left join 商品档案带出，不在本表里：序列号管理的商品发货时必须逐个
+    指定序列号，个别计价的批次管理商品必须指定出库批次，前端要靠这两列决定让不让人去选。
+    left join 是有意的——商品档案万一被删，批次明细也得查得出来。
+  -->
+  <select id="selectByShipCode" resultMap="ItemResult">
+    select d.id, d.shop_code, d.detailcode, d.shipcode, d.orderdetailcode, d.goodscode, d.goodsname,
+           d.spec, d.unit, d.qty, d.sourcecode, d.remark,
+           g.batchstrategy, g.costcalculation
+      from sdsorder.u_f_shipbatchdetail_${tableSuffix} d
+      left join sdsshop.u_m_waregoods g
+        on g.shop_code = d.shop_code and g.goodscode = d.goodscode
+     where d.shop_code = #{shopCode} and d.shipcode = #{shipCode}
+     order by d.detailcode
+  </select>
+
+  <!--
+    这批订单上「已排进批次但还没发出去」的量，按订单明细汇总。
+
+    统计除「已完成」「已取消」之外的全部中间态：只有「已完成」的量进了订单明细的
+    shippedqty，再算一次就重复了；已取消的批次不占量。
+
+    中间那几格全都要算进来：到「已完成」为止这条链一次都没碰过库存，shippedqty 也没动，
+    漏掉任何一格都会让同一批货被排进第二张批次。
+
+    校验新批次能不能排下去时，可发量 = qty - shippedqty - 本查询的结果，
+    光看 shippedqty 会让同一批货被排进两张批次。
+
+    ordercode 走 in：发货下拉要对整月的可发货订单一起算可发量，
+    逐单查会让「月表数 × 订单数」次往返打在这张表上。
+  -->
+  <select id="selectPendingQtyByOrders" resultMap="ItemResult">
+    select d.shop_code, d.orderdetailcode, d.goodscode, sum(d.qty) as qty
+      from sdsorder.u_f_shipbatchdetail_${tableSuffix} d
+      join sdsorder.u_f_shipbatch_${tableSuffix} b
+        on b.shop_code = d.shop_code and b.shipcode = d.shipcode
+     where d.shop_code = #{shopCode}
+       and b.ordercode in
+       <foreach collection="orderCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+       and b.status in ('待确认', '已提交仓库', '已打印备货单', '备货完成',
+                        '已录入快递单号', '已打印快递单号')
+     group by d.shop_code, d.orderdetailcode, d.goodscode
+  </select>
+
+  <!--
+    单张订单上、指定状态的批次已排的量，按订单明细汇总，可排除某张批次自己。
+
+    与上面那条的区别只有状态范围由调用方给：付款额度校验要的是「已经把额度占掉」的那几格
+    （已录入快递单号 / 已打印快递单号），而不是全部中间态——还没录单的批次谁先录谁占额度，
+    把它们算进去会让第一个录单的人就被自己的其它批次挤爆。
+  -->
+  <select id="selectQtyByOrderInStatuses" resultMap="ItemResult">
+    select d.shop_code, d.orderdetailcode, d.goodscode, sum(d.qty) as qty
+      from sdsorder.u_f_shipbatchdetail_${tableSuffix} d
+      join sdsorder.u_f_shipbatch_${tableSuffix} b
+        on b.shop_code = d.shop_code and b.shipcode = d.shipcode
+     where d.shop_code = #{shopCode}
+       and b.ordercode = #{orderCode}
+       and b.status in
+       <foreach collection="statuses" item="s" open="(" separator="," close=")">#{s}</foreach>
+    <if test="excludeShipCode != null and excludeShipCode != ''"> and b.shipcode != #{excludeShipCode}</if>
+     group by d.shop_code, d.orderdetailcode, d.goodscode
+  </select>
+
+  <insert id="batchInsert">
+    insert into sdsorder.u_f_shipbatchdetail_${tableSuffix}
+      (shop_code, detailcode, shipcode, orderdetailcode, goodscode, goodsname, spec, unit,
+       qty, sourcecode, remark)
+    values
+    <foreach collection="items" item="item" separator=",">
+      (#{item.shopCode}, #{item.detailCode}, #{item.shipCode}, #{item.orderDetailCode},
+       #{item.goodsCode}, #{item.goodsName}, #{item.spec}, #{item.unit},
+       #{item.qty}, #{item.sourceCode}, #{item.remark})
+    </foreach>
+  </insert>
+
+  <delete id="deleteByShipCode">
+    delete from sdsorder.u_f_shipbatchdetail_${tableSuffix}
+     where shop_code = #{shopCode} and shipcode = #{shipCode}
+  </delete>
+
+  <!--
+    改单行数量。录入快递单号那一步业务员按实际备货量往下调，走这条。
+
+    不复用 deleteByShipCode + batchInsert 那一套：那会重新生成明细代码，而这时候
+    序列号／出库批次的选择、库存流水的追溯都还要靠原来的明细代码对上。
+  -->
+  <update id="updateQty">
+    update sdsorder.u_f_shipbatchdetail_${tableSuffix}
+       set qty = #{qty}
+     where shop_code = #{shopCode} and detailcode = #{detailCode}
+  </update>
+
+  <!-- 整行不发了（本次发货数量填 0）就把行删掉，占的订单量随之放回去 -->
+  <delete id="deleteByDetailCode">
+    delete from sdsorder.u_f_shipbatchdetail_${tableSuffix}
+     where shop_code = #{shopCode} and detailcode = #{detailCode}
+  </delete>
+
+  <select id="sumQtyByShipCode" resultType="java.math.BigDecimal">
+    select coalesce(sum(qty), 0)
+      from sdsorder.u_f_shipbatchdetail_${tableSuffix}
+     where shop_code = #{shopCode} and shipcode = #{shipCode}
+  </select>
+</mapper>

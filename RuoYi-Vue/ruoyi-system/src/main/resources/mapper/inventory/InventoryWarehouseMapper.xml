@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.InventoryWarehouseMapper">
+
+    <resultMap type="InventoryWarehouse" id="InventoryWarehouseResult">
+        <result property="shopCode"       column="shop_code" />
+        <result property="wareCode"       column="warecode" />
+        <result property="wareName"       column="warename" />
+        <result property="parentCode"     column="parentcode" />
+        <result property="wareType"       column="waretype" />
+        <result property="address"        column="address" />
+        <result property="contactPerson"  column="contactperson" />
+        <result property="contactPhone"   column="contactphone" />
+        <result property="activeFlag"     column="activeflag" />
+        <result property="remark"         column="remark" />
+        <result property="createTime"     column="createtime" />
+    </resultMap>
+
+    <sql id="selectWarehouseVo">
+        select shop_code, warecode, warename, parentcode, waretype, address,
+               contactperson, contactphone, activeflag, remark, createtime
+          from sdsshop.u_m_warehouse
+    </sql>
+
+    <select id="selectWarehouseByCode" resultMap="InventoryWarehouseResult">
+        <include refid="selectWarehouseVo" />
+         where shop_code = #{shopCode}
+           and warecode = #{wareCode}
+    </select>
+
+    <select id="selectWarehouseList" resultMap="InventoryWarehouseResult">
+        <include refid="selectWarehouseVo" />
+         where shop_code = #{shopCode}
+        <if test="wareCode != null and wareCode != ''">
+           and warecode = #{wareCode}
+        </if>
+        <if test="wareName != null and wareName != ''">
+           and warename like concat('%', #{wareName}, '%')
+        </if>
+        <if test="wareType != null and wareType != ''">
+           and waretype = #{wareType}
+        </if>
+        <if test="activeFlag != null">
+           and activeflag = #{activeFlag}
+        </if>
+        <!-- createtime 同秒的仓库要靠 warecode 兜底，否则分页顺序不稳定 -->
+         order by createtime desc, warecode desc
+    </select>
+
+    <insert id="insertWarehouse" parameterType="InventoryWarehouse">
+        insert into sdsshop.u_m_warehouse(
+            shop_code, warecode, warename, parentcode, waretype, address,
+            contactperson, contactphone, activeflag, remark, createtime
+        ) values(
+            #{shopCode}, #{wareCode}, #{wareName}, #{parentCode}, #{wareType}, #{address},
+            #{contactPerson}, #{contactPhone}, #{activeFlag}, #{remark}, sysdate()
+        )
+    </insert>
+
+    <update id="updateWarehouse" parameterType="InventoryWarehouse">
+        update sdsshop.u_m_warehouse
+           set warename = #{wareName},
+               parentcode = #{parentCode},
+               waretype = #{wareType},
+               address = #{address},
+               contactperson = #{contactPerson},
+               contactphone = #{contactPhone},
+               activeflag = #{activeFlag},
+               remark = #{remark}
+         where shop_code = #{shopCode}
+           and warecode = #{wareCode}
+    </update>
+
+    <delete id="deleteWarehouseByCode">
+        delete from sdsshop.u_m_warehouse
+         where shop_code = #{shopCode}
+           and warecode = #{wareCode}
+    </delete>
+
+    <delete id="deleteWarehouseByCodes">
+        delete from sdsshop.u_m_warehouse
+         where shop_code = #{shopCode}
+           and warecode in
+        <foreach item="wareCode" collection="wareCodes" open="(" separator="," close=")">
+            #{wareCode}
+        </foreach>
+    </delete>
+
+    <select id="checkWareCodeUnique" resultType="int">
+        select count(1) from sdsshop.u_m_warehouse
+         where shop_code = #{shopCode}
+           and warecode = #{wareCode}
+    </select>
+
+</mapper>

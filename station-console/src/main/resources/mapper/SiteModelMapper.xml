@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 站点 3D 模型资源。结构照 SiteVideoMapper.xml，去掉宽高时长；provider 过滤的理由见 SiteImageMapper.xml 顶部 -->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteModelMapper">
+
+  <resultMap id="ModelResult" type="com.ruoyi.station.console.domain.SiteModel">
+    <result property="modelId"    column="modelid"/>
+    <result property="shopCode"   column="shop_code"/>
+    <result property="siteCode"   column="sitecode"/>
+    <result property="modelName"  column="modelname"/>
+    <result property="modelUrl"   column="modelurl"/>
+    <result property="objectName" column="objectname"/>
+    <result property="provider"   column="provider"/>
+    <result property="fileSize"   column="filesize"/>
+    <result property="mimeType"   column="mimetype"/>
+    <result property="remark"     column="remark"/>
+    <result property="folderId"   column="folderid"/>
+    <result property="createtime" column="createtime"/>
+    <result property="updatetime" column="updatetime"/>
+    <result property="createBy"   column="create_by"/>
+    <result property="updateBy"   column="update_by"/>
+  </resultMap>
+
+  <sql id="columns">
+    modelid, shop_code, sitecode, modelname, modelurl, objectname, provider,
+    filesize, mimetype, remark, folderid,
+    createtime, updatetime, create_by, update_by
+  </sql>
+
+  <sql id="listWhere">
+    <where>
+      <!-- 按文件夹筛。没传=全部（含未分类）；ROOT=只看未分类；具体值=只看那个文件夹 -->
+      <if test="query.folderId != null and query.folderId != ''">
+        <choose>
+          <when test="query.folderId == 'ROOT'">and folderid is null</when>
+          <otherwise>and folderid = #{query.folderId}</otherwise>
+        </choose>
+      </if>
+      <if test="query.modelName != null and query.modelName != ''">
+        and modelname like concat('%', #{query.modelName}, '%')
+      </if>
+      <!-- 当前生效的存储。理由和 NULL 那一支的解释都在 SiteImageMapper.xml 顶部 -->
+      <if test="query.provider != null and query.provider != ''">
+        and (provider = #{query.provider}
+             or (provider is null and #{query.provider} = 'local'))
+      </if>
+    </where>
+  </sql>
+
+  <select id="selectList" resultMap="ModelResult">
+    select <include refid="columns"/>
+      from u_s_sitemodel
+    <include refid="listWhere"/>
+     order by createtime desc, modelid desc
+     limit #{offset}, #{limit}
+  </select>
+
+  <select id="countList" resultType="int">
+    select count(1) from u_s_sitemodel
+    <include refid="listWhere"/>
+  </select>
+
+  <!-- 数即将不生效的那一家，所以不能复用 listWhere（它按当前生效过滤） -->
+  <select id="countByProvider" resultType="int">
+    select count(1) from u_s_sitemodel
+     where provider = #{provider}
+        or (provider is null and #{provider} = 'local')
+  </select>
+
+  <select id="selectByCode" resultMap="ModelResult">
+    select <include refid="columns"/>
+      from u_s_sitemodel
+     where modelid = #{modelId}
+  </select>
+
+  <insert id="insertModel" parameterType="com.ruoyi.station.console.domain.SiteModel">
+    insert into u_s_sitemodel(modelid, shop_code, sitecode, modelname, modelurl,
+                              objectname, provider, filesize, mimetype,
+                              remark, folderid, createtime, updatetime,
+                              create_by, update_by)
+    values(#{modelId}, #{shopCode}, #{siteCode}, #{modelName}, #{modelUrl},
+           #{objectName}, #{provider}, #{fileSize}, #{mimeType},
+           #{remark}, #{folderId}, sysdate(), sysdate(),
+           #{createBy}, #{updateBy})
+  </insert>
+
+  <update id="updateModelInfo" parameterType="com.ruoyi.station.console.domain.SiteModel">
+    update u_s_sitemodel
+       set modelname  = #{modelName},
+           remark     = #{remark},
+           updatetime = sysdate(),
+           update_by  = #{updateBy}
+     where modelid = #{modelId}
+  </update>
+
+  <delete id="deleteByCode">
+    delete from u_s_sitemodel
+     where modelid = #{modelId}
+  </delete>
+
+  <!-- 文件夹相关：只动 folderid 这一列，不碰文件本身——模型可能正被商品挂着 -->
+  <update id="clearFolder">
+    update u_s_sitemodel set folderid = null where folderid = #{folderId}
+  </update>
+
+  <update id="updateFolder">
+    update u_s_sitemodel set folderid = #{folderId}
+     where modelid in
+    <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+  </update>
+
+</mapper>

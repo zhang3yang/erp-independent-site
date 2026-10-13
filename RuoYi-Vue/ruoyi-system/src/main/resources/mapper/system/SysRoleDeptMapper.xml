@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.SysRoleDeptMapper">
+
+	<resultMap type="SysRoleDept" id="SysRoleDeptResult">
+		<result property="roleCode"     column="role_code"      />
+		<result property="deptId"     column="dept_id"      />
+	</resultMap>
+
+	<delete id="deleteRoleDeptByRoleCode" parameterType="String">
+		delete rd from sys_role_dept rd
+		inner join sys_role r on r.role_code = rd.role_code
+		where rd.role_code = #{roleCode} and r.role_type = 'PLATFORM' and r.shop_code = ''
+	</delete>
+	
+	<select id="selectCountRoleDeptByDeptId" resultType="Integer">
+	    select count(1) from sys_role_dept where dept_id=#{deptId}
+	</select>
+	
+	<delete id="deleteRoleDept">
+		delete rd from sys_role_dept rd
+		inner join sys_role r on r.role_code = rd.role_code
+		where r.role_type = 'PLATFORM' and r.shop_code = '' and rd.role_code in
+ 		<foreach collection="array" item="roleCode" open="(" separator="," close=")">
+ 			#{roleCode}
+        </foreach> 
+ 	</delete>
+	
+	<insert id="batchRoleDept">
+		insert into sys_role_dept(role_code, dept_id)
+		select requested.role_code, requested.dept_id
+		  from (
+		<foreach item="item" collection="list" separator=" union all ">
+			select #{item.roleCode} as role_code, #{item.deptId} as dept_id
+		</foreach>
+		  ) requested
+		  join sys_role r on r.role_code = requested.role_code
+		  join sys_dept d on d.dept_id = requested.dept_id
+		 where r.role_type = 'PLATFORM' and r.shop_code = '' and r.del_flag = '0'
+		   and d.shop_code = '' and d.del_flag = '0'
+	</insert>
+	
+</mapper>

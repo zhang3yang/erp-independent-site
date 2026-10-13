@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.InventoryBatchMapper">
+
+    <resultMap type="InventoryBatch" id="InventoryBatchResult">
+        <result property="shopCode" column="shop_code" />
+        <result property="batchCode" column="batchcode" />
+        <result property="goodsCode" column="goodscode" />
+        <result property="goodsName" column="goodsname" />
+        <result property="spec" column="spec" />
+        <result property="unit" column="unit" />
+        <result property="wareCode" column="warecode" />
+        <result property="wareName" column="warename" />
+        <result property="qualityFlag" column="qualityflag" />
+        <result property="onhandFlag" column="onhandflag" />
+        <result property="initQty" column="initialqty" />
+        <result property="remainQty" column="remainingqty" />
+        <result property="costPrice" column="purchaseprice" />
+        <result property="purchaseCode" column="purchasecode" />
+        <result property="ownerOrderCode" column="owner_ordercode" />
+        <result property="ownerDetailCode" column="owner_orderdetailcode" />
+        <result property="purchaseDate" column="purchasedate" />
+        <result property="purchaseAmount" column="purchaseamount" />
+        <result property="partnerCode" column="partnercode" />
+        <result property="partnerName" column="partnername" />
+        <result property="productDate" column="productiondate" />
+        <result property="expireDate" column="expiredate" />
+        <result property="status" column="batchstatus" />
+        <result property="position" column="position" />
+        <result property="createTime" column="createtime" />
+    </resultMap>
+
+    <sql id="selectBatchVo">
+        select shop_code, batchcode, goodscode, goodsname, spec, unit,
+               warecode, warename, qualityflag, onhandflag,
+               initialqty, remainingqty, purchaseprice, purchasecode, purchasedate, purchaseamount,
+               owner_ordercode, owner_orderdetailcode,
+               partnercode, partnername,
+               productiondate, expiredate,
+               case when closedflag = 0 then 'active' else 'closed' end as batchstatus,
+               position, createtime
+          from sdsshop.u_m_batchinfo
+    </sql>
+
+    <select id="selectBatchByKey" resultMap="InventoryBatchResult">
+        <include refid="selectBatchVo" />
+         where shop_code = #{shopCode} and batchcode = #{batchCode}
+           and goodscode = #{goodsCode} and warecode = #{wareCode}
+           and qualityflag = #{state.qualityFlag}
+           and onhandflag = #{state.onhandFlag}
+    </select>
+
+    <select id="selectBatchList" resultMap="InventoryBatchResult">
+        <include refid="selectBatchVo" />
+         where shop_code = #{shopCode}
+        <if test="batchCode != null and batchCode != ''">and batchcode = #{batchCode}</if>
+        <if test="goodsCode != null and goodsCode != ''">and goodscode = #{goodsCode}</if>
+        <if test="wareCode != null and wareCode != ''">and warecode = #{wareCode}</if>
+        <if test="qualityFlag != null">and qualityflag = #{qualityFlag}</if>
+        <if test="onhandFlag != null">and onhandflag = #{onhandFlag}</if>
+                <if test="purchaseCode != null and purchaseCode != ''">and purchasecode = #{purchaseCode}</if>
+        <!-- 货位是自由文本，按内容模糊查：库管员记的是「A库区 101货架」这种描述，不是编码 -->
+        <if test="position != null and position != ''">and position like concat('%', #{position}, '%')</if>
+        <!--
+          批次主键是 (shop_code, batchcode, goodscode, warecode, qualityflag, onhandflag) 这个复合键，
+          createtime 同秒时必须按完整业务主键兜底，分页顺序才稳定。一次入库同时建多个批次是常态。
+        -->
+         order by createtime desc, batchcode desc, goodscode desc, warecode desc, qualityflag, onhandflag
+    </select>
+
+    <select id="selectAvailableBatchList" resultMap="InventoryBatchResult">
+        <include refid="selectBatchVo" />
+         where shop_code = #{shopCode} and closedflag = 0 and remainingqty > 0
+        <if test="goodsCode != null and goodsCode != ''">and goodscode = #{goodsCode}</if>
+        <if test="wareCode != null and wareCode != ''">and warecode = #{wareCode}</if>
+        <if test="qualityFlag != null">and qualityflag = #{qualityFlag}</if>
+        <if test="onhandFlag != null">and onhandflag = #{onhandFlag}</if>
+                 order by productiondate, createtime, batchcode
+    </select>
+
+    <insert id="insertBatch" parameterType="InventoryBatch">
+        insert into sdsshop.u_m_batchinfo(
+            shop_code, batchcode, goodscode, goodsname, spec, unit,
+            purchasecode, purchasedate, purchaseprice, purchaseamount,
+            owner_ordercode, owner_orderdetailcode,
+            initialqty, remainingqty, warecode, warename, qualityflag, onhandflag,
+            productiondate, expiredate, partnercode, partnername, closedflag,
+            position, createtime, remark
+        ) values(
+            #{shopCode}, #{batchCode}, #{goodsCode}, #{goodsName},
+            #{spec, jdbcType=VARCHAR}, #{unit, jdbcType=VARCHAR},
+            #{purchaseCode, jdbcType=VARCHAR}, #{purchaseDate, jdbcType=TIMESTAMP},
+            #{costPrice, jdbcType=DECIMAL}, #{purchaseAmount, jdbcType=DECIMAL},
+            #{ownerOrderCode, jdbcType=VARCHAR}, #{ownerDetailCode, jdbcType=VARCHAR},
+            #{initQty}, #{remainQty}, #{wareCode}, #{wareName},
+            coalesce(#{qualityFlag, jdbcType=INTEGER}, 1),
+            coalesce(#{onhandFlag, jdbcType=INTEGER}, 1),
+            #{productDate, jdbcType=TIMESTAMP}, #{expireDate, jdbcType=TIMESTAMP},
+            #{partnerCode, jdbcType=VARCHAR}, #{partnerName, jdbcType=VARCHAR}, 0,
+            #{position, jdbcType=VARCHAR}, sysdate(), ''
+        )
+        on duplicate key update
+            goodsname = values(goodsname),
+            spec = values(spec),
+            unit = values(unit),
+            warename = values(warename),
+            purchaseprice = case
+                when (remainingqty + values(remainingqty)) > 0
+                then (coalesce(purchaseprice, 0) * remainingqty + values(purchaseamount))
+                     / (remainingqty + values(remainingqty))
+                else coalesce(values(purchaseprice), purchaseprice)
+            end,
+            purchaseamount = purchaseamount + values(purchaseamount),
+            initialqty = initialqty + values(initialqty),
+            remainingqty = remainingqty + values(remainingqty),
+            productiondate = coalesce(values(productiondate), productiondate),
+            expiredate = coalesce(values(expiredate), expiredate),
+            partnercode = coalesce(values(partnercode), partnercode),
+            partnername = coalesce(values(partnername), partnername),
+            <!--
+              同一批次再次入库时<b>不覆盖</b>已有货位：库管员挪过货、改成了实际摆放的位置，
+              后来又进了一批同批次的货，这时带进来的默认值是商品主档上的位置，
+              直接盖上去会把人工调整抹掉。原来是空的才用新值补上。
+            -->
+            position = coalesce(position, values(position)),
+            <!--
+              专属归属只补不覆盖：同一批次号再次入库时，原来绑给谁就还是谁的。
+              定制件完工每次都发新批次号，撞不上；真撞上了（人工指定了同一个批次号）
+              也不能让后进来的普通货把别人的专属关系抹掉。
+            -->
+            owner_ordercode = coalesce(owner_ordercode, values(owner_ordercode)),
+            owner_orderdetailcode = coalesce(owner_orderdetailcode, values(owner_orderdetailcode)),
+            closedflag = 0
+    </insert>
+
+    <update id="addBatchQty" parameterType="InventoryBatch">
+        update sdsshop.u_m_batchinfo
+           set goodsname = #{goodsName},
+               spec = #{spec, jdbcType=VARCHAR},
+               unit = #{unit, jdbcType=VARCHAR},
+               warename = #{wareName},
+               purchaseprice = case
+                   when (remainingqty + #{remainQty}) > 0
+                   then (coalesce(purchaseprice, 0) * remainingqty
+                         + coalesce(#{purchaseAmount, jdbcType=DECIMAL}, 0))
+                        / (remainingqty + #{remainQty})
+                   else coalesce(#{costPrice, jdbcType=DECIMAL}, purchaseprice)
+               end,
+               purchaseamount = purchaseamount + coalesce(#{purchaseAmount, jdbcType=DECIMAL}, 0),
+               initialqty = initialqty + #{initQty},
+               remainingqty = remainingqty + #{remainQty},
+               closedflag = 0
+         where shop_code = #{shopCode} and batchcode = #{batchCode}
+           and goodscode = #{goodsCode} and warecode = #{wareCode}
+           and qualityflag = #{qualityFlag}
+           and onhandflag = #{onhandFlag}
+    </update>
+
+    <update id="updateBatch" parameterType="InventoryBatch">
+        update sdsshop.u_m_batchinfo
+           set goodsname = #{goodsName}, warename = #{wareName},
+               initialqty = #{initQty}, remainingqty = #{remainQty},
+               purchaseprice = #{costPrice}, productiondate = #{productDate},
+               expiredate = #{expireDate}, closedflag = case when #{status} = 'active' then 0 else 1 end
+         where shop_code = #{shopCode} and batchcode = #{batchCode}
+           and goodscode = #{goodsCode} and warecode = #{wareCode}
+           and qualityflag = #{qualityFlag}
+           and onhandflag = #{onhandFlag}
+    </update>
+
+    <!--
+      只改货位，别的一个字段都不碰。
+
+      批次的数量、成本、状态一律由过账驱动（见 InventoryBatchController 的
+      DIRECT_WRITE_DISABLED），这条是唯一的例外：货位是纯管理信息，
+      不参与任何数量、成本、账务计算，库管员挪了货就该能改。
+      写成独立语句而不是复用 updateBatch，就是为了让它<b>改不到</b>别的列。
+    -->
+    <update id="updateBatchPosition">
+        update sdsshop.u_m_batchinfo set position = #{position, jdbcType=VARCHAR}
+         where shop_code = #{shopCode} and batchcode = #{batchCode}
+           and goodscode = #{goodsCode} and warecode = #{wareCode}
+           and qualityflag = #{state.qualityFlag}
+           and onhandflag = #{state.onhandFlag}
+    </update>
+
+    <update id="deductBatchQty">
+        update sdsshop.u_m_batchinfo set remainingqty = remainingqty - #{deductQty}
+         where shop_code = #{shopCode} and batchcode = #{batchCode}
+           and goodscode = #{goodsCode} and warecode = #{wareCode}
+           and qualityflag = #{state.qualityFlag}
+           and onhandflag = #{state.onhandFlag}
+           and closedflag = 0 and remainingqty >= #{deductQty}
+    </update>
+
+    <update id="adjustBatchCost">
+        update sdsshop.u_m_batchinfo set purchaseprice = #{costPrice}, purchaseamount = #{purchaseAmount}
+         where shop_code = #{shopCode} and batchcode = #{batchCode}
+           and goodscode = #{goodsCode} and warecode = #{wareCode}
+           and qualityflag = #{state.qualityFlag}
+           and onhandflag = #{state.onhandFlag}
+           and closedflag = 0
+    </update>
+
+    <delete id="deleteBatchByKey">
+        delete from sdsshop.u_m_batchinfo
+         where shop_code = #{shopCode} and batchcode = #{batchCode}
+           and goodscode = #{goodsCode} and warecode = #{wareCode}
+           and qualityflag = #{state.qualityFlag}
+           and onhandflag = #{state.onhandFlag}
+    </delete>
+
+    <select id="selectBatchByGoodsAndWare" resultMap="InventoryBatchResult">
+        <include refid="selectBatchVo" />
+         where shop_code = #{shopCode} and goodscode = #{goodsCode}
+           and warecode = #{wareCode} and closedflag = 0 and remainingqty > 0
+         order by productiondate, createtime, batchcode
+    </select>
+
+    <select id="selectAvailableBatchByContext" resultMap="InventoryBatchResult">
+        <include refid="selectBatchVo" />
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+           and warecode = #{wareCode}
+           and qualityflag = #{state.qualityFlag}
+           and onhandflag = #{state.onhandFlag}
+           and closedflag = 0
+           and remainingqty > 0
+         order by productiondate, createtime, batchcode
+    </select>
+
+    <!--
+      挑批出库用。orderDetailCode 是「这批货要发给哪条销售订单明细」：
+
+        传了 → 能用的是「没绑给任何人的」加上「正好绑给它的」，别人的定制批次一律跳过；
+               排序把自己的专属批次排在最前，先把为这张单做的那批发掉，
+               不然它会一直躺在仓库里，而通用库存被这张单消耗掉，等于白做。
+        没传 → 只能用没绑的。库存调拨、盘点、非订单出库都走这条路，
+               绝不能碰任何人的定制货。
+
+      别把 owner 判定写成 `owner is null or owner = #{x}` 然后在 x 为 null 时依赖
+      SQL 的 null 比较——`owner = null` 恒为 unknown，看着像「只取没绑的」，
+      但一旦有人传了空串就会全部漏出去。这里显式分两个分支。
+    -->
+    <select id="selectAvailableBatchForUpdate" resultMap="InventoryBatchResult">
+        <include refid="selectBatchVo" />
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+           and warecode = #{wareCode}
+           and qualityflag = #{state.qualityFlag}
+           and onhandflag = #{state.onhandFlag}
+           and closedflag = 0
+           and remainingqty > 0
+        <choose>
+          <when test="orderDetailCode != null and orderDetailCode != ''">
+           and (owner_orderdetailcode is null or owner_orderdetailcode = '' or owner_orderdetailcode = #{orderDetailCode})
+         order by owner_orderdetailcode = #{orderDetailCode} desc,
+                  purchasedate is null, purchasedate, createtime, batchcode
+          </when>
+          <otherwise>
+           and (owner_orderdetailcode is null or owner_orderdetailcode = '')
+         order by purchasedate is null, purchasedate, createtime, batchcode
+          </otherwise>
+        </choose>
+         for update
+    </select>
+
+    <!-- 把一批货绑给某条销售订单明细。只绑没绑过的，绑过的行更新 0 行，调用方据此报错。 -->
+    <update id="bindBatchOwner">
+        update sdsshop.u_m_batchinfo
+           set owner_ordercode = #{ownerOrderCode},
+               owner_orderdetailcode = #{ownerDetailCode}
+         where shop_code = #{shopCode} and batchcode = #{batchCode}
+           and goodscode = #{goodsCode} and warecode = #{wareCode}
+           and qualityflag = #{state.qualityFlag}
+           and onhandflag = #{state.onhandFlag}
+           and (owner_orderdetailcode is null or owner_orderdetailcode = ''
+                or owner_orderdetailcode = #{ownerDetailCode})
+    </update>
+
+    <!--
+      松开某条订单明细占住的全部批次。订单取消/关闭时调：那张单不要了，
+      这批货虽然是为它做的，也只能退回通用库存，否则永远没人能发。
+    -->
+    <update id="releaseBatchOwnerByDetail">
+        update sdsshop.u_m_batchinfo
+           set owner_ordercode = null, owner_orderdetailcode = null
+         where shop_code = #{shopCode} and owner_orderdetailcode = #{ownerDetailCode}
+    </update>
+
+    <!--
+      这个商品在这一仓有没有被谁独占的批次。出库时用来决定要不要强制走批次扣减：
+      有专属批次就说明有人为某张订单专门做过货，不按批次发就拦不住别人把它拿走。
+    -->
+    <select id="countOwnedBatches" resultType="int">
+        select count(1) from sdsshop.u_m_batchinfo
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+           and warecode = #{wareCode}
+           and qualityflag = #{state.qualityFlag}
+           and onhandflag = #{state.onhandFlag}
+           and closedflag = 0
+           and remainingqty > 0
+           and owner_orderdetailcode is not null and owner_orderdetailcode != ''
+    </select>
+
+    <!-- 这条订单明细名下的专属批次，供订单详情展示「为你做的货到了没有」 -->
+    <select id="selectBatchesByOwnerDetail" resultMap="InventoryBatchResult">
+        <include refid="selectBatchVo" />
+         where shop_code = #{shopCode} and owner_orderdetailcode = #{ownerDetailCode}
+         order by createtime desc, batchcode
+    </select>
+</mapper>

@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  跟进记录 u_s_followup，外加两条查 u_s_inquiry 的跟进看板语句。
+
+  ⚠ 只增不改：没有 update，也没有按 id 的 delete。跟进记录是一条线索的历史，
+    改过的历史没有价值——写错了再写一条更正。
+
+  ⚠ 文件末尾那两条查的是 u_s_inquiry 不是本表。按**模块**归属放在这里，
+    理由见 SiteFollowupMapper 的类注释。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteFollowupMapper">
+
+  <resultMap id="FollowupResult" type="com.ruoyi.station.console.domain.SiteFollowup">
+    <result property="id"         column="id"/>
+    <result property="siteCode"   column="sitecode"/>
+    <result property="targetType" column="targettype"/>
+    <result property="targetCode" column="targetcode"/>
+    <result property="action"     column="action"/>
+    <result property="content"    column="content"/>
+    <result property="createUser" column="createuser"/>
+    <result property="createTime" column="createtime"/>
+  </resultMap>
+
+  <!--
+    时间倒序：最新的在最上面。打开一条询盘最想先看到的是「上一次谈到哪了」，
+    不是三个月前的第一次接触。
+  -->
+  <select id="selectByTarget" resultMap="FollowupResult">
+    select id, sitecode, targettype, targetcode, action, content, createuser, createtime
+      from u_s_followup
+     where targettype = #{targetType}
+       and targetcode = #{targetCode}
+     order by createtime desc, id desc
+  </select>
+
+  <insert id="insert" parameterType="com.ruoyi.station.console.domain.SiteFollowup"
+          useGeneratedKeys="true" keyProperty="id">
+    insert into u_s_followup(sitecode, targettype, targetcode, action, content, createuser, createtime)
+    values(#{siteCode}, #{targetType}, #{targetCode}, #{action}, #{content}, #{createUser}, sysdate())
+  </insert>
+
+  <delete id="deleteByTargets">
+    delete from u_s_followup
+     where targettype = #{targetType}
+       and targetcode in
+    <foreach collection="targetCodes" item="code" open="(" separator="," close=")">
+      #{code}
+    </foreach>
+  </delete>
+
+
+  <!-- ==================================================================
+       跟进看板。查 u_s_inquiry，不是本表。
+       ================================================================== -->
+
+  <!--
+    看板的公共部分。两条语句共用，**这是刻意的**：
+
+    ⚠ 统计数字和清单必须同一套口径，否则会出现「顶上说 3 条逾期、
+      点进去列表是 5 条」——那种不一致一旦出现，人就不再信这一页了，
+      而一个不被信的待办列表等于没有。
+
+    lasttouch 三级回退，缺一不可：
+      最后一条跟进 → handletime（处理过但没写跟进）→ createtime（刚进来，谁都没碰）
+    没有第三级的话，一条刚收到的询盘 lasttouch 是 NULL，
+    「放了多少天」也就是 NULL——它会从「最该被看见的那条」变成排序垫底。
+
+    只看**没结案**的：已成交和无效不需要再跟。
+  -->
+  <sql id="boardBase">
+    from u_s_inquiry i
+    left join (
+      select targetcode, max(createtime) as lasttime
+        from u_s_followup
+       where targettype = 'inquiry'
+       group by targetcode
+    ) f on f.targetcode = i.inquirycode
+    where i.status not in ('已成交', '无效')
+  </sql>
+
+  <!-- 参照时间和「放了多少天」。写两遍（select 里和 having 里）不好看，
+       但 MySQL 的 where 里用不了 select 的别名，而放进 having 又会让
+       索引用不上——这里数据量小（未结案询盘按百计），先要正确 -->
+  <sql id="lastTouch">
+    coalesce(f.lasttime, i.handletime, i.createtime)
+  </sql>
+
+  <select id="selectBoard" resultType="java.util.LinkedHashMap">
+    select i.id                                as id,
+           i.inquirycode                       as inquiryCode,
+           i.name                              as name,
+           i.company                           as company,
+           i.email                             as email,
+           i.producttitle                      as productTitle,
+           i.status                            as status,
+           i.owner                             as owner,
+           i.nextfollow                        as nextFollow,
+           i.createtime                        as createTime,
+           <include refid="lastTouch"/>        as lastTouch,
+           datediff(curdate(), date(<include refid="lastTouch"/>)) as idleDays
+    <include refid="boardBase"/>
+    <choose>
+      <!--
+        逾期 = 两种情况的并集，别只算第一种：
+          · 定了下次跟进日期，而那天已经过了；
+          · **从没定过日期，而且已经躺了 staleDays 天没人碰**。
+        第二种才是真正丢单的那一类——没人管的询盘，正是因为没人管，
+        所以也不会有人给它定跟进日期。只看 nextfollow 会把它们全漏掉。
+      -->
+      <when test="bucket == 'overdue'">
+        and ( (i.nextfollow is not null and i.nextfollow &lt; curdate())
+           or (i.nextfollow is null
+               and datediff(curdate(), date(<include refid="lastTouch"/>)) &gt;= #{staleDays}) )
+      </when>
+      <when test="bucket == 'today'">
+        and i.nextfollow = curdate()
+      </when>
+      <when test="bucket == 'unowned'">
+        and (i.owner is null or i.owner = '')
+      </when>
+    </choose>
+    <if test="owner != null and owner != ''">
+      and i.owner = #{owner}
+    </if>
+    <!--
+      排序：先按下次跟进日期（早的在前，没定的排最后），再按躺得久的在前。
+      ⚠ nextfollow 为 null 的用 is null 排最后，不是靠 desc——
+        MySQL 把 null 排在最前，直接 asc 会让「没定日期的」霸占整个屏幕顶部。
+    -->
+    order by (i.nextfollow is null), i.nextfollow,
+             datediff(curdate(), date(<include refid="lastTouch"/>)) desc,
+             i.id desc
+    limit 300
+  </select>
+
+  <!--
+    顶部那四个数字。口径和上面完全一致（共用 boardBase 和 lastTouch）。
+    ⚠ 改上面那个 overdue 的判断时，这里的 sum(case ...) 要跟着改，
+      两处对不上就是「顶上一个数、列表另一个数」。
+  -->
+  <select id="selectBoardStat" resultType="java.util.LinkedHashMap">
+    select count(*) as openCount,
+           sum(case when (i.nextfollow is not null and i.nextfollow &lt; curdate())
+                      or (i.nextfollow is null
+                          and datediff(curdate(), date(<include refid="lastTouch"/>)) &gt;= #{staleDays})
+                    then 1 else 0 end)                              as overdueCount,
+           sum(case when i.nextfollow = curdate() then 1 else 0 end) as todayCount,
+           sum(case when i.owner is null or i.owner = '' then 1 else 0 end) as unownedCount
+    <include refid="boardBase"/>
+  </select>
+</mapper>

@@ -1,0 +1,573 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.TenantEmployeeMapper">
+
+    <resultMap type="SysDept" id="TenantDeptResult">
+        <id property="deptId" column="dept_id" />
+        <result property="parentId" column="parent_id" />
+        <result property="ancestors" column="ancestors" />
+        <result property="deptName" column="dept_name" />
+        <result property="orderNum" column="order_num" />
+        <result property="leader" column="leader" />
+        <result property="phone" column="phone" />
+        <result property="email" column="email" />
+        <result property="status" column="status" />
+        <result property="delFlag" column="del_flag" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <resultMap type="TenantEmployee" id="TenantEmployeeResult">
+        <id property="userCode" column="user_code" />
+        <result property="shopCode" column="shop_code" />
+        <result property="shopName" column="shop_name" />
+        <result property="deptId" column="dept_id" />
+        <result property="deptName" column="dept_name" />
+        <result property="userName" column="user_name" />
+        <result property="nickName" column="nick_name" />
+        <result property="email" column="email" />
+        <result property="phonenumber" column="phonenumber" />
+        <result property="sex" column="sex" />
+        <result property="avatar" column="avatar" />
+        <result property="jobNo" column="job_no" />
+        <result property="status" column="member_status" />
+        <result property="owner" column="is_owner" />
+        <result property="administrator" column="is_administrator" />
+        <result property="roleNames" column="role_names" />
+        <result property="joinTime" column="join_time" />
+    </resultMap>
+
+    <resultMap type="TenantDepartment" id="PlatformTenantDeptResult">
+        <id property="deptId" column="dept_id" />
+        <result property="shopCode" column="shop_code" />
+        <result property="shopName" column="shop_name" />
+        <result property="shopStatus" column="shop_status" />
+        <result property="parentId" column="parent_id" />
+        <result property="ancestors" column="ancestors" />
+        <result property="deptName" column="dept_name" />
+        <result property="orderNum" column="order_num" />
+        <result property="leader" column="leader" />
+        <result property="phone" column="phone" />
+        <result property="email" column="email" />
+        <result property="status" column="status" />
+        <result property="employeeCount" column="employee_count" />
+        <result property="createTime" column="create_time" />
+    </resultMap>
+
+    <resultMap type="TenantRole" id="TenantRoleResult">
+        <id property="roleCode" column="role_code" />
+        <result property="shopCode" column="shop_code" />
+        <result property="roleName" column="role_name" />
+        <result property="roleKey" column="role_key" />
+        <result property="roleSort" column="role_sort" />
+        <result property="dataScope" column="data_scope" />
+        <result property="menuCheckStrictly" column="menu_check_strictly" />
+        <result property="deptCheckStrictly" column="dept_check_strictly" />
+        <result property="status" column="status" />
+        <result property="delFlag" column="del_flag" />
+        <result property="roleType" column="role_type" />
+        <result property="systemFlag" column="system_flag" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+        <result property="remark" column="remark" />
+    </resultMap>
+
+    <resultMap type="SysMenu" id="TenantMenuResult">
+        <id property="funCode" column="fun_code" />
+        <result property="menuName" column="menu_name" />
+        <result property="parentId" column="parent_id" />
+        <result property="orderNum" column="order_num" />
+        <result property="path" column="path" />
+        <result property="component" column="component" />
+        <result property="query" column="query" />
+        <result property="routeName" column="route_name" />
+        <result property="isFrame" column="is_frame" />
+        <result property="isCache" column="is_cache" />
+        <result property="menuType" column="menu_type" />
+        <result property="visible" column="visible" />
+        <result property="status" column="status" />
+        <result property="perms" column="perms" />
+        <result property="icon" column="icon" />
+    </resultMap>
+
+    <select id="selectDeptList" resultMap="TenantDeptResult">
+        select d.dept_id, d.parent_id, d.ancestors, d.dept_name, d.order_num, d.leader,
+               d.phone, d.email, d.status, d.del_flag, d.create_by, d.create_time,
+               d.update_by, d.update_time
+          from sys_dept d
+         where d.shop_code = #{shopCode}
+           and d.del_flag = '0'
+        <if test="dept.deptId != null and dept.deptId != 0">
+           and d.dept_id = #{dept.deptId}
+        </if>
+        <if test="dept.parentId != null and dept.parentId != 0">
+           and d.parent_id = #{dept.parentId}
+        </if>
+        <if test="dept.deptName != null and dept.deptName != ''">
+           and d.dept_name like concat('%', #{dept.deptName}, '%')
+        </if>
+        <if test="dept.status != null and dept.status != ''">
+           and d.status = #{dept.status}
+        </if>
+         order by d.parent_id, d.order_num, d.dept_id
+    </select>
+
+    <select id="selectPlatformDeptList" resultMap="PlatformTenantDeptResult">
+        select s.shop_code, s.shop_name, s.status as shop_status,
+               d.dept_id, d.parent_id, d.ancestors, d.dept_name, d.order_num,
+               d.leader, d.phone, d.email, d.status, d.create_time,
+               (select count(1)
+                  from sys_shop_user su
+                 where su.shop_code = d.shop_code
+                   and su.dept_id = d.dept_id
+                   and su.del_flag = '0') as employee_count
+          from s_m_shop s
+          join sys_dept d on d.shop_code = s.shop_code and d.del_flag = '0'
+         where s.status &lt;&gt; -1
+        <if test="query.shopCode != null and query.shopCode != ''">
+           and s.shop_code = #{query.shopCode}
+        </if>
+        <if test="query.deptName != null and query.deptName != ''">
+           and d.dept_name like concat('%', #{query.deptName}, '%')
+        </if>
+        <if test="query.status != null and query.status != ''">
+           and d.status = #{query.status}
+        </if>
+         order by s.createtime, s.shop_code, d.parent_id, d.order_num, d.dept_id
+    </select>
+
+    <select id="selectDeptById" resultMap="TenantDeptResult">
+        select d.dept_id, d.parent_id, d.ancestors, d.dept_name, d.order_num, d.leader,
+               d.phone, d.email, d.status, d.del_flag, d.create_by, d.create_time,
+               d.update_by, d.update_time
+          from sys_dept d
+         where d.shop_code = #{shopCode}
+           and d.dept_id = #{deptId}
+           and d.del_flag = '0'
+         limit 1
+    </select>
+
+    <select id="checkDeptNameUnique" resultType="Integer">
+        select count(1)
+          from sys_dept
+         where shop_code = #{shopCode}
+           and parent_id = #{parentId}
+           and dept_name = #{deptName}
+           and del_flag = '0'
+        <if test="excludeDeptId != null">
+           and dept_id != #{excludeDeptId}
+        </if>
+    </select>
+
+    <insert id="insertDept" useGeneratedKeys="true" keyProperty="dept.deptId">
+        insert into sys_dept(shop_code, parent_id, ancestors, dept_name, order_num, leader,
+                             phone, email, status, del_flag, create_by, create_time)
+        values(#{shopCode}, #{dept.parentId}, #{dept.ancestors}, #{dept.deptName},
+               #{dept.orderNum}, #{dept.leader}, #{dept.phone}, #{dept.email},
+               #{dept.status}, '0', #{dept.createBy}, sysdate())
+    </insert>
+
+    <update id="updateDept">
+        update sys_dept
+           set parent_id = #{dept.parentId}, ancestors = #{dept.ancestors},
+               dept_name = #{dept.deptName}, order_num = #{dept.orderNum},
+               leader = #{dept.leader}, phone = #{dept.phone}, email = #{dept.email},
+               status = #{dept.status}, update_by = #{dept.updateBy}, update_time = sysdate()
+         where shop_code = #{shopCode} and dept_id = #{dept.deptId} and del_flag = '0'
+    </update>
+
+    <update id="updateDeptChildren">
+        update sys_dept
+           set ancestors = case dept_id
+        <foreach collection="depts" item="item">
+               when #{item.deptId} then #{item.ancestors}
+        </foreach>
+               end
+         where shop_code = #{shopCode}
+           and dept_id in
+        <foreach collection="depts" item="item" open="(" separator="," close=")">
+            #{item.deptId}
+        </foreach>
+    </update>
+
+    <select id="hasChildDept" resultType="Integer">
+        select count(1) from sys_dept
+         where shop_code = #{shopCode} and parent_id = #{deptId} and del_flag = '0'
+    </select>
+
+    <select id="countDeptMembers" resultType="Integer">
+        select count(1) from sys_shop_user
+         where shop_code = #{shopCode} and dept_id = #{deptId} and del_flag = '0'
+    </select>
+
+    <update id="deleteDept">
+        update sys_dept set del_flag = '2', update_by = #{updateBy}, update_time = sysdate()
+         where shop_code = #{shopCode} and dept_id = #{deptId} and del_flag = '0'
+    </update>
+
+    <select id="selectEmployeeList" resultMap="TenantEmployeeResult">
+        select su.shop_code, u.user_code, su.dept_id, d.dept_name, u.user_name, u.nick_name,
+               u.email, u.phonenumber, u.sex, u.avatar, su.job_no, su.status as member_status,
+               su.is_owner, su.create_time as join_time,
+               max(case when r.role_type = 'TENANT' and r.system_flag = 1 then 1 else 0 end) as is_administrator,
+               group_concat(distinct r.role_name order by r.role_sort separator ',') as role_names
+          from sys_shop_user su
+          join sys_user u on u.user_code = su.user_code and u.del_flag = '0'
+          left join sys_dept d on d.dept_id = su.dept_id and d.shop_code = su.shop_code and d.del_flag = '0'
+          left join sys_shop_user_role sur on sur.shop_code = su.shop_code and sur.user_code = su.user_code
+          left join sys_role r on r.role_code = sur.role_code and r.shop_code = su.shop_code and r.del_flag = '0'
+         where su.shop_code = #{shopCode} and su.del_flag = '0'
+           and su.status = '0'
+        <if test="excludeUserCodes != null and excludeUserCodes.size() > 0">
+           and su.user_code not in
+           <foreach collection="excludeUserCodes" item="excludeUserCode" open="(" separator="," close=")">
+              #{excludeUserCode}
+           </foreach>
+        </if>
+        <if test="employee.userCode != null">
+           and su.user_code = #{employee.userCode}
+        </if>
+        <if test="employee.deptId != null and employee.deptId != 0">
+           and (su.dept_id = #{employee.deptId} or su.dept_id in
+                (select td.dept_id from sys_dept td
+                  where td.shop_code = #{shopCode} and find_in_set(#{employee.deptId}, td.ancestors)))
+        </if>
+        <if test="employee.userName != null and employee.userName != ''">
+           and u.user_name like concat('%', #{employee.userName}, '%')
+        </if>
+        <if test="employee.nickName != null and employee.nickName != ''">
+           and u.nick_name like concat('%', #{employee.nickName}, '%')
+        </if>
+        <if test="employee.phonenumber != null and employee.phonenumber != ''">
+           and u.phonenumber like concat('%', #{employee.phonenumber}, '%')
+        </if>
+        <if test="employee.jobNo != null and employee.jobNo != ''">
+           and su.job_no like concat('%', #{employee.jobNo}, '%')
+        </if>
+         group by su.shop_code, u.user_code, su.dept_id, d.dept_name, u.user_name, u.nick_name,
+                  u.email, u.phonenumber, u.sex, u.avatar, su.job_no, su.status,
+                  su.is_owner, su.create_time
+         order by su.create_time, u.user_code
+    </select>
+
+    <select id="selectPlatformEmployeeList" resultMap="TenantEmployeeResult">
+        select s.shop_name, su.shop_code, u.user_code, su.dept_id, d.dept_name,
+               u.user_name, u.nick_name, u.email, u.phonenumber, u.sex, u.avatar,
+               su.job_no, su.status as member_status, su.is_owner,
+               max(case when r.role_type = 'TENANT' and r.system_flag = 1 then 1 else 0 end) as is_administrator,
+               su.create_time as join_time,
+               group_concat(distinct r.role_name order by r.role_sort separator ',') as role_names
+          from sys_shop_user su
+          join s_m_shop s on s.shop_code = su.shop_code and s.status &lt;&gt; -1
+          join sys_user u on u.user_code = su.user_code and u.del_flag = '0'
+          left join sys_dept d on d.dept_id = su.dept_id
+           and d.shop_code = su.shop_code and d.del_flag = '0'
+          left join sys_shop_user_role sur on sur.shop_code = su.shop_code
+           and sur.user_code = su.user_code
+          left join sys_role r on r.role_code = sur.role_code
+           and r.shop_code = su.shop_code and r.del_flag = '0'
+         where su.del_flag = '0'
+           and su.status = '0'
+        <if test="excludeUserCodes != null and excludeUserCodes.size() > 0">
+           and su.user_code not in
+           <foreach collection="excludeUserCodes" item="excludeUserCode" open="(" separator="," close=")">
+              #{excludeUserCode}
+           </foreach>
+        </if>
+        <if test="employee.shopCode != null and employee.shopCode != ''">
+           and su.shop_code = #{employee.shopCode}
+        </if>
+        <if test="employee.deptId != null and employee.deptId != 0">
+           and (su.dept_id = #{employee.deptId} or su.dept_id in
+                (select td.dept_id from sys_dept td
+                  where td.shop_code = su.shop_code and td.del_flag = '0'
+                    and find_in_set(#{employee.deptId}, td.ancestors)))
+        </if>
+        <if test="employee.userName != null and employee.userName != ''">
+           and u.user_name like concat('%', #{employee.userName}, '%')
+        </if>
+        <if test="employee.nickName != null and employee.nickName != ''">
+           and u.nick_name like concat('%', #{employee.nickName}, '%')
+        </if>
+        <if test="employee.phonenumber != null and employee.phonenumber != ''">
+           and u.phonenumber like concat('%', #{employee.phonenumber}, '%')
+        </if>
+        <if test="employee.jobNo != null and employee.jobNo != ''">
+           and su.job_no like concat('%', #{employee.jobNo}, '%')
+        </if>
+         group by s.shop_name, su.shop_code, u.user_code, su.dept_id, d.dept_name,
+                  u.user_name, u.nick_name, u.email, u.phonenumber, u.sex, u.avatar,
+                  su.job_no, su.status, su.is_owner, su.create_time
+         order by s.createtime, su.shop_code, su.create_time, u.user_code
+    </select>
+
+    <select id="selectEmployeeById" resultMap="TenantEmployeeResult">
+        select su.shop_code, u.user_code, su.dept_id, d.dept_name, u.user_name, u.nick_name,
+               u.email, u.phonenumber, u.sex, u.avatar, su.job_no, su.status as member_status,
+               su.is_owner, su.create_time as join_time,
+               max(case when r.role_type = 'TENANT' and r.system_flag = 1 then 1 else 0 end) as is_administrator,
+               group_concat(distinct r.role_name order by r.role_sort separator ',') as role_names
+          from sys_shop_user su
+          join sys_user u on u.user_code = su.user_code and u.del_flag = '0'
+          left join sys_dept d on d.dept_id = su.dept_id and d.shop_code = su.shop_code and d.del_flag = '0'
+          left join sys_shop_user_role sur on sur.shop_code = su.shop_code and sur.user_code = su.user_code
+          left join sys_role r on r.role_code = sur.role_code and r.shop_code = su.shop_code and r.del_flag = '0'
+         where su.shop_code = #{shopCode} and su.user_code = #{userCode} and su.del_flag = '0'
+         group by su.shop_code, u.user_code, su.dept_id, d.dept_name, u.user_name, u.nick_name,
+                  u.email, u.phonenumber, u.sex, u.avatar, su.job_no, su.status,
+                  su.is_owner, su.create_time
+         limit 1
+    </select>
+
+    <select id="selectGlobalUserCodeByUserName" resultType="String">
+        select user_code from sys_user where user_name = #{userName} and del_flag = '0' limit 1
+    </select>
+
+    <insert id="insertGlobalUser" useGeneratedKeys="true" keyProperty="userCode">
+        insert into sys_user(user_name, nick_name, email, phonenumber, sex, avatar, password,
+                             status, del_flag, create_by, create_time, remark)
+        values(#{userName}, #{nickName}, #{email}, #{phonenumber}, #{sex}, #{avatar}, #{password},
+               '0', '0', #{createBy}, sysdate(), #{remark})
+    </insert>
+
+    <update id="updateGlobalUserPhonenumber">
+        update sys_user
+           set phonenumber = #{phonenumber}, update_by = #{updateBy}, update_time = sysdate()
+         where user_code = #{userCode} and del_flag = '0'
+    </update>
+
+    <select id="countActiveMembership" resultType="Integer">
+        select count(1) from sys_shop_user
+         where shop_code = #{shopCode} and user_code = #{userCode}
+           and del_flag = '0' and status = '0'
+    </select>
+
+    <select id="checkJobNoUnique" resultType="Integer">
+        select count(1) from sys_shop_user
+         where shop_code = #{shopCode} and job_no = #{jobNo} and del_flag = '0'
+        <if test="excludeUserCode != null and excludeUserCode != ''">
+           and user_code != #{excludeUserCode}
+        </if>
+    </select>
+
+    <insert id="insertMembership">
+        insert into sys_shop_user(shop_code, user_code, dept_id, job_no, status, is_owner,
+                                  del_flag, create_by, create_time)
+        values(#{shopCode}, #{employee.userCode}, #{employee.deptId}, #{employee.jobNo},
+               #{employee.status}, 0, '0', #{employee.createBy}, sysdate())
+    </insert>
+
+    <update id="restoreMembership">
+        update sys_shop_user
+           set dept_id = #{employee.deptId}, job_no = #{employee.jobNo},
+               status = '0', is_owner = 0, del_flag = '0',
+               update_by = #{employee.updateBy}, update_time = sysdate()
+         where shop_code = #{shopCode} and user_code = #{employee.userCode}
+           and (del_flag != '0' or status != '0')
+    </update>
+
+    <update id="updateMembership">
+        update sys_shop_user
+           set dept_id = #{employee.deptId}, job_no = #{employee.jobNo},
+               status = #{employee.status}, update_by = #{employee.updateBy}, update_time = sysdate()
+         where shop_code = #{shopCode} and user_code = #{employee.userCode} and del_flag = '0'
+    </update>
+
+    <update id="updateMembershipSelf">
+        update sys_shop_user
+           set job_no = #{jobNo}, update_by = #{updateBy}, update_time = sysdate()
+         where shop_code = #{shopCode} and user_code = #{userCode} and del_flag = '0'
+    </update>
+
+    <update id="updateGlobalUserProfile">
+        update sys_user
+           set nick_name = #{nickName}, phonenumber = #{phonenumber},
+               update_by = #{updateBy}, update_time = sysdate()
+         where user_code = #{userCode} and del_flag = '0'
+    </update>
+
+    <delete id="deleteMembership">
+        delete from sys_shop_user where shop_code = #{shopCode} and user_code = #{userCode}
+    </delete>
+
+    <delete id="deleteMemberPosts">
+        delete from sys_shop_user_post where shop_code = #{shopCode} and user_code = #{userCode}
+    </delete>
+
+    <delete id="deleteMemberRoles">
+        delete sur from sys_shop_user_role sur
+        inner join sys_shop_user su on su.shop_code = sur.shop_code and su.user_code = sur.user_code
+         where sur.shop_code = #{shopCode} and sur.user_code = #{userCode}
+    </delete>
+
+    <select id="countActiveMembershipsByUserCode" resultType="Integer">
+        select count(1) from sys_shop_user where user_code = #{userCode} and del_flag = '0'
+    </select>
+
+    <select id="countPlatformBindingsByUserCode" resultType="Integer">
+        select count(1)
+          from sys_user u
+         where u.user_code = #{userCode}
+           and (u.dept_id is not null
+                or exists (select 1 from sys_user_role ur where ur.user_code = u.user_code)
+                or exists (select 1 from sys_user_post up where up.user_code = u.user_code))
+    </select>
+
+    <delete id="deleteAllMemberPostsByUserCode">
+        delete from sys_shop_user_post where user_code = #{userCode}
+    </delete>
+
+    <delete id="deleteAllMemberRolesByUserCode">
+        delete from sys_shop_user_role where user_code = #{userCode}
+    </delete>
+
+    <delete id="deleteAllMembershipsByUserCode">
+        delete from sys_shop_user where user_code = #{userCode}
+    </delete>
+
+    <delete id="deleteNoticeReadsByUserCode">
+        delete from sys_notice_read where user_code = #{userCode}
+    </delete>
+
+    <delete id="deleteGlobalUserByCode">
+        delete from sys_user where user_code = #{userCode} and user_code != 'us1'
+    </delete>
+
+    <insert id="batchInsertMemberRoles">
+        insert into sys_shop_user_role(shop_code, user_code, role_code) values
+        <foreach collection="roleCodes" item="roleCode" separator=",">
+            (#{shopCode}, #{userCode}, #{roleCode})
+        </foreach>
+    </insert>
+
+    <select id="selectMemberRoleCodes" resultType="String">
+        select sur.role_code from sys_shop_user_role sur
+        join sys_role r on r.role_code = sur.role_code and r.shop_code = sur.shop_code
+         where sur.shop_code = #{shopCode} and sur.user_code = #{userCode}
+           and r.role_type = 'TENANT' and r.del_flag = '0'
+         order by r.role_sort, r.role_code
+    </select>
+
+    <select id="selectRoleList" resultMap="TenantRoleResult">
+        select r.role_code, r.shop_code, r.role_name, r.role_key, r.role_sort, r.data_scope,
+               r.menu_check_strictly, r.dept_check_strictly, r.status, r.del_flag,
+               r.role_type, r.system_flag, r.create_by, r.create_time, r.update_by,
+               r.update_time, r.remark
+          from sys_role r
+         where r.shop_code = #{shopCode} and r.role_type = 'TENANT' and r.del_flag = '0'
+        <if test="role.roleCode != null">
+           and r.role_code = #{role.roleCode}
+        </if>
+        <if test="role.roleName != null and role.roleName != ''">
+           and r.role_name like concat('%', #{role.roleName}, '%')
+        </if>
+        <if test="role.roleKey != null and role.roleKey != ''">
+           and r.role_key like concat('%', #{role.roleKey}, '%')
+        </if>
+        <if test="role.status != null and role.status != ''">
+           and r.status = #{role.status}
+        </if>
+         order by r.system_flag desc, r.role_sort, r.role_code
+    </select>
+
+    <select id="selectRoleByCode" resultMap="TenantRoleResult">
+        select r.role_code, r.shop_code, r.role_name, r.role_key, r.role_sort, r.data_scope,
+               r.menu_check_strictly, r.dept_check_strictly, r.status, r.del_flag,
+               r.role_type, r.system_flag, r.create_by, r.create_time, r.update_by,
+               r.update_time, r.remark
+          from sys_role r
+         where r.shop_code = #{shopCode} and r.role_code = #{roleCode}
+           and r.role_type = 'TENANT' and r.del_flag = '0'
+         limit 1
+    </select>
+
+    <select id="checkRoleNameUnique" resultType="Integer">
+        select count(1) from sys_role
+         where shop_code = #{shopCode} and role_type = 'TENANT'
+           and role_name = #{roleName} and del_flag = '0'
+        <if test="excludeRoleCode != null">and role_code != #{excludeRoleCode}</if>
+    </select>
+
+    <select id="checkRoleKeyUnique" resultType="Integer">
+        select count(1) from sys_role
+         where shop_code = #{shopCode} and role_type = 'TENANT'
+           and role_key = #{roleKey} and del_flag = '0'
+        <if test="excludeRoleCode != null">and role_code != #{excludeRoleCode}</if>
+    </select>
+
+    <insert id="insertRole">
+        insert into sys_role(role_code, shop_code, role_name, role_key, role_sort, data_scope,
+                             menu_check_strictly, dept_check_strictly, status, del_flag,
+                             role_type, system_flag, create_by, create_time, remark)
+        values(#{role.roleCode}, #{shopCode}, #{role.roleName}, #{role.roleKey}, #{role.roleSort}, #{role.dataScope},
+               #{role.menuCheckStrictly}, #{role.deptCheckStrictly}, #{role.status}, '0',
+               'TENANT', 0, #{role.createBy}, sysdate(), #{role.remark})
+    </insert>
+
+    <update id="updateRole">
+        update sys_role
+           set role_name = #{role.roleName}, role_key = #{role.roleKey},
+               role_sort = #{role.roleSort}, status = #{role.status}, remark = #{role.remark},
+               update_by = #{role.updateBy}, update_time = sysdate()
+         where shop_code = #{shopCode} and role_code = #{role.roleCode}
+           and role_type = 'TENANT' and system_flag = 0 and del_flag = '0'
+    </update>
+
+    <select id="countRoleMembers" resultType="Integer">
+        select count(1) from sys_shop_user_role sur
+        join sys_shop_user su on su.shop_code = sur.shop_code and su.user_code = sur.user_code and su.del_flag = '0'
+         where sur.shop_code = #{shopCode} and sur.role_code = #{roleCode}
+    </select>
+
+    <update id="deleteRole">
+        update sys_role set del_flag = '2', update_by = #{updateBy}, update_time = sysdate()
+         where shop_code = #{shopCode} and role_code = #{roleCode}
+           and role_type = 'TENANT' and system_flag = 0 and del_flag = '0'
+    </update>
+
+    <delete id="deleteRoleMenusScoped">
+        delete rm from sys_role_menu rm
+        inner join sys_role r on r.role_code = rm.role_code
+         where r.shop_code = #{shopCode} and r.role_type = 'TENANT'
+           and (r.system_flag = 0 or #{includeSystem} = true) and r.role_code = #{roleCode}
+    </delete>
+
+    <insert id="batchInsertRoleMenusScoped">
+        insert into sys_role_menu(role_code, fun_code)
+        select r.role_code, requested.fun_code
+          from sys_role r
+          join (
+        <foreach collection="funCodes" item="funCode" separator=" union all ">
+            select #{funCode} as fun_code
+        </foreach>
+          ) requested
+         where r.shop_code = #{shopCode} and r.role_type = 'TENANT'
+           and (r.system_flag = 0 or #{includeSystem} = true) and r.role_code = #{roleCode}
+    </insert>
+
+    <select id="selectRoleFunCodes" resultType="String">
+        select rm.fun_code from sys_role_menu rm
+        join sys_role r on r.role_code = rm.role_code
+         where r.shop_code = #{shopCode} and r.role_code = #{roleCode}
+           and r.role_type = 'TENANT' and r.del_flag = '0'
+         order by rm.fun_code
+    </select>
+
+    <select id="selectMenusByFunCodes" resultMap="TenantMenuResult">
+        select fun_code, menu_name, parent_id, order_num, path, component, `query`, route_name,
+               is_frame, is_cache, menu_type, visible, status, ifnull(perms, '') as perms, icon
+          from sys_menu
+         where status = '0' and fun_code in
+        <foreach collection="funCodes" item="funCode" open="(" separator="," close=")">
+            #{funCode}
+        </foreach>
+         order by parent_id, order_num
+    </select>
+
+</mapper>

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.ProductionMaterialMapper">
+    <resultMap type="ProductionMaterial" id="ProductionMaterialResult">
+        <result property="id" column="id" /><result property="shopCode" column="shop_code" />
+        <result property="materialCode" column="material_code" /><result property="productionCode" column="production_code" />
+        <result property="detailCode" column="detail_code" />
+        <result property="lineNo" column="line_no" /><result property="goodsCode" column="goods_code" />
+        <result property="goodsName" column="goods_name" /><result property="spec" column="spec" />
+        <result property="unit" column="unit" /><result property="qtyPerUnit" column="qty_per_unit" />
+        <result property="totalQty" column="total_qty" /><result property="pickedQty" column="picked_qty" />
+        <result property="actualQty" column="actual_qty" />
+        <result property="returnedQty" column="returned_qty" />
+        <result property="remark" column="remark" />
+    </resultMap>
+    <sql id="columns">select id, shop_code, materialcode as material_code, productioncode as production_code,
+        detailcode as detail_code,
+        lineno as line_no, goodscode as goods_code, goodsname as goods_name, spec, unit,
+        qtyperunit as qty_per_unit, totalqty as total_qty, pickedqty as picked_qty,
+        actualqty as actual_qty, returnedqty as returned_qty, remark
+        from sdsshop.u_p_productionmaterial</sql>
+    <select id="selectByProductionCode" resultMap="ProductionMaterialResult"><include refid="columns" />
+        where shop_code = #{shopCode} and productioncode = #{productionCode} order by lineno</select>
+    <select id="countByGoodsCode" resultType="int">
+        select count(1) from sdsshop.u_p_productionmaterial
+         where shop_code = #{shopCode} and goodscode = #{goodsCode}
+    </select>
+    <insert id="batchInsert">
+        insert into sdsshop.u_p_productionmaterial
+        (shop_code,materialcode,productioncode,detailcode,lineno,goodscode,goodsname,spec,unit,qtyperunit,totalqty,pickedqty,actualqty,returnedqty,remark)
+        values <foreach item="item" collection="items" separator=",">(
+            #{item.shopCode},#{item.materialCode},#{item.productionCode},#{item.detailCode},#{item.lineNo},#{item.goodsCode},#{item.goodsName},
+            #{item.spec},#{item.unit},#{item.qtyPerUnit},#{item.totalQty},0,0,0,#{item.remark})</foreach>
+    </insert>
+    <delete id="deleteByProductionCode">delete from sdsshop.u_p_productionmaterial where shop_code = #{shopCode} and productioncode = #{productionCode}</delete>
+    <update id="updateActualQty">
+        update sdsshop.u_p_productionmaterial set actualqty = #{actualQty}
+         where shop_code = #{shopCode} and materialcode = #{materialCode}
+    </update>
+    <!-- 已退数量原子累加。可退上限是已领量而不是计划量，配合 ck_production_material_consumed_qty 兜底 -->
+    <update id="increaseReturnedQty">
+        update sdsshop.u_p_productionmaterial
+           set returnedqty = returnedqty + #{returnQty}
+         where shop_code = #{shopCode} and materialcode = #{materialCode}
+           and actualqty + returnedqty + #{returnQty} &lt;= pickedqty
+    </update>
+    <!-- 已领数量原子累加，领超计划量时更新 0 行，配合 ck_production_material_picked_qty 兜底 -->
+    <update id="increasePickedQty">
+        update sdsshop.u_p_productionmaterial
+           set pickedqty = pickedqty + #{pickQty}
+         where shop_code = #{shopCode} and materialcode = #{materialCode}
+           and pickedqty + #{pickQty} &lt;= totalqty
+    </update>
+</mapper>

@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  在线咨询的会话线程。
+
+  ⚠ visitortoken **不在 columns 里**。它是匿名会话的唯一凭据，拿到就能读走整条对话。
+    管理台的会话列表走的就是这份列清单——物理上取不出来，是第一道防线；
+    domain 上的 @JsonIgnore 是第二道。照的是 SiteBuyerMapper 对 passwordhash 那一套。
+
+  ⚠ 未读数是**现算**的（下面那个相关子查询），库里没有计数列。
+    累加的问题是它会漂：消息删除、会话合并、并发写，每一种都要记得去减，
+    漏一次就永远错下去。见 SiteBuyerMapper.xml 里同样的那条。
+
+  ⚠ 不按 sitecode 过滤：一个部署一个站，和 SiteBuyerMapper 一样。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteChatMapper">
+
+  <resultMap id="ChatResult" type="com.ruoyi.station.console.domain.SiteChat">
+    <id     property="id"              column="id"/>
+    <result property="shopCode"        column="shop_code"/>
+    <result property="siteCode"        column="sitecode"/>
+    <result property="chatCode"        column="chatcode"/>
+    <result property="visitorToken"    column="visitortoken"/>
+    <result property="buyerCode"       column="buyercode"/>
+    <result property="email"           column="email"/>
+    <result property="name"            column="name"/>
+    <result property="lang"            column="lang"/>
+    <result property="pageUrl"         column="pageurl"/>
+    <result property="clientIp"        column="clientip"/>
+    <result property="userAgent"       column="useragent"/>
+    <result property="lastMessage"     column="lastmessage"/>
+    <result property="lastMessageTime" column="lastmessagetime"/>
+    <result property="consoleReadId"   column="consolereadid"/>
+    <result property="buyerReadId"     column="buyerreadid"/>
+    <result property="createTime"      column="createtime"/>
+    <result property="updateTime"      column="updatetime"/>
+    <result property="unread"          column="unread"/>
+  </resultMap>
+
+  <!-- 见文件头：这里**没有 visitortoken** -->
+  <sql id="columns">
+    id, shop_code, sitecode, chatcode, buyercode, email, name, lang,
+    pageurl, clientip, useragent, lastmessage, lastmessagetime,
+    consolereadid, buyerreadid, createtime, updatetime
+  </sql>
+
+  <!--
+    未读数的相关子查询。运营那一侧只数**买家**发的：
+    自己刚回的那条不该让自己的红点亮起来。
+  -->
+  <sql id="unreadForConsole">
+    (select count(1) from u_s_chatmessage m
+      where m.chatid = c.id and m.id > c.consolereadid and m.sender = '买家')
+  </sql>
+
+  <sql id="listWhere">
+    <where>
+      <!-- 一个输入框查四个字段：称呼、邮箱、会话编码、最后一条消息的内容 -->
+      <if test="query.name != null and query.name != ''">
+         and (c.name like concat('%', #{query.name}, '%')
+           or c.email like concat('%', #{query.name}, '%')
+           or c.chatcode like concat('%', #{query.name}, '%')
+           or c.lastmessage like concat('%', #{query.name}, '%'))</if>
+      <if test="query.buyerCode != null and query.buyerCode != ''">
+         and c.buyercode = #{query.buyerCode}</if>
+    </where>
+  </sql>
+
+  <select id="selectByToken" resultMap="ChatResult">
+    select <include refid="columns"/> from u_s_chat where visitortoken = #{visitorToken}
+  </select>
+
+  <select id="selectByCode" resultMap="ChatResult">
+    select <include refid="columns"/> from u_s_chat where chatcode = #{chatCode}
+  </select>
+
+  <!--
+    已登录的买家换设备时用它把历史找回来。一个人可能有多条线程
+    （先匿名聊过、后来才登录），取最近活跃的那条。
+  -->
+  <select id="selectLatestByBuyer" resultMap="ChatResult">
+    select <include refid="columns"/> from u_s_chat
+     where buyercode = #{buyerCode}
+     order by coalesce(lastmessagetime, createtime) desc, id desc
+     limit 1
+  </select>
+
+  <insert id="insert" parameterType="com.ruoyi.station.console.domain.SiteChat"
+          useGeneratedKeys="true" keyProperty="id">
+    insert into u_s_chat(
+      shop_code, sitecode, chatcode, visitortoken, buyercode, email, name, lang,
+      pageurl, clientip, useragent, createtime
+    ) values(
+      #{shopCode}, #{siteCode}, #{chatCode}, #{visitorToken}, #{buyerCode}, #{email},
+      #{name}, #{lang}, #{pageUrl}, #{clientIp}, #{userAgent}, sysdate()
+    )
+  </insert>
+
+  <!-- 摘要截断在 Java 侧做（cut(…, 500)），这里只管写 -->
+  <update id="touchLast">
+    update u_s_chat
+       set lastmessage = #{lastMessage},
+           lastmessagetime = sysdate()
+     where id = #{chatId}
+  </update>
+
+  <!--
+    ⚠ greatest：游标只增不减。
+
+    两个标签页同时开着、后开的那个先标已读，不套 greatest 就会把游标退回去，
+    表现是「明明看过的消息又变回未读」。这类问题很难复现，因为它要两个标签页。
+  -->
+  <update id="advanceRead">
+    update u_s_chat
+       set <choose>
+             <when test="side == 'console'">consolereadid = greatest(consolereadid, #{readId})</when>
+             <otherwise>buyerreadid = greatest(buyerreadid, #{readId})</otherwise>
+           </choose>
+     where id = #{chatId}
+  </update>
+
+  <!-- 全部走 coalesce：访客这一次只填了邮箱，不该把上一次填过的称呼抹掉 -->
+  <update id="bindBuyer">
+    update u_s_chat
+       set buyercode = coalesce(#{buyerCode}, buyercode),
+           email     = coalesce(#{email}, email),
+           name      = coalesce(#{name}, name)
+     where id = #{chatId}
+  </update>
+
+  <!--
+    管理台的会话列表。
+
+    排序：**未读置顶**，然后按最后消息倒排。运营打开面板第一眼要看到还没回的人，
+    而不是最近回过的人。MySQL 允许在 order by 里引用 select 的别名，
+    所以 unread 那个子查询不用写两遍。
+  -->
+  <select id="selectList" resultMap="ChatResult">
+    select <include refid="columns"/>,
+           <include refid="unreadForConsole"/> as unread
+      from u_s_chat c
+    <include refid="listWhere"/>
+     order by unread > 0 desc, coalesce(c.lastmessagetime, c.createtime) desc, c.id desc
+     limit #{offset}, #{limit}
+  </select>
+
+  <select id="countList" resultType="int">
+    select count(1) from u_s_chat c
+    <include refid="listWhere"/>
+  </select>
+
+  <!--
+    悬浮球红点用：全站运营未读的消息**总条数**。
+
+    数消息不数会话：红点上写 3 的时候，运营期待点开能看到 3 句新话。
+  -->
+  <select id="totalUnreadForConsole" resultType="int">
+    select count(1)
+      from u_s_chatmessage m
+      join u_s_chat c on c.id = m.chatid
+     where m.sender = '买家' and m.id > c.consolereadid
+  </select>
+</mapper>

@@ -1,0 +1,371 @@
+{
+  "version": 1,
+  "title": {
+    "zh": "硅胶管在线定制",
+    "en": "Configure your silicone tubing",
+    "es": "Configure su tubo de silicona",
+    "pt": "Configure o seu tubo de silicone",
+    "it": "Configura il tuo tubo in silicone",
+    "ko": "실리콘 튜브 맞춤 주문",
+    "ja": "シリコンチューブのオーダー"
+  },
+  "lead": {
+    "zh": "选好管型、填好长度，要定制就把参数一项项告诉我们。我们按你的选择书面报价，本站不收款。",
+    "en": "Pick a tube, enter the length, and tell us your specs step by step if you need a custom one. We reply with a written quote — nothing is paid on this site.",
+    "es": "Elija el tubo, indique la longitud y, si lo necesita a medida, díganos sus especificaciones paso a paso. Le respondemos con un presupuesto por escrito; en este sitio no se paga nada.",
+    "pt": "Escolha o tubo, indique o comprimento e, se precisar de um sob medida, informe as especificações passo a passo. Respondemos com um orçamento por escrito — nada é pago neste site.",
+    "it": "Scegli il tubo, indica la lunghezza e, se ti serve su misura, dacci le specifiche passo dopo passo. Rispondiamo con un preventivo scritto: su questo sito non si paga nulla.",
+    "ko": "튜브를 고르고 길이를 입력하세요. 맞춤 제작이 필요하면 사양을 단계별로 알려 주세요. 선택하신 내용으로 서면 견적을 보내 드리며, 이 사이트에서는 결제하지 않습니다.",
+    "ja": "チューブを選んで長さを入力し、特注の場合は仕様を順にお知らせください。ご選択内容をもとに書面でお見積りします。本サイトでの支払いはありません。"
+  },
+  "groups": [
+    {
+      "code": "basic",
+      "title": { "zh": "基本信息", "en": "Basics", "es": "Datos básicos", "pt": "Informações básicas", "it": "Dati di base", "ko": "기본 정보", "ja": "基本情報" },
+      "sub": { "zh": "订购方式、用途和目的国家", "en": "Order type, application and destination", "es": "Tipo de pedido, aplicación y destino", "pt": "Tipo de pedido, aplicação e destino", "it": "Tipo di ordine, applicazione e destinazione", "ko": "주문 방식, 용도, 도착 국가", "ja": "注文方法・用途・仕向け国" },
+      "fields": [
+        {
+          "code": "mode",
+          "type": "cards",
+          "required": true,
+          "title": { "zh": "订购方式", "en": "Order type", "es": "Tipo de pedido", "pt": "Tipo de pedido", "it": "Tipo di ordine", "ko": "주문 방식", "ja": "注文方法" },
+          "help": {
+            "zh": "目录规格：商品页上的现有规格。按图定制：尺寸、硬度、颜色按你的要求做，模具我们自己开。新开模：全新截面或结构，由工程师评估。",
+            "en": "Catalogue: the specs shown on the product page. Custom: size, hardness and colour made to your requirements; we make the tooling in-house. New design: a new profile or structure, reviewed by our engineers.",
+            "es": "Catálogo: las especificaciones de la ficha del producto. A medida: tamaño, dureza y color según sus requisitos; fabricamos el molde nosotros. Nuevo diseño: un perfil o estructura nuevos, evaluados por nuestros ingenieros.",
+            "pt": "Catálogo: as especificações da página do produto. Sob medida: tamanho, dureza e cor conforme seus requisitos; fazemos o molde internamente. Novo projeto: novo perfil ou estrutura, avaliado pelos nossos engenheiros.",
+            "it": "Catalogo: le specifiche della scheda prodotto. Su misura: dimensioni, durezza e colore secondo le tue richieste; lo stampo lo facciamo noi. Nuovo progetto: un profilo o una struttura nuovi, valutati dai nostri ingegneri.",
+            "ko": "카탈로그: 상품 페이지의 기존 사양. 도면 맞춤: 크기·경도·색상을 요구대로 제작하며 금형은 자체 제작합니다. 신규 개발: 새로운 단면이나 구조로, 엔지니어가 검토합니다.",
+            "ja": "カタログ品：商品ページに記載の仕様。図面特注：寸法・硬度・色をご要望どおりに製作し、金型は自社で起こします。新規設計：新しい断面や構造で、エンジニアが検討します。"
+          },
+          "options": [
+            {
+              "code": "stock", "icon": "📦",
+              "title": { "zh": "目录规格", "en": "Catalogue", "es": "Catálogo", "pt": "Catálogo", "it": "Catalogo", "ko": "카탈로그", "ja": "カタログ品" },
+              "desc": { "zh": "按商品页现有规格", "en": "As listed", "es": "Tal como aparece", "pt": "Conforme listado", "it": "Come in scheda", "ko": "기존 사양 그대로", "ja": "掲載仕様のまま" }
+            },
+            {
+              "code": "custom", "icon": "📐",
+              "title": { "zh": "按图定制", "en": "Custom", "es": "A medida", "pt": "Sob medida", "it": "Su misura", "ko": "도면 맞춤", "ja": "図面特注" },
+              "desc": { "zh": "尺寸、硬度、颜色按你的", "en": "Your size, hardness, colour", "es": "Su tamaño, dureza y color", "pt": "Seu tamanho, dureza e cor", "it": "Tue misure, durezza, colore", "ko": "원하는 크기·경도·색상", "ja": "寸法・硬度・色を指定" },
+              "badge": { "zh": "常选", "en": "Popular", "es": "Frecuente", "pt": "Mais pedido", "it": "Più scelto", "ko": "인기", "ja": "人気" }
+            },
+            {
+              "code": "odm", "icon": "🛠️",
+              "title": { "zh": "新开模", "en": "New design", "es": "Nuevo diseño", "pt": "Novo projeto", "it": "Nuovo progetto", "ko": "신규 개발", "ja": "新規設計" },
+              "desc": { "zh": "新截面 / 新结构", "en": "New profile or structure", "es": "Perfil o estructura nuevos", "pt": "Novo perfil ou estrutura", "it": "Nuovo profilo o struttura", "ko": "새 단면·구조", "ja": "新しい断面・構造" },
+              "badge": { "zh": "需评估", "en": "Reviewed", "es": "Con estudio", "pt": "Sob análise", "it": "Da valutare", "ko": "검토 필요", "ja": "要検討" }
+            }
+          ]
+        },
+        {
+          "code": "application",
+          "type": "options",
+          "required": true,
+          "title": { "zh": "用途", "en": "Application", "es": "Aplicación", "pt": "Aplicação", "it": "Applicazione", "ko": "용도", "ja": "用途" },
+          "help": {
+            "zh": "用来建议材料等级（后面可以改）。",
+            "en": "Used to suggest the material grade (you can change it later).",
+            "es": "Sirve para sugerir el grado del material (puede cambiarlo después).",
+            "pt": "Usado para sugerir o grau do material (você pode alterar depois).",
+            "it": "Serve a suggerire il grado del materiale (puoi cambiarlo dopo).",
+            "ko": "재료 등급을 추천하는 데 사용됩니다(나중에 변경 가능).",
+            "ja": "材料グレードの提案に使います（後で変更できます）。"
+          },
+          "options": [
+            { "code": "food", "sets": { "grade": "food" }, "title": { "zh": "食品 / 饮料", "en": "Food and beverage", "es": "Alimentos y bebidas", "pt": "Alimentos e bebidas", "it": "Alimenti e bevande", "ko": "식품·음료", "ja": "食品・飲料" } },
+            { "code": "medical", "sets": { "grade": "medical" }, "title": { "zh": "医疗器械", "en": "Medical devices", "es": "Dispositivos médicos", "pt": "Dispositivos médicos", "it": "Dispositivi medici", "ko": "의료기기", "ja": "医療機器" } },
+            { "code": "massage", "sets": { "grade": "standard" }, "title": { "zh": "按摩 / 气压理疗设备", "en": "Massage and air-compression devices", "es": "Equipos de masaje y presoterapia", "pt": "Equipamentos de massagem e pressoterapia", "it": "Apparecchi per massaggio e pressoterapia", "ko": "마사지·공기압 치료기기", "ja": "マッサージ・エアコンプレッション機器" } },
+            { "code": "appliance", "sets": { "grade": "standard" }, "title": { "zh": "家电 / 电子", "en": "Appliances and electronics", "es": "Electrodomésticos y electrónica", "pt": "Eletrodomésticos e eletrônicos", "it": "Elettrodomestici ed elettronica", "ko": "가전·전자", "ja": "家電・電子機器" } },
+            { "code": "industrial", "sets": { "grade": "standard" }, "title": { "zh": "工业流体 / 气路", "en": "Industrial fluid and air lines", "es": "Fluidos y líneas de aire industriales", "pt": "Fluidos e linhas de ar industriais", "it": "Fluidi e linee aria industriali", "ko": "산업용 유체·공압 라인", "ja": "産業用流体・エア配管" } },
+            { "code": "other", "title": { "zh": "其他", "en": "Other", "es": "Otro", "pt": "Outro", "it": "Altro", "ko": "기타", "ja": "その他" } }
+          ]
+        },
+        {
+          "code": "country",
+          "type": "options",
+          "required": true,
+          "title": { "zh": "目的国家", "en": "Destination country", "es": "País de destino", "pt": "País de destino", "it": "Paese di destinazione", "ko": "도착 국가", "ja": "仕向け国" },
+          "help": {
+            "zh": "用来建议认证（可以改）和估算运费。",
+            "en": "Used to suggest certifications (you can change them) and to quote freight.",
+            "es": "Sirve para sugerir certificaciones (puede cambiarlas) y cotizar el transporte.",
+            "pt": "Usado para sugerir certificações (você pode alterá-las) e cotar o frete.",
+            "it": "Serve a suggerire le certificazioni (puoi cambiarle) e a quotare la spedizione.",
+            "ko": "인증을 추천하고(변경 가능) 운임을 견적하는 데 사용됩니다.",
+            "ja": "認証の提案（変更可）と運賃の見積りに使います。"
+          },
+          "options": [
+            { "code": "US", "sets": { "certs": [ "FDA", "RoHS" ] }, "title": { "zh": "美国", "en": "United States", "es": "Estados Unidos", "pt": "Estados Unidos", "it": "Stati Uniti", "ko": "미국", "ja": "アメリカ" } },
+            { "code": "EU", "sets": { "certs": [ "RoHS", "REACH" ] }, "title": { "zh": "欧盟", "en": "European Union", "es": "Unión Europea", "pt": "União Europeia", "it": "Unione Europea", "ko": "유럽연합", "ja": "EU" } },
+            { "code": "GB", "sets": { "certs": [ "RoHS", "REACH" ] }, "title": { "zh": "英国", "en": "United Kingdom", "es": "Reino Unido", "pt": "Reino Unido", "it": "Regno Unito", "ko": "영국", "ja": "イギリス" } },
+            { "code": "JP", "title": { "zh": "日本", "en": "Japan", "es": "Japón", "pt": "Japão", "it": "Giappone", "ko": "일본", "ja": "日本" } },
+            { "code": "KR", "title": { "zh": "韩国", "en": "South Korea", "es": "Corea del Sur", "pt": "Coreia do Sul", "it": "Corea del Sud", "ko": "한국", "ja": "韓国" } },
+            { "code": "LATAM", "title": { "zh": "拉美", "en": "Latin America", "es": "Latinoamérica", "pt": "América Latina", "it": "America Latina", "ko": "중남미", "ja": "中南米" } },
+            { "code": "ASIA", "title": { "zh": "亚洲其他", "en": "Rest of Asia", "es": "Resto de Asia", "pt": "Restante da Ásia", "it": "Resto dell'Asia", "ko": "기타 아시아", "ja": "その他アジア" } },
+            { "code": "CN", "title": { "zh": "中国", "en": "China", "es": "China", "pt": "China", "it": "Cina", "ko": "중국", "ja": "中国" } },
+            { "code": "OTHER", "title": { "zh": "其他", "en": "Other", "es": "Otro", "pt": "Outro", "it": "Altro", "ko": "기타", "ja": "その他" } }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "tube",
+      "title": { "zh": "管型与长度", "en": "Tube and length", "es": "Tubo y longitud", "pt": "Tubo e comprimento", "it": "Tubo e lunghezza", "ko": "튜브와 길이", "ja": "チューブと長さ" },
+      "sub": { "zh": "可多选，再分别填米数", "en": "Choose one or more, then enter metres", "es": "Elija uno o varios e indique los metros", "pt": "Escolha um ou mais e indique os metros", "it": "Scegline uno o più e indica i metri", "ko": "여러 개 선택 후 미터 수 입력", "ja": "複数選択可、それぞれメートル数を入力" },
+      "fields": [
+        {
+          "code": "tubes",
+          "type": "cards",
+          "multi": true,
+          "required": true,
+          "title": { "zh": "管型", "en": "Tube", "es": "Tubo", "pt": "Tubo", "it": "Tubo", "ko": "튜브", "ja": "チューブ" },
+          "help": {
+            "zh": "定制时选最接近的一款作底，差别写在后面的尺寸说明里。",
+            "en": "For a custom tube, pick the closest one as a base and describe the differences in the size notes later.",
+            "es": "Para un tubo a medida, elija el más parecido como base y describa las diferencias más adelante en las medidas.",
+            "pt": "Para um tubo sob medida, escolha o mais parecido como base e descreva as diferenças depois, nas medidas.",
+            "it": "Per un tubo su misura, scegli il più simile come base e descrivi le differenze più avanti nelle misure.",
+            "ko": "맞춤 제작이라면 가장 비슷한 것을 기준으로 고르고, 차이점은 뒤의 치수 설명에 적어 주세요.",
+            "ja": "特注の場合は最も近いものをベースに選び、違いは後の寸法欄にご記入ください。"
+          },
+          "options": [
+            {
+              "code": "tube4", "icon": "〰️", "goods": "12010304",
+              "title": { "zh": "4 腔单排硅胶管", "en": "4-channel single-row tube", "es": "Tubo de 4 canales en una fila", "pt": "Tubo de 4 canais em fileira única", "it": "Tubo a 4 canali in fila singola", "ko": "4채널 단열 튜브", "ja": "4穴一列チューブ" },
+              "desc": { "zh": "食品级 · 按米", "en": "Food grade, per metre", "es": "Grado alimentario, por metro", "pt": "Grau alimentício, por metro", "it": "Grado alimentare, al metro", "ko": "식품 등급 · 미터 단위", "ja": "食品グレード・メートル単位" }
+            },
+            {
+              "code": "tube8", "icon": "〰️", "goods": "12010305",
+              "title": { "zh": "8 腔双排手感油硅胶管", "en": "8-channel double-row soft-touch tube", "es": "Tubo de 8 canales en doble fila, tacto suave", "pt": "Tubo de 8 canais em fileira dupla, toque suave", "it": "Tubo a 8 canali in doppia fila, soft-touch", "ko": "8채널 복열 소프트터치 튜브", "ja": "8穴二列ソフトタッチチューブ" },
+              "desc": { "zh": "手感油表面 · 按米", "en": "Soft-touch finish, per metre", "es": "Acabado suave, por metro", "pt": "Acabamento toque suave, por metro", "it": "Finitura soft-touch, al metro", "ko": "소프트터치 표면 · 미터 단위", "ja": "ソフトタッチ仕上げ・メートル単位" }
+            }
+          ]
+        },
+        {
+          "code": "tubeQty",
+          "type": "goods",
+          "source": "tubes",
+          "title": { "zh": "长度（米）", "en": "Length (metres)", "es": "Longitud (metros)", "pt": "Comprimento (metros)", "it": "Lunghezza (metri)", "ko": "길이(미터)", "ja": "長さ（メートル）" },
+          "help": {
+            "zh": "大货每单合计起订 500 米；先打样的话不限米数。",
+            "en": "Production orders start at 500 metres in total; samples have no minimum.",
+            "es": "Los pedidos de producción empiezan en 500 metros en total; las muestras no tienen mínimo.",
+            "pt": "Pedidos de produção começam em 500 metros no total; amostras não têm mínimo.",
+            "it": "Gli ordini di produzione partono da 500 metri in totale; i campioni non hanno minimo.",
+            "ko": "양산 주문은 합계 500미터부터이며, 샘플은 최소 수량이 없습니다.",
+            "ja": "量産は合計500メートルから。サンプルは数量制限なし。"
+          }
+        }
+      ]
+    },
+    {
+      "code": "spec",
+      "title": { "zh": "定制参数", "en": "Custom specs", "es": "Especificaciones a medida", "pt": "Especificações sob medida", "it": "Specifiche su misura", "ko": "맞춤 사양", "ja": "特注仕様" },
+      "sub": { "zh": "按图定制 / 新开模才需要", "en": "Only for custom and new designs", "es": "Solo para pedidos a medida y nuevos diseños", "pt": "Apenas para sob medida e novos projetos", "it": "Solo per su misura e nuovi progetti", "ko": "도면 맞춤·신규 개발만 해당", "ja": "図面特注・新規設計のみ" },
+      "showIf": [ { "field": "mode", "in": [ "custom", "odm" ] } ],
+      "fields": [
+        {
+          "code": "grade",
+          "type": "options",
+          "required": true,
+          "title": { "zh": "材料等级", "en": "Material grade", "es": "Grado del material", "pt": "Grau do material", "it": "Grado del materiale", "ko": "재료 등급", "ja": "材料グレード" },
+          "options": [
+            { "code": "standard", "title": { "zh": "通用级", "en": "General purpose", "es": "Uso general", "pt": "Uso geral", "it": "Uso generale", "ko": "일반용", "ja": "汎用" } },
+            { "code": "food", "title": { "zh": "食品级（铂金硫化）", "en": "Food grade (platinum-cured)", "es": "Grado alimentario (curado con platino)", "pt": "Grau alimentício (cura com platina)", "it": "Grado alimentare (vulcanizzato al platino)", "ko": "식품 등급(백금 경화)", "ja": "食品グレード（白金加硫）" } },
+            {
+              "code": "medical",
+              "title": { "zh": "医疗级", "en": "Medical grade", "es": "Grado médico", "pt": "Grau médico", "it": "Grado medicale", "ko": "의료 등급", "ja": "医療グレード" },
+              "badge": { "zh": "需评估", "en": "Reviewed", "es": "Con estudio", "pt": "Sob análise", "it": "Da valutare", "ko": "검토 필요", "ja": "要検討" }
+            }
+          ]
+        },
+        {
+          "code": "hardness",
+          "type": "options",
+          "title": { "zh": "邵氏硬度", "en": "Shore hardness", "es": "Dureza Shore", "pt": "Dureza Shore", "it": "Durezza Shore", "ko": "쇼어 경도", "ja": "ショア硬度" },
+          "help": {
+            "zh": "越小越软。拿不准就选「按用途推荐」。",
+            "en": "Lower is softer. Not sure? Choose \"Recommend for me\".",
+            "es": "Cuanto menor, más blando. ¿No está seguro? Elija «Recomiéndenme».",
+            "pt": "Quanto menor, mais macio. Não tem certeza? Escolha \"Recomendem para mim\".",
+            "it": "Più basso è, più è morbido. Non sei sicuro? Scegli «Consigliatemi voi».",
+            "ko": "숫자가 작을수록 부드럽습니다. 잘 모르겠으면 '용도에 맞게 추천'을 선택하세요.",
+            "ja": "数値が小さいほど柔らかくなります。迷ったら「用途に合わせて推奨」を選んでください。"
+          },
+          "options": [
+            { "code": "A30", "title": { "zh": "30A", "en": "30A", "es": "30A", "pt": "30A", "it": "30A", "ko": "30A", "ja": "30A" } },
+            { "code": "A40", "title": { "zh": "40A", "en": "40A", "es": "40A", "pt": "40A", "it": "40A", "ko": "40A", "ja": "40A" } },
+            { "code": "A50", "title": { "zh": "50A", "en": "50A", "es": "50A", "pt": "50A", "it": "50A", "ko": "50A", "ja": "50A" } },
+            { "code": "A60", "title": { "zh": "60A", "en": "60A", "es": "60A", "pt": "60A", "it": "60A", "ko": "60A", "ja": "60A" } },
+            { "code": "A70", "title": { "zh": "70A", "en": "70A", "es": "70A", "pt": "70A", "it": "70A", "ko": "70A", "ja": "70A" } },
+            { "code": "A80", "title": { "zh": "80A", "en": "80A", "es": "80A", "pt": "80A", "it": "80A", "ko": "80A", "ja": "80A" } },
+            { "code": "advise", "title": { "zh": "按用途推荐", "en": "Recommend for me", "es": "Recomiéndenme", "pt": "Recomendem para mim", "it": "Consigliatemi voi", "ko": "용도에 맞게 추천", "ja": "用途に合わせて推奨" } }
+          ]
+        },
+        {
+          "code": "color",
+          "type": "swatch",
+          "title": { "zh": "颜色", "en": "Colour", "es": "Color", "pt": "Cor", "it": "Colore", "ko": "색상", "ja": "色" },
+          "options": [
+            { "code": "clear", "color": "linear-gradient(135deg, #F7F7F2, #D6DAD3)", "title": { "zh": "本色半透明", "en": "Natural translucent", "es": "Natural translúcido", "pt": "Natural translúcido", "it": "Naturale traslucido", "ko": "반투명 원색", "ja": "半透明ナチュラル" } },
+            { "code": "white", "color": "#FFFFFF", "title": { "zh": "白", "en": "White", "es": "Blanco", "pt": "Branco", "it": "Bianco", "ko": "흰색", "ja": "白" } },
+            { "code": "black", "color": "#1A1A1A", "title": { "zh": "黑", "en": "Black", "es": "Negro", "pt": "Preto", "it": "Nero", "ko": "검정", "ja": "黒" } },
+            { "code": "red", "color": "#C8322D", "title": { "zh": "红", "en": "Red", "es": "Rojo", "pt": "Vermelho", "it": "Rosso", "ko": "빨강", "ja": "赤" } },
+            { "code": "blue", "color": "#2F6FD6", "title": { "zh": "蓝", "en": "Blue", "es": "Azul", "pt": "Azul", "it": "Blu", "ko": "파랑", "ja": "青" } },
+            { "code": "grey", "color": "#8A8F94", "title": { "zh": "灰", "en": "Grey", "es": "Gris", "pt": "Cinza", "it": "Grigio", "ko": "회색", "ja": "グレー" } },
+            { "code": "pantone", "color": "linear-gradient(90deg, #E53935, #FBC02D, #43A047, #1E88E5)", "title": { "zh": "指定色号（写在尺寸说明里）", "en": "Pantone / RAL (in the size notes)", "es": "Pantone / RAL (en las medidas)", "pt": "Pantone / RAL (nas medidas)", "it": "Pantone / RAL (nelle misure)", "ko": "지정 색상 번호(치수 설명에 기재)", "ja": "色番号指定（寸法欄に記入）" } }
+          ]
+        },
+        {
+          "code": "surface",
+          "type": "options",
+          "title": { "zh": "表面处理", "en": "Surface finish", "es": "Acabado superficial", "pt": "Acabamento superficial", "it": "Finitura superficiale", "ko": "표면 처리", "ja": "表面処理" },
+          "options": [
+            { "code": "gloss", "title": { "zh": "常规光面", "en": "Standard smooth", "es": "Liso estándar", "pt": "Liso padrão", "it": "Liscio standard", "ko": "일반 광택", "ja": "標準（光沢）" } },
+            { "code": "softTouch", "title": { "zh": "手感油", "en": "Soft-touch coating", "es": "Recubrimiento de tacto suave", "pt": "Revestimento toque suave", "it": "Rivestimento soft-touch", "ko": "소프트터치 코팅", "ja": "ソフトタッチ塗装" } },
+            { "code": "matte", "title": { "zh": "雾面", "en": "Matte", "es": "Mate", "pt": "Fosco", "it": "Opaco", "ko": "무광", "ja": "マット" } }
+          ]
+        },
+        {
+          "code": "dims",
+          "type": "text",
+          "required": true,
+          "title": { "zh": "尺寸说明", "en": "Size notes", "es": "Medidas", "pt": "Medidas", "it": "Misure", "ko": "치수 설명", "ja": "寸法" },
+          "hint": {
+            "zh": "腔数、每腔内径、外径、壁厚（mm）和公差；指定色号也写在这里。",
+            "en": "Number of channels, inner diameter of each, outer diameter, wall thickness (mm) and tolerances; put the colour code here too.",
+            "es": "Número de canales, diámetro interior de cada uno, diámetro exterior, espesor de pared (mm) y tolerancias; indique aquí también el código de color.",
+            "pt": "Número de canais, diâmetro interno de cada um, diâmetro externo, espessura da parede (mm) e tolerâncias; coloque aqui também o código de cor.",
+            "it": "Numero di canali, diametro interno di ciascuno, diametro esterno, spessore di parete (mm) e tolleranze; indica qui anche il codice colore.",
+            "ko": "채널 수, 각 채널 내경, 외경, 벽 두께(mm)와 공차. 지정 색상 번호도 여기에 적어 주세요.",
+            "ja": "穴数、各穴の内径、外径、肉厚（mm）と公差。色番号もこちらにご記入ください。"
+          }
+        },
+        {
+          "code": "form",
+          "type": "options",
+          "title": { "zh": "交货形态", "en": "Supplied as", "es": "Formato de entrega", "pt": "Forma de entrega", "it": "Fornito come", "ko": "납품 형태", "ja": "納品形態" },
+          "options": [
+            { "code": "coil", "title": { "zh": "整卷", "en": "Coils", "es": "En rollo", "pt": "Em rolo", "it": "In rotolo", "ko": "롤", "ja": "巻き" } },
+            { "code": "cut", "title": { "zh": "按长度切段", "en": "Cut to length", "es": "Cortado a medida", "pt": "Cortado no comprimento", "it": "Tagliato a misura", "ko": "정척 절단", "ja": "定尺カット" } }
+          ]
+        },
+        {
+          "code": "cutLen",
+          "type": "text",
+          "required": true,
+          "showIf": [ { "field": "form", "in": [ "cut" ] } ],
+          "title": { "zh": "切段长度", "en": "Cut length", "es": "Longitud de corte", "pt": "Comprimento de corte", "it": "Lunghezza di taglio", "ko": "절단 길이", "ja": "カット長さ" },
+          "hint": {
+            "zh": "每段多长、公差多少，例如 350 mm ±2。",
+            "en": "Length per piece and tolerance, e.g. 350 mm ±2.",
+            "es": "Longitud por pieza y tolerancia, p. ej. 350 mm ±2.",
+            "pt": "Comprimento por peça e tolerância, ex.: 350 mm ±2.",
+            "it": "Lunghezza per pezzo e tolleranza, es. 350 mm ±2.",
+            "ko": "개당 길이와 공차(예: 350 mm ±2).",
+            "ja": "1本あたりの長さと公差（例：350 mm ±2）。"
+          }
+        },
+        {
+          "code": "drawing",
+          "type": "options",
+          "required": true,
+          "title": { "zh": "图纸 / 样品", "en": "Drawing or sample", "es": "Plano o muestra", "pt": "Desenho ou amostra", "it": "Disegno o campione", "ko": "도면·샘플", "ja": "図面・サンプル" },
+          "help": {
+            "zh": "图纸（PDF / DWG / STEP）或实物照片，请在提交后回复确认邮件发给我们。",
+            "en": "Send drawings (PDF, DWG, STEP) or photos in reply to the confirmation email after submitting.",
+            "es": "Envíe los planos (PDF, DWG, STEP) o fotos respondiendo al correo de confirmación tras enviar el pedido.",
+            "pt": "Envie os desenhos (PDF, DWG, STEP) ou fotos respondendo ao e-mail de confirmação após enviar.",
+            "it": "Invia i disegni (PDF, DWG, STEP) o le foto rispondendo all'e-mail di conferma dopo l'invio.",
+            "ko": "도면(PDF·DWG·STEP)이나 사진은 제출 후 확인 메일에 회신으로 보내 주세요.",
+            "ja": "図面（PDF・DWG・STEP）や写真は、送信後の確認メールへの返信でお送りください。"
+          },
+          "options": [
+            { "code": "haveDrawing", "title": { "zh": "有图纸", "en": "I have a drawing", "es": "Tengo plano", "pt": "Tenho desenho", "it": "Ho un disegno", "ko": "도면 있음", "ja": "図面あり" } },
+            { "code": "haveSample", "title": { "zh": "有实物，可以寄样", "en": "I can send a physical sample", "es": "Puedo enviar una muestra física", "pt": "Posso enviar uma amostra física", "it": "Posso inviare un campione fisico", "ko": "실물 샘플 발송 가능", "ja": "現物サンプルを送れる" } },
+            { "code": "needDesign", "title": { "zh": "都没有，请你们出方案", "en": "Neither — please propose a design", "es": "Ninguno: propongan ustedes un diseño", "pt": "Nenhum — proponham um projeto", "it": "Nessuno: proponete voi un progetto", "ko": "둘 다 없음, 설계 제안 요청", "ja": "どちらもない。設計を提案してほしい" } }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "cert",
+      "title": { "zh": "认证与文件", "en": "Certifications and documents", "es": "Certificaciones y documentos", "pt": "Certificações e documentos", "it": "Certificazioni e documenti", "ko": "인증 및 문서", "ja": "認証・書類" },
+      "sub": { "zh": "按目的国家自动建议", "en": "Suggested by country", "es": "Sugeridas según el país", "pt": "Sugeridas conforme o país", "it": "Suggerite in base al paese", "ko": "국가별 자동 추천", "ja": "仕向け国から自動提案" },
+      "fields": [
+        {
+          "code": "certs",
+          "type": "options",
+          "multi": true,
+          "title": { "zh": "需要的认证 / 文件", "en": "Required certifications and documents", "es": "Certificaciones y documentos necesarios", "pt": "Certificações e documentos necessários", "it": "Certificazioni e documenti richiesti", "ko": "필요한 인증·문서", "ja": "必要な認証・書類" },
+          "help": {
+            "zh": "这里填的是你的需求。我们能提供哪些，会在报价时书面确认。尺寸全检报告每批随货都有，不用选。",
+            "en": "This is your requirement; which ones we can provide is confirmed in writing in the quote. A full dimensional inspection report ships with every batch, no need to select it.",
+            "es": "Es su requisito; lo que podemos aportar se confirma por escrito en el presupuesto. El informe de inspección dimensional completo acompaña cada lote, no hace falta marcarlo.",
+            "pt": "Este é o seu requisito; o que podemos fornecer é confirmado por escrito no orçamento. O relatório completo de inspeção dimensional acompanha cada lote, não precisa selecioná-lo.",
+            "it": "È la tua richiesta; quali possiamo fornire lo confermiamo per iscritto nel preventivo. Il rapporto di controllo dimensionale completo accompagna ogni lotto, non serve selezionarlo.",
+            "ko": "고객님의 요구 사항입니다. 제공 가능한 항목은 견적서에서 서면으로 확인해 드립니다. 전수 치수 검사 보고서는 매 로트마다 동봉되므로 선택하지 않아도 됩니다.",
+            "ja": "こちらはご要望の入力欄です。対応可否はお見積りで書面にて確認します。全数寸法検査報告書は毎ロット同梱のため選択不要です。"
+          },
+          "options": [
+            { "code": "RoHS", "title": { "zh": "RoHS", "en": "RoHS", "es": "RoHS", "pt": "RoHS", "it": "RoHS", "ko": "RoHS", "ja": "RoHS" } },
+            { "code": "REACH", "title": { "zh": "REACH", "en": "REACH", "es": "REACH", "pt": "REACH", "it": "REACH", "ko": "REACH", "ja": "REACH" } },
+            { "code": "FDA", "title": { "zh": "FDA（食品接触）", "en": "FDA (food contact)", "es": "FDA (contacto alimentario)", "pt": "FDA (contato com alimentos)", "it": "FDA (contatto alimentare)", "ko": "FDA(식품 접촉)", "ja": "FDA（食品接触）" } },
+            { "code": "LFGB", "title": { "zh": "LFGB（食品接触）", "en": "LFGB (food contact)", "es": "LFGB (contacto alimentario)", "pt": "LFGB (contato com alimentos)", "it": "LFGB (contatto alimentare)", "ko": "LFGB(식품 접촉)", "ja": "LFGB（食品接触）" } },
+            { "code": "ISO9001", "title": { "zh": "ISO 9001 体系证书", "en": "ISO 9001 certificate", "es": "Certificado ISO 9001", "pt": "Certificado ISO 9001", "it": "Certificato ISO 9001", "ko": "ISO 9001 인증서", "ja": "ISO 9001 認証書" } }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "delivery",
+      "title": { "zh": "包装、打样与交期", "en": "Packing, samples and timing", "es": "Embalaje, muestras y plazo", "pt": "Embalagem, amostras e prazo", "it": "Imballo, campioni e tempi", "ko": "포장·샘플·납기", "ja": "梱包・サンプル・納期" },
+      "fields": [
+        {
+          "code": "pack",
+          "type": "options",
+          "title": { "zh": "包装", "en": "Packing", "es": "Embalaje", "pt": "Embalagem", "it": "Imballo", "ko": "포장", "ja": "梱包" },
+          "options": [
+            { "code": "std", "title": { "zh": "标准包装", "en": "Standard packing", "es": "Embalaje estándar", "pt": "Embalagem padrão", "it": "Imballo standard", "ko": "표준 포장", "ja": "標準梱包" } },
+            { "code": "bundle", "title": { "zh": "按数量分包（写在备注里）", "en": "Bagged by quantity (say how in the note)", "es": "Embolsado por cantidad (indíquelo en la nota)", "pt": "Embalado por quantidade (indique na observação)", "it": "Imbustato per quantità (indicalo nella nota)", "ko": "수량별 소분 포장(비고에 기재)", "ja": "数量ごとに小分け（備考に記入）" } },
+            { "code": "label", "needs": [ { "field": "mode", "in": [ "custom", "odm" ] } ], "title": { "zh": "贴你的标签 / 中性包装", "en": "Your labels or plain packing", "es": "Sus etiquetas o embalaje neutro", "pt": "Suas etiquetas ou embalagem neutra", "it": "Tue etichette o imballo neutro", "ko": "고객 라벨·무지 포장", "ja": "貴社ラベル・無地梱包" } }
+          ]
+        },
+        {
+          "code": "sample",
+          "type": "options",
+          "required": true,
+          "title": { "zh": "先打样吗", "en": "Sample first?", "es": "¿Muestra primero?", "pt": "Amostra primeiro?", "it": "Prima un campione?", "ko": "샘플 먼저 받으시겠어요?", "ja": "先にサンプルを作りますか" },
+          "help": {
+            "zh": "定制件建议先打样确认，再做大货。",
+            "en": "For custom tubing we recommend approving samples before production.",
+            "es": "Para tubos a medida recomendamos aprobar muestras antes de producir.",
+            "pt": "Para tubos sob medida, recomendamos aprovar amostras antes da produção.",
+            "it": "Per i tubi su misura consigliamo di approvare i campioni prima della produzione.",
+            "ko": "맞춤 제품은 샘플 확인 후 양산하는 것을 권장합니다.",
+            "ja": "特注品はサンプル承認後の量産をおすすめします。"
+          },
+          "options": [
+            { "code": "sample", "title": { "zh": "先打样", "en": "Samples first", "es": "Primero muestras", "pt": "Amostras primeiro", "it": "Prima i campioni", "ko": "샘플 먼저", "ja": "まずサンプル" } },
+            { "code": "bulk", "moq": 500, "title": { "zh": "直接做大货（合计 ≥ 500 米）", "en": "Straight to production (≥ 500 m in total)", "es": "Directo a producción (≥ 500 m en total)", "pt": "Direto para produção (≥ 500 m no total)", "it": "Direttamente in produzione (≥ 500 m in totale)", "ko": "바로 양산(합계 500m 이상)", "ja": "すぐに量産（合計500m以上）" } }
+          ]
+        },
+        {
+          "code": "wantDate",
+          "type": "date",
+          "title": { "zh": "期望到货", "en": "Wanted by", "es": "Entrega deseada", "pt": "Entrega desejada", "it": "Consegna desiderata", "ko": "희망 도착일", "ja": "希望納期" },
+          "hint": {
+            "zh": "只是参考，交期以报价为准。",
+            "en": "For reference only; lead time is confirmed in the quote.",
+            "es": "Solo orientativo; el plazo se confirma en el presupuesto.",
+            "pt": "Apenas referência; o prazo é confirmado no orçamento.",
+            "it": "Solo indicativo; i tempi sono confermati nel preventivo.",
+            "ko": "참고용이며, 납기는 견적서 기준입니다.",
+            "ja": "目安です。納期はお見積りにて確定します。"
+          }
+        }
+      ]
+    }
+  ]
+}

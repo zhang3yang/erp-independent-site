@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.FinanceAccountMapper">
+
+    <resultMap type="com.ruoyi.system.domain.FinanceAccount" id="FinanceAccountResult">
+        <result property="id"              column="id" />
+        <result property="shopCode"        column="shop_code" />
+        <result property="accountCode"     column="account_code" />
+        <result property="accountName"     column="account_name" />
+        <result property="accountFullName" column="account_full_name" />
+        <result property="accountNo"       column="account_no" />
+        <result property="bankName"        column="bank_name" />
+        <result property="currentBalance"  column="current_balance" />
+        <result property="currency"        column="currency" />
+        <result property="isActive"        column="is_active" />
+        <result property="remark"          column="remark" />
+        <result property="createUser"      column="create_user" />
+        <result property="createTime"      column="create_time" />
+        <result property="updateUser"      column="update_user" />
+        <result property="updateTime"      column="update_time" />
+        <result property="createUserName"  column="create_user_name" />
+    </resultMap>
+
+    <sql id="accountColumns">
+        a.id, a.shop_code, a.accountcode as account_code, a.accountname as account_name,
+        a.accountfullname as account_full_name, a.accountno as account_no,
+        a.bankname as bank_name, a.currentbalance as current_balance, a.currency,
+        a.isactive as is_active, a.remark,
+        a.createuser as create_user, a.createtime as create_time,
+        a.updateuser as update_user, a.updatetime as update_time
+    </sql>
+
+    <!-- 左连 sys_user 把创建人账号换成昵称，与采购、库存模块口径一致 -->
+    <sql id="selectAccountVo">
+        select <include refid="accountColumns" />,
+               cu.nick_name as create_user_name
+          from sdsshop.u_f_account a
+          left join sys_user cu on cu.user_name = a.createuser
+    </sql>
+
+    <select id="selectAccountList" resultMap="FinanceAccountResult">
+        <include refid="selectAccountVo" />
+         where a.shop_code = #{shopCode}
+        <if test="accountCode != null and accountCode != ''">
+           and a.accountcode = #{accountCode}
+        </if>
+        <if test="accountName != null and accountName != ''">
+           and a.accountname like concat('%', #{accountName}, '%')
+        </if>
+        <if test="bankName != null and bankName != ''">
+           and a.bankname like concat('%', #{bankName}, '%')
+        </if>
+        <if test="isActive != null">
+           and a.isactive = #{isActive}
+        </if>
+         order by a.isactive desc, a.accountcode
+    </select>
+
+    <select id="selectAccountByCode" resultMap="FinanceAccountResult">
+        <include refid="selectAccountVo" />
+         where a.shop_code = #{shopCode}
+           and a.accountcode = #{accountCode}
+    </select>
+
+    <select id="selectAccountById" resultMap="FinanceAccountResult">
+        <include refid="selectAccountVo" />
+         where a.shop_code = #{shopCode}
+           and a.id = #{id}
+    </select>
+
+    <select id="checkAccountCodeUnique" resultType="int">
+        select count(1) from sdsshop.u_f_account
+         where shop_code = #{shopCode}
+           and accountcode = #{accountCode}
+    </select>
+
+    <insert id="insertAccount" parameterType="com.ruoyi.system.domain.FinanceAccount"
+            useGeneratedKeys="true" keyProperty="id">
+        insert into sdsshop.u_f_account(
+            shop_code, accountcode, accountname, accountfullname, accountno, bankname,
+            currentbalance, currency, isactive, remark, createuser, createtime
+        ) values(
+            #{shopCode}, #{accountCode}, #{accountName}, #{accountFullName}, #{accountNo}, #{bankName},
+            0, #{currency}, coalesce(#{isActive}, 1), #{remark}, #{createUser}, sysdate()
+        )
+    </insert>
+
+    <!--
+      通用更新。currentbalance 不在这里：余额只能由资金流水完成时通过 increaseBalance 驱动，
+      放进来会被账户维护界面提交的表单值覆盖，账面和流水就对不上账了。
+    -->
+    <update id="updateAccount" parameterType="com.ruoyi.system.domain.FinanceAccount">
+        update sdsshop.u_f_account
+           set accountname = #{accountName},
+               accountfullname = #{accountFullName},
+               accountno = #{accountNo},
+               bankname = #{bankName},
+               currency = #{currency},
+               isactive = coalesce(#{isActive}, 1),
+               remark = #{remark},
+               updateuser = #{updateUser},
+               updatetime = sysdate()
+         where shop_code = #{shopCode}
+           and id = #{id}
+    </update>
+
+    <delete id="deleteAccountByIds">
+        delete from sdsshop.u_f_account
+         where shop_code = #{shopCode}
+           and id in
+        <foreach item="id" collection="ids" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <!-- 余额自增。收入为正、支出为负，直接相加；并发多笔完成时不会丢数。 -->
+    <update id="increaseBalance">
+        update sdsshop.u_f_account
+           set currentbalance = coalesce(currentbalance, 0) + #{amount},
+               updatetime = sysdate()
+         where shop_code = #{shopCode}
+           and accountcode = #{accountCode}
+    </update>
+
+</mapper>

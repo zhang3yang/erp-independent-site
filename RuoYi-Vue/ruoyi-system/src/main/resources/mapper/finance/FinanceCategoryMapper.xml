@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.FinanceCategoryMapper">
+
+    <resultMap type="com.ruoyi.system.domain.FinanceCategory" id="FinanceCategoryResult">
+        <result property="id"           column="id" />
+        <result property="shopCode"     column="shop_code" />
+        <result property="categoryCode" column="category_code" />
+        <result property="categoryName" column="category_name" />
+        <result property="type"         column="category_type" />
+        <result property="bizType"      column="biz_type" />
+        <result property="isActive"     column="is_active" />
+        <result property="remark"       column="remark" />
+        <result property="createUser"   column="create_user" />
+        <result property="createTime"   column="create_time" />
+        <result property="updateUser"   column="update_user" />
+        <result property="updateTime"   column="update_time" />
+    </resultMap>
+
+    <sql id="selectCategoryVo">
+        select id, shop_code, categorycode as category_code, categoryname as category_name,
+               `type` as category_type, biztype as biz_type, isactive as is_active, remark,
+               createuser as create_user, createtime as create_time,
+               updateuser as update_user, updatetime as update_time
+          from sdsorder.u_f_accountcategory
+    </sql>
+
+    <select id="selectCategoryList" resultMap="FinanceCategoryResult">
+        <include refid="selectCategoryVo" />
+         where shop_code = #{shopCode}
+        <if test="categoryCode != null and categoryCode != ''">
+           and categorycode = #{categoryCode}
+        </if>
+        <if test="categoryName != null and categoryName != ''">
+           and categoryname like concat('%', #{categoryName}, '%')
+        </if>
+        <if test="type != null and type != ''">
+           and `type` = #{type}
+        </if>
+        <if test="bizType != null and bizType != ''">
+           and biztype = #{bizType}
+        </if>
+        <if test="isActive != null">
+           and isactive = #{isActive}
+        </if>
+         order by `type` desc, categorycode
+    </select>
+
+    <select id="selectCategoryByCode" resultMap="FinanceCategoryResult">
+        <include refid="selectCategoryVo" />
+         where shop_code = #{shopCode}
+           and categorycode = #{categoryCode}
+    </select>
+
+    <select id="checkCategoryCodeUnique" resultType="int">
+        select count(1) from sdsorder.u_f_accountcategory
+         where shop_code = #{shopCode}
+           and categorycode = #{categoryCode}
+    </select>
+
+    <insert id="insertCategory" parameterType="com.ruoyi.system.domain.FinanceCategory"
+            useGeneratedKeys="true" keyProperty="id">
+        insert into sdsorder.u_f_accountcategory(
+            shop_code, categorycode, categoryname, `type`, biztype, isactive, remark,
+            createuser, createtime
+        ) values(
+            #{shopCode}, #{categoryCode}, #{categoryName}, #{type}, #{bizType},
+            coalesce(#{isActive}, 1), #{remark}, #{createUser}, sysdate()
+        )
+    </insert>
+
+    <!--
+      categorycode 与 type 不在更新列里：流水表存的是分类代码，改代码会让历史流水指向不存在的分类；
+      改收支方向会让已完成流水的方向和分类对不上。要调整只能停用后新建。
+    -->
+    <update id="updateCategory" parameterType="com.ruoyi.system.domain.FinanceCategory">
+        update sdsorder.u_f_accountcategory
+           set categoryname = #{categoryName},
+               biztype = #{bizType},
+               isactive = coalesce(#{isActive}, 1),
+               remark = #{remark},
+               updateuser = #{updateUser},
+               updatetime = sysdate()
+         where shop_code = #{shopCode}
+           and id = #{id}
+    </update>
+
+    <delete id="deleteCategoryByIds">
+        delete from sdsorder.u_f_accountcategory
+         where shop_code = #{shopCode}
+           and id in
+        <foreach item="id" collection="ids" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>

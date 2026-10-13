@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.SalesOrderItemMapper">
+
+  <resultMap id="ItemResult" type="SalesOrderItem">
+    <result property="id" column="id"/><result property="shopCode" column="shop_code"/>
+    <result property="detailCode" column="detailcode"/><result property="orderCode" column="ordercode"/>
+    <result property="lineNo" column="lineno"/>
+    <result property="goodsCode" column="goodscode"/><result property="goodsName" column="goodsname"/>
+    <result property="spec" column="spec"/><result property="unit" column="unit"/>
+    <result property="qty" column="qty"/><result property="shippedQty" column="shippedqty"/>
+    <result property="remainingQty" column="remainingqty"/>
+    <result property="customMade" column="custom_made"/>
+    <result property="sourceCode" column="sourcecode"/>
+    <result property="price" column="price"/><result property="amount" column="amount"/>
+    <result property="costPrice" column="costprice"/><result property="costAmount" column="costamount"/>
+    <result property="remark" column="remark"/>
+    <result property="pendingQty" column="pending_qty"/>
+  </resultMap>
+
+  <!--
+    不列 reservedqty / stock_source：订单预占和备货来源两个概念都去掉了，列还在库里
+    （月表 DDL 里留着，历史行有值）但没有任何代码读写，查出来只会让人以为它们还有用。
+  -->
+  <sql id="columns">
+    id, shop_code, detailcode, ordercode, lineno, goodscode, goodsname, spec, unit,
+    qty, shippedqty, remainingqty, custom_made, sourcecode,
+    price, amount, costprice, costamount, remark
+  </sql>
+
+  <!--
+    未发量：订单量减去已经发出去的，是这一行还欠客户多少，也是按订单排产的上限。
+
+    原先这里还有一个「缺口」（再减掉已预占），随订单预占一起取消了：不占库存之后
+    缺口恒等于未发量，两个数说的是同一件事。
+  -->
+  <sql id="pending">
+    greatest(qty - coalesce(shippedqty, 0), 0) as pending_qty
+  </sql>
+
+  <select id="selectByOrderCode" resultMap="ItemResult">
+    select <include refid="columns"/>, <include refid="pending"/>
+      from sdsorder.u_o_orderdetail_${tableSuffix}
+     where shop_code = #{shopCode} and ordercode = #{orderCode}
+     order by lineno, detailcode
+  </select>
+
+  <!-- 批量版：一次把这批订单的明细全取回来，调用方自己按 ordercode 分组。
+       排序把 ordercode 放在最前，分组时行是连续的。 -->
+  <select id="selectByOrderCodes" resultMap="ItemResult">
+    select <include refid="columns"/>, <include refid="pending"/>
+      from sdsorder.u_o_orderdetail_${tableSuffix}
+     where shop_code = #{shopCode}
+       and ordercode in
+       <foreach collection="orderCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+     order by ordercode, lineno, detailcode
+  </select>
+
+  <!-- 全月发出过货的明细。补发只能针对已发出的行，条件下推到 SQL，
+       调用方一次查询就能拿到全月候选，不必按订单回表。 -->
+  <select id="selectShippedItemsByMonth" resultMap="ItemResult">
+    select <include refid="columns"/>, <include refid="pending"/>
+      from sdsorder.u_o_orderdetail_${tableSuffix}
+     where shop_code = #{shopCode}
+       and coalesce(shippedqty, 0) &gt; 0
+     order by ordercode, lineno, detailcode
+  </select>
+
+  <select id="selectByOrderCodeForUpdate" resultMap="ItemResult">
+    select <include refid="columns"/>, <include refid="pending"/>
+      from sdsorder.u_o_orderdetail_${tableSuffix}
+     where shop_code = #{shopCode} and ordercode = #{orderCode}
+     order by lineno, detailcode
+     for update
+  </select>
+
+  <select id="selectByDetailCodeForUpdate" resultMap="ItemResult">
+    select <include refid="columns"/>, <include refid="pending"/>
+      from sdsorder.u_o_orderdetail_${tableSuffix}
+     where shop_code = #{shopCode} and detailcode = #{detailCode}
+     for update
+  </select>
+
+  <resultMap id="ProductionCandidateResult" type="SalesOrderProductionCandidate">
+    <result property="orderCode" column="ordercode"/><result property="orderState" column="orderstate"/>
+    <result property="orderTime" column="createtime"/><result property="buyerShop" column="buyershop"/>
+    <result property="detailCode" column="detailcode"/><result property="lineNo" column="lineno"/>
+    <result property="goodsCode" column="goodscode"/><result property="goodsName" column="goodsname"/>
+    <result property="spec" column="spec"/><result property="unit" column="unit"/>
+    <result property="qty" column="qty"/><result property="shippedQty" column="shippedqty"/>
+    <result property="pendingQty" column="pending_qty"/><result property="customMade" column="custom_made"/>
+    <result property="sourceCode" column="sourcecode"/>
+  </resultMap>
+
+  <!--
+    可排产的订单明细。明细与订单头同月表，join 一次拿全，避免按订单逐条捞明细的 N+1。
+
+    筛的是「还没发完」：订单量 &gt; 已发量。以前这里要求「缺口」（再减掉已预占）大于 0，
+    缺口随订单预占一起取消了——不占库存之后它恒等于未发量，两个数说的是同一件事。
+
+    订单状态还是要卡：草稿和待审核没过审，替它们排产等于绕过审核；
+    已完成、已取消、已关闭没有再生产的意义。
+  -->
+  <select id="selectProductionCandidates" resultMap="ProductionCandidateResult">
+    select d.detailcode, d.lineno, d.goodscode, d.goodsname, d.spec, d.unit,
+           d.qty, d.shippedqty, d.custom_made, d.sourcecode,
+           greatest(d.qty - coalesce(d.shippedqty, 0), 0) as pending_qty,
+           o.ordercode, o.orderstate, o.createtime, o.buyershop
+      from sdsorder.u_o_orderdetail_${tableSuffix} d
+      join sdsorder.u_o_order_${tableSuffix} o
+        on o.shop_code = d.shop_code and o.ordercode = d.ordercode
+     where d.shop_code = #{shopCode}
+       and o.orderstate in ('已备货', '备货中', '发货中')
+       and d.qty - coalesce(d.shippedqty, 0) &gt; 0
+       <!--
+         不按 stock_source 过滤。订单页已经不展示、也不再能登记备货来源，这个字段现在
+         只由建单时的「专门生产」推出来（勾了才是生产）；拿它当门槛等于「只有定制件
+         排得了产」，普通标准件想按订单做就没有入口了。要不要做由计划员在这张表上挑。
+       -->
+    <if test="goodsCode != null and goodsCode != ''"> and d.goodscode = #{goodsCode}</if>
+     order by o.createtime desc, d.ordercode, d.lineno
+  </select>
+
+  <!-- 已发量建单时一律置零：这个数只能由发货动作推动，接受前端传值会让订单一建出来
+       就跟库存对不上账。remainingqty 初值 = qty。
+       custom_made 相反，必须收前端的值：定制与否只有下单的人知道，从数据推不出来。
+
+       不写 reservedqty / stock_source：两个概念都去掉了。列在库里是 NOT NULL DEFAULT
+       （0 和 '现货'），不写走默认值，也满足月表上的 CHECK 约束。 -->
+  <insert id="batchInsert">
+    insert into sdsorder.u_o_orderdetail_${tableSuffix}
+      (shop_code, detailcode, ordercode, lineno, goodscode, goodsname, spec, unit,
+       qty, shippedqty, remainingqty, custom_made, sourcecode,
+       price, amount, costprice, costamount, remark)
+    values
+    <foreach collection="items" item="item" separator=",">
+      (#{item.shopCode}, #{item.detailCode}, #{item.orderCode}, #{item.lineNo},
+       #{item.goodsCode}, #{item.goodsName}, #{item.spec}, #{item.unit},
+       #{item.qty}, 0, #{item.qty},
+       coalesce(#{item.customMade}, 0), #{item.sourceCode},
+       #{item.price}, #{item.amount}, coalesce(#{item.costPrice}, 0), coalesce(#{item.costAmount}, 0),
+       #{item.remark})
+    </foreach>
+  </insert>
+
+  <!-- 超发由 SQL 兜底：并发发货时后到的那笔撞上 shippedqty + delta <= qty 更新 0 行。
+       remainingqty 跟着一起算，不留给调用方，避免两个数漂开。
+
+       【坑】MySQL 的 UPDATE 赋值从左往右求值，后面的赋值看到的是前面已经更新过的值。
+       所以 remainingqty 直接写 `qty - shippedqty`——此时 shippedqty 已是新值。
+       写成 `qty - (shippedqty + #{delta})` 会把 delta 多减一次（发 6 个算出 -2）。
+       WHERE 不受影响，它在 SET 之前对原始行求值。 -->
+  <update id="increaseShippedQty">
+    update sdsorder.u_o_orderdetail_${tableSuffix}
+       set shippedqty = coalesce(shippedqty, 0) + #{delta},
+           remainingqty = qty - shippedqty
+     where shop_code = #{shopCode} and detailcode = #{detailCode}
+       and (coalesce(shippedqty, 0) + #{delta}) &gt;= 0
+       and (coalesce(shippedqty, 0) + #{delta}) &lt;= qty
+  </update>
+
+  <!--
+    stock_source 列还在库里（月表 DDL 里也留着，历史行有值），但已经没有任何代码读写它——
+    「备货来源」这个概念整个去掉了。这里只更新工单占用链接。
+  -->
+  <update id="updateSourceCode">
+    update sdsorder.u_o_orderdetail_${tableSuffix}
+       set sourcecode = #{sourceCode}
+     where shop_code = #{shopCode} and detailcode = #{detailCode}
+  </update>
+
+  <delete id="deleteByOrderCode">
+    delete from sdsorder.u_o_orderdetail_${tableSuffix}
+     where shop_code = #{shopCode} and ordercode = #{orderCode}
+  </delete>
+</mapper>

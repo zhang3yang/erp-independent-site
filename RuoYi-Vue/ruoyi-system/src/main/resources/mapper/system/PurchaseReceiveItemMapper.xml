@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.PurchaseReceiveItemMapper">
+
+  <select id="selectReceiveTableSuffixes" resultType="string">
+    select substring(table_name, length('u_p_receivedetail_') + 1)
+      from information_schema.tables
+     where table_schema = 'sdsorder' and table_name like 'u_p_receivedetail_%'
+  </select>
+
+  <resultMap id="ItemResult" type="PurchaseReceiveItem">
+    <result property="id" column="id"/><result property="shopCode" column="shop_code"/>
+    <result property="detailCode" column="detailcode"/><result property="receiveCode" column="receivecode"/>
+    <result property="purchaseDetailCode" column="purchasedetailcode"/><result property="goodsCode" column="goodscode"/>
+    <result property="goodsName" column="goodsname"/><result property="spec" column="spec"/><result property="unit" column="unit"/>
+    <result property="qty" column="qty"/><result property="actualQty" column="actualqty"/>
+    <result property="goodQty" column="goodqty"/><result property="badQty" column="badqty"/>
+    <result property="qualityStatus" column="qualitystatus"/>
+    <result property="price" column="price"/><result property="amount" column="amount"/>
+    <result property="batchCode" column="batchcode"/><result property="serialNumbers" column="serialnumbers"/>
+    <result property="inventoryDocCode" column="inventorydoccode"/><result property="inventoryDetailCode" column="inventorydetailcode"/>
+    <result property="remark" column="remark"/>
+    <result property="warehouseCode" column="warehousecode"/><result property="warehouseName" column="warehousename"/>
+    <result property="batchStrategy" column="batchstrategy"/>
+  </resultMap>
+
+  <!-- 关联商品主数据取实时追踪策略，入库界面与后端校验都依据该值，不落库避免策略变更后失真。 -->
+  <select id="selectByReceiveCode" resultMap="ItemResult">
+    select d.id, d.shop_code, d.detailcode, d.receivecode, d.purchasedetailcode, d.goodscode, d.goodsname,
+           d.spec, d.unit, d.qty, d.actualqty, d.goodqty, d.badqty, d.qualitystatus, d.price, d.amount,
+           d.batchcode, d.serialnumbers, d.inventorydoccode, d.inventorydetailcode, d.remark,
+           d.warehousecode, d.warehousename, coalesce(g.batchstrategy, 'none') as batchstrategy
+      from sdsorder.u_p_receivedetail_${tableSuffix} d
+      left join sdsshop.u_m_waregoods g on g.shop_code = d.shop_code and g.goodscode = d.goodscode
+     where d.shop_code = #{shopCode} and d.receivecode = #{receiveCode}
+     order by d.id
+  </select>
+
+  <!-- 发货登记只写预计到货数量。actualqty 必须保持 NULL：行状态判定靠它区分「未入库」和「收到0件」。 -->
+  <insert id="batchInsert">
+    insert into sdsorder.u_p_receivedetail_${tableSuffix}
+      (shop_code, detailcode, receivecode, purchasedetailcode, goodscode, goodsname, spec, unit,
+       qty, actualqty, goodqty, badqty, qualitystatus, price, amount,
+       batchcode, serialnumbers, remark, warehousecode, warehousename, createtime)
+    values
+    <foreach item="item" collection="items" separator=",">
+      (#{item.shopCode}, #{item.detailCode}, #{item.receiveCode}, #{item.purchaseDetailCode},
+       #{item.goodsCode}, #{item.goodsName}, #{item.spec}, #{item.unit},
+       #{item.qty}, null, 0, 0, null, #{item.price}, #{item.amount},
+       null, null, #{item.remark}, #{item.warehouseCode}, #{item.warehouseName}, sysdate())
+    </foreach>
+  </insert>
+
+  <delete id="deleteByReceiveCode">
+    delete from sdsorder.u_p_receivedetail_${tableSuffix}
+     where shop_code = #{shopCode} and receivecode = #{receiveCode}
+  </delete>
+
+  <!-- 未处理 -> 入库中。actualqty is null 保证一行只被一张入库单占用；
+       返回 0 行说明已被别的入库单抢先，调用方据此报错。 -->
+  <update id="fillActualQty">
+    update sdsorder.u_p_receivedetail_${tableSuffix}
+       set actualqty = #{item.actualQty},
+           batchcode = #{item.batchCode},
+           serialnumbers = #{item.serialNumbers},
+           warehousecode = #{item.warehouseCode},
+           warehousename = #{item.warehouseName},
+           inventorydoccode = #{item.inventoryDocCode},
+           updatetime = sysdate()
+     where shop_code = #{item.shopCode}
+       and detailcode = #{item.detailCode}
+       and actualqty is null
+  </update>
+
+  <!-- 入库中 -> 已入库。goodqty 写实收（采购退货的可退量统计依赖它），
+       badqty 写短装量；超发时短装为 0，不写负数。 -->
+  <update id="markStocked">
+    update sdsorder.u_p_receivedetail_${tableSuffix}
+       set inventorydetailcode = #{inventoryDetailCode},
+           goodqty = coalesce(actualqty, 0),
+           badqty = greatest(qty - coalesce(actualqty, 0), 0),
+           qualitystatus = #{qualityStatus},
+           updatetime = sysdate()
+     where shop_code = #{shopCode}
+       and detailcode = #{detailCode}
+       and inventorydetailcode is null
+  </update>
+
+  <!--
+    实际到货数量填 0 的行：整行没到货，没有库存明细可指，按全额短装关闭。
+
+    inventorydetailcode 写入库单号而不是明细号——这一行本来就没产生库存明细，
+    但行状态是靠它非空来判「已入库」的，留空整单就永远卡在「待入库」。
+    写单号既能让状态正确流转，也留下了是哪张入库单关掉它的线索。
+  -->
+  <update id="markShortClosed">
+    update sdsorder.u_p_receivedetail_${tableSuffix}
+       set inventorydetailcode = #{inventoryDocCode},
+           goodqty = 0,
+           badqty = qty,
+           qualitystatus = '短装',
+           updatetime = sysdate()
+     where shop_code = #{shopCode}
+       and detailcode = #{detailCode}
+       and inventorydetailcode is null
+  </update>
+
+  <!-- 入库单驳回：清空回填内容，行退回未处理。只清尚未过账的行。 -->
+  <update id="resetByInventoryDoc">
+    update sdsorder.u_p_receivedetail_${tableSuffix}
+       set actualqty = null, batchcode = null, serialnumbers = null,
+           inventorydoccode = null, goodqty = 0, badqty = 0, qualitystatus = null,
+           updatetime = sysdate()
+     where shop_code = #{shopCode}
+       and inventorydoccode = #{inventoryDocCode}
+       and inventorydetailcode is null
+  </update>
+
+  <!-- 短装明细：已过账且实收少于预计的行。 -->
+  <select id="selectShortageByPurchase" resultType="com.ruoyi.system.domain.vo.PurchaseShortageItem">
+    select d.receivecode as receiveCode, date_format(m.senddate, '%Y-%m-%d') as sendDate,
+           d.goodscode as goodsCode, d.goodsname as goodsName, d.spec as spec, d.unit as unit,
+           d.qty as expectQty, d.actualqty as actualQty, d.badqty as shortageQty
+      from sdsorder.u_p_receivedetail_${tableSuffix} d
+      join sdsorder.u_p_receive_${tableSuffix} m
+        on m.shop_code = d.shop_code and m.receivecode = d.receivecode
+     where d.shop_code = #{shopCode} and m.purchasecode = #{purchaseCode}
+       and d.inventorydetailcode is not null and d.badqty > 0
+     order by d.receivecode, d.id
+  </select>
+
+  <!--
+    在途量 = 已经登记发货、但还没真正进仓库的数量，含行状态「未处理」与「入库中」。
+
+    判据用 inventorydetailcode is null，不能用 actualqty is null：入库员一建入库单
+    fillActualQty 就把 actualqty 写上了，可 receivedqty 要等入库单审核通过才加，
+    这段时间里那批量既不在在途里也不在已入库里，会被重复发一遍。
+    老的采购到货流水线压根不写 actualqty，按它判还会把早就入库的老单算成在途。
+  -->
+  <select id="selectPendingQty" resultType="java.math.BigDecimal">
+    select coalesce(sum(d.qty), 0)
+      from sdsorder.u_p_receivedetail_${tableSuffix} d
+     where d.shop_code = #{shopCode}
+       and d.purchasedetailcode = #{purchaseDetailCode}
+       and d.inventorydetailcode is null
+    <if test="excludeReceiveCode != null and excludeReceiveCode != ''">
+       and d.receivecode != #{excludeReceiveCode}
+    </if>
+  </select>
+
+  <!-- 同上口径的批量版：一次查一批采购明细，供发货页展示「已处理」和过滤发完的订单用 -->
+  <select id="selectPendingQtyByDetails" resultType="PurchaseReceiveItem">
+    select d.purchasedetailcode as purchaseDetailCode, coalesce(sum(d.qty), 0) as qty
+      from sdsorder.u_p_receivedetail_${tableSuffix} d
+     where d.shop_code = #{shopCode}
+       and d.inventorydetailcode is null
+       and d.purchasedetailcode in
+       <foreach collection="detailCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+     group by d.purchasedetailcode
+  </select>
+</mapper>

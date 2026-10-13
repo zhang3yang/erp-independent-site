@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.SalesPackageMapper">
+
+    <resultMap type="com.ruoyi.system.domain.SalesPackage" id="PackageResult">
+        <result property="id" column="id"/><result property="shopCode" column="shop_code"/>
+        <result property="packageCode" column="package_code"/><result property="packageName" column="package_name"/>
+        <result property="isActive" column="is_active"/><result property="remark" column="remark"/>
+        <result property="createUser" column="create_user"/><result property="createTime" column="create_time"/>
+        <result property="updateUser" column="update_user"/><result property="updateTime" column="update_time"/>
+        <result property="goodsKinds" column="goods_kinds"/>
+    </resultMap>
+
+    <resultMap type="com.ruoyi.system.domain.SalesPackageItem" id="PackageItemResult">
+        <result property="id" column="id"/><result property="shopCode" column="shop_code"/>
+        <result property="packageCode" column="package_code"/><result property="goodsCode" column="goods_code"/>
+        <result property="goodsName" column="goods_name"/><result property="spec" column="spec"/>
+        <result property="unit" column="unit"/><result property="qty" column="qty"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <select id="selectPackageList" resultMap="PackageResult">
+        select p.id, p.shop_code, p.package_code, p.package_name, p.is_active, p.remark,
+               p.create_user, p.create_time, p.update_user, p.update_time,
+               (select count(1) from sdsorder.u_o_package_item i
+                 where i.shop_code = p.shop_code and i.package_code = p.package_code) goods_kinds
+          from sdsorder.u_o_package p
+         where p.shop_code = #{shopCode}
+        <if test="packageCode != null and packageCode != ''">and p.package_code like concat('%',#{packageCode},'%')</if>
+        <if test="packageName != null and packageName != ''">and p.package_name like concat('%',#{packageName},'%')</if>
+        <if test="isActive != null">and p.is_active = #{isActive}</if>
+         order by p.is_active desc, p.package_code
+    </select>
+
+    <select id="selectPackageByCode" resultMap="PackageResult">
+        select p.id, p.shop_code, p.package_code, p.package_name, p.is_active, p.remark,
+               p.create_user, p.create_time, p.update_user, p.update_time,
+               (select count(1) from sdsorder.u_o_package_item i
+                 where i.shop_code = p.shop_code and i.package_code = p.package_code) goods_kinds
+          from sdsorder.u_o_package p
+         where p.shop_code = #{shopCode} and p.package_code = #{packageCode}
+    </select>
+
+    <insert id="insertPackage" useGeneratedKeys="true" keyProperty="id">
+        insert into sdsorder.u_o_package(shop_code, package_code, package_name, is_active, remark,
+                                         create_user, create_time)
+        values(#{shopCode}, #{packageCode}, #{packageName}, coalesce(#{isActive},1), #{remark},
+               #{createUser}, sysdate())
+    </insert>
+
+    <!-- 套餐代码是业务主键，改名改备注可以，代码不给改：改了等于换了一个套餐 -->
+    <update id="updatePackage">
+        update sdsorder.u_o_package
+           set package_name = #{packageName}, is_active = coalesce(#{isActive},1),
+               remark = #{remark}, update_user = #{updateUser}, update_time = sysdate()
+         where shop_code = #{shopCode} and package_code = #{packageCode}
+    </update>
+
+    <delete id="deletePackage">
+        delete from sdsorder.u_o_package
+         where shop_code = #{shopCode} and package_code = #{packageCode}
+    </delete>
+
+    <select id="selectItemsByPackage" resultMap="PackageItemResult">
+        select id, shop_code, package_code, goods_code, goods_name, spec, unit, qty, remark
+          from sdsorder.u_o_package_item
+         where shop_code = #{shopCode} and package_code = #{packageCode}
+         order by id
+    </select>
+
+    <select id="selectItemsByPackages" resultMap="PackageItemResult">
+        select id, shop_code, package_code, goods_code, goods_name, spec, unit, qty, remark
+          from sdsorder.u_o_package_item
+         where shop_code = #{shopCode}
+           and package_code in
+           <foreach item="code" collection="packageCodes" open="(" separator="," close=")">#{code}</foreach>
+         order by package_code, id
+    </select>
+
+    <insert id="batchInsertItems">
+        insert into sdsorder.u_o_package_item(shop_code, package_code, goods_code, goods_name,
+                                              spec, unit, qty, remark)
+        values
+        <foreach item="item" collection="items" separator=",">
+        (#{item.shopCode}, #{item.packageCode}, #{item.goodsCode}, #{item.goodsName},
+         #{item.spec}, #{item.unit}, #{item.qty}, #{item.remark})
+        </foreach>
+    </insert>
+
+    <delete id="deleteItemsByPackage">
+        delete from sdsorder.u_o_package_item
+         where shop_code = #{shopCode} and package_code = #{packageCode}
+    </delete>
+</mapper>

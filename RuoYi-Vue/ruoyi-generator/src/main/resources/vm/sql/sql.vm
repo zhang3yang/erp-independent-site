@@ -1,0 +1,13 @@
+-- Generated function codes are allocated by the application using fn + getSecondKey(KeyType.Base10, "fn").
+insert into sys_menu (fun_code, menu_name, parent_id, order_num, path, component, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
+values('${menuFunCode}', '${functionName}', '${parentFunCode}', '1', '${businessName}', '${moduleName}/${businessName}/index', 1, 0, 'C', '0', '0', '${permissionPrefix}:list', '#', 'admin', sysdate(), '', null, '${functionName}菜单');
+insert into sys_menu (fun_code, menu_name, parent_id, order_num, path, component, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
+values('${queryFunCode}', '${functionName}查询', '${menuFunCode}', '1', '#', '', 1, 0, 'F', '0', '0', '${permissionPrefix}:query', '#', 'admin', sysdate(), '', null, '');
+insert into sys_menu (fun_code, menu_name, parent_id, order_num, path, component, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
+values('${addFunCode}', '${functionName}新增', '${menuFunCode}', '2', '#', '', 1, 0, 'F', '0', '0', '${permissionPrefix}:add', '#', 'admin', sysdate(), '', null, '');
+insert into sys_menu (fun_code, menu_name, parent_id, order_num, path, component, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
+values('${editFunCode}', '${functionName}修改', '${menuFunCode}', '3', '#', '', 1, 0, 'F', '0', '0', '${permissionPrefix}:edit', '#', 'admin', sysdate(), '', null, '');
+insert into sys_menu (fun_code, menu_name, parent_id, order_num, path, component, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
+values('${removeFunCode}', '${functionName}删除', '${menuFunCode}', '4', '#', '', 1, 0, 'F', '0', '0', '${permissionPrefix}:remove', '#', 'admin', sysdate(), '', null, '');
+insert into sys_menu (fun_code, menu_name, parent_id, order_num, path, component, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
+values('${exportFunCode}', '${functionName}导出', '${menuFunCode}', '5', '#', '', 1, 0, 'F', '0', '0', '${permissionPrefix}:export', '#', 'admin', sysdate(), '', null, '');

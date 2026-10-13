@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 混元生 3D 任务。设计见 docs/superpowers/specs/2026-09-26-hunyuan-3d-generate-design.md -->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteModelJobMapper">
+
+  <resultMap id="JobResult" type="com.ruoyi.station.console.domain.SiteModelJob">
+    <result property="jobId"       column="jobid"/>
+    <result property="siteCode"    column="sitecode"/>
+    <result property="tcJobId"     column="tcjobid"/>
+    <result property="status"      column="status"/>
+    <result property="jobName"     column="jobname"/>
+    <result property="imagesJson"  column="imagesjson"/>
+    <result property="faceCount"   column="facecount"/>
+    <result property="enablePbr"   column="enablepbr"/>
+    <result property="folderId"    column="folderid"/>
+    <result property="modelId"     column="modelid"/>
+    <result property="previewUrl"  column="previewurl"/>
+    <result property="errorCode"   column="errorcode"/>
+    <result property="errorMsg"    column="errormsg"/>
+    <result property="polls"       column="polls"/>
+    <result property="saveRetries" column="saveretries"/>
+    <result property="createBy"    column="create_by"/>
+    <result property="createtime"  column="createtime"/>
+    <result property="updatetime"  column="updatetime"/>
+    <result property="finishtime"  column="finishtime"/>
+  </resultMap>
+
+  <sql id="columns">
+    jobid, sitecode, tcjobid, status, jobname, imagesjson, facecount, enablepbr, folderid,
+    modelid, previewurl, errorcode, errormsg, polls, saveretries,
+    create_by, createtime, updatetime, finishtime
+  </sql>
+
+  <insert id="insertJob" parameterType="com.ruoyi.station.console.domain.SiteModelJob">
+    insert into u_s_model_job(jobid, sitecode, tcjobid, status, jobname, imagesjson, facecount, enablepbr,
+                              folderid, polls, saveretries, create_by, createtime, updatetime)
+    values(#{jobId}, #{siteCode}, #{tcJobId}, #{status}, #{jobName}, #{imagesJson}, #{faceCount},
+           coalesce(#{enablePbr}, 0), #{folderId}, 0, 0, #{createBy}, sysdate(), sysdate())
+  </insert>
+
+  <update id="updateJob" parameterType="com.ruoyi.station.console.domain.SiteModelJob">
+    update u_s_model_job
+       set status      = #{status},
+           tcjobid     = #{tcJobId},
+           modelid     = #{modelId},
+           previewurl  = #{previewUrl},
+           errorcode   = #{errorCode},
+           errormsg    = #{errorMsg},
+           polls       = coalesce(#{polls}, polls),
+           saveretries = coalesce(#{saveRetries}, saveretries),
+           finishtime  = #{finishtime},
+           updatetime  = sysdate()
+     where jobid = #{jobId}
+  </update>
+
+  <select id="selectByCode" resultMap="JobResult">
+    select <include refid="columns"/> from u_s_model_job where jobid = #{jobId}
+  </select>
+
+  <select id="selectPending" resultMap="JobResult">
+    select <include refid="columns"/>
+      from u_s_model_job
+     where status in ('SUBMITTING', 'WAIT', 'RUN', 'SAVING')
+     order by createtime
+     limit #{limit}
+  </select>
+
+  <select id="selectList" resultMap="JobResult">
+    select <include refid="columns"/>
+      from u_s_model_job
+     order by createtime desc
+     limit #{offset}, #{limit}
+  </select>
+
+  <select id="countList" resultType="int">
+    select count(*) from u_s_model_job
+  </select>
+
+  <select id="countSince" resultType="int">
+    select count(*) from u_s_model_job where createtime &gt;= #{since}
+  </select>
+
+  <delete id="deleteByCode">
+    delete from u_s_model_job where jobid = #{jobId}
+  </delete>
+</mapper>

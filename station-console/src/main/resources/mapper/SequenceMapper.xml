@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  本库发号器。替代 ERP 那边的 Redis 发号器（它在 ERP 侧，搬不过来）。
+
+  ⚠ increase 和 current 必须在同一个事务里、按这个顺序调用：
+
+      update ... set nextval = nextval + 1   ← 这一句给行加锁
+      select nextval ...                      ← 拿到的是加过之后的值
+
+  反过来「先 select 再 update」，两个并发请求会读到同一个值，发出两个一样的单号，
+  然后其中一个撞上 uk_inquiry_code 报错——而那是在用户点了提交之后才发生的。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SequenceMapper">
+
+  <update id="increase">
+    update u_s_sequence set nextval = nextval + 1 where name = #{name}
+  </update>
+
+  <select id="current" resultType="long">
+    select nextval from u_s_sequence where name = #{name}
+  </select>
+</mapper>

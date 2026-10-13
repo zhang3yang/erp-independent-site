@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 买家 3D 定制方案。设计见 docs/superpowers/specs/2026-09-29-buyer-3d-customize-design.md -->
+<mapper namespace="com.ruoyi.station.console.mapper.CustomPlanMapper">
+
+  <resultMap id="PlanResult" type="com.ruoyi.station.console.domain.CustomPlan">
+    <result property="planId"     column="planid"/>
+    <result property="shopCode"   column="shop_code"/>
+    <result property="siteCode"   column="sitecode"/>
+    <result property="goodsCode"  column="goodscode"/>
+    <result property="comboCode"  column="combocode"/>
+    <result property="model3d"    column="model3d"/>
+    <result property="marks"      column="marks"/>
+    <result property="model3dStates" column="model3d_states"/>
+    <result property="email"      column="email"/>
+    <result property="note"       column="note"/>
+    <result property="parentId"   column="parentid"/>
+    <result property="ipHash"     column="iphash"/>
+    <result property="createtime" column="createtime"/>
+    <result property="goodsTitle" column="goodstitle"/>
+  </resultMap>
+
+  <!-- 本站 sitecode。每条读语句都带上它，理由见 SiteGoodsMapper.xml 里 thisSite 那段注释 -->
+  <sql id="thisSite">(select sitecode from u_s_siteinfo limit 1)</sql>
+
+  <sql id="columns">
+    p.planid, p.shop_code, p.sitecode, p.goodscode, p.combocode, p.model3d, p.marks, p.model3d_states, p.email, p.note,
+    p.parentid, p.iphash, p.createtime
+  </sql>
+
+  <insert id="insertPlan" parameterType="com.ruoyi.station.console.domain.CustomPlan">
+    insert into u_s_custom_plan(planid, shop_code, sitecode, goodscode, combocode, model3d, marks, model3d_states, email, note,
+                                parentid, iphash, createtime)
+    values(#{planId}, #{shopCode}, #{siteCode}, #{goodsCode}, #{comboCode}, #{model3d}, #{marks}, #{model3dStates}, #{email}, #{note},
+           #{parentId}, #{ipHash}, sysdate())
+  </insert>
+
+  <select id="selectById" resultMap="PlanResult">
+    select <include refid="columns"/>, sg.goodsname goodstitle
+      from u_s_custom_plan p
+      left join u_s_sitegoods sg on sg.sitecode = p.sitecode and sg.goodscode = p.goodscode
+     where p.planid = #{planId}
+       and p.sitecode = <include refid="thisSite"/>
+  </select>
+
+  <sql id="listWhere">
+    <where>
+      p.sitecode = <include refid="thisSite"/>
+      <if test="goodsCode != null and goodsCode != ''">and p.goodscode = #{goodsCode}</if>
+      <if test="from != null">and p.createtime &gt;= #{from}</if>
+      <if test="to != null">and p.createtime &lt; #{to}</if>
+    </where>
+  </sql>
+
+  <select id="selectList" resultMap="PlanResult">
+    select <include refid="columns"/>, sg.goodsname goodstitle
+      from u_s_custom_plan p
+      left join u_s_sitegoods sg on sg.sitecode = p.sitecode and sg.goodscode = p.goodscode
+    <include refid="listWhere"/>
+     order by p.createtime desc, p.planid
+     limit #{offset}, #{limit}
+  </select>
+
+  <select id="countList" resultType="int">
+    select count(*) from u_s_custom_plan p
+    <include refid="listWhere"/>
+  </select>
+</mapper>

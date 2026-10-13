@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.SalesProfitMapper">
+
+    <!--
+      只取已审核的单据：待审核、驳回的出库单货没动，不算发出去了。
+      销售发货出库：CK + 来源 XSFH（来源单号是发货批次号）
+      补发出库：    CK + 来源 XSBF（来源单号是补发单号，售价 0，只有成本）
+      销售退货入库：XSTHRK + 来源 SO（来源单号是订单号）
+    -->
+    <select id="selectDocumentLines" resultType="com.ruoyi.system.domain.vo.SalesProfitSource">
+        select m.doccode as docCode, m.docdate as docDate, m.doctype as docType,
+               m.sourcedoctype as sourceDocType, m.sourcedoccode as sourceDocCode,
+               d.goodscode as goodsCode, d.goodsname as goodsName, d.qty as qty,
+               d.costamount as costAmount, d.saleamount as saleAmount
+          from sdsorder.u_f_docmain_${suffix} m
+          join sdsorder.u_f_docdetail_${suffix} d
+            on d.shop_code = m.shop_code and d.doccode = m.doccode
+         where m.shop_code = #{shopCode}
+           and m.confirmstate = '已审核'
+           and ((m.doctype = 'CK' and m.sourcedoctype in ('XSFH', 'XSBF'))
+                or (m.doctype = 'XSTHRK' and m.sourcedoctype = 'SO'))
+           and m.docdate &gt;= #{begin}
+           and m.docdate &lt; #{endExclusive}
+         order by m.docdate, m.doccode, d.lineno
+    </select>
+
+    <select id="selectShipBatches" resultType="com.ruoyi.system.domain.vo.SalesProfitSource">
+        select shipcode as shipCode, ordercode as orderCode, freightamount as shipFreight
+          from sdsorder.u_f_shipbatch_${suffix}
+         where shop_code = #{shopCode}
+           and shipcode in
+        <foreach collection="shipCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+    </select>
+
+    <select id="selectReships" resultType="com.ruoyi.system.domain.vo.SalesProfitSource">
+        select reshipcode as reshipCode, originalordercode as orderCode
+          from sdsorder.u_o_sales_reship
+         where shop_code = #{shopCode}
+           and reshipcode in
+        <foreach collection="reshipCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+    </select>
+
+    <select id="selectOrders" resultType="com.ruoyi.system.domain.vo.SalesProfitSource">
+        select ordercode as orderCode, currency as currency, goodsamount as goodsAmount,
+               freightamount as orderFreight, staffcode as staffCode,
+               buyercode as buyerCode, buyername as buyerName, buyeruser as buyerUser,
+               buyercountry as country, platcode as platCode, platname as platName,
+               shopcode as storeCode, shopname as storeName
+          from sdsorder.u_o_order_${suffix}
+         where shop_code = #{shopCode}
+           and ordercode in
+        <foreach collection="orderCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+    </select>
+
+    <select id="selectOrderLines" resultType="com.ruoyi.system.domain.vo.SalesProfitSource">
+        select ordercode as orderCode, goodscode as goodsCode, goodsname as goodsName, price as price
+          from sdsorder.u_o_orderdetail_${suffix}
+         where shop_code = #{shopCode}
+           and ordercode in
+        <foreach collection="orderCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+    </select>
+
+</mapper>

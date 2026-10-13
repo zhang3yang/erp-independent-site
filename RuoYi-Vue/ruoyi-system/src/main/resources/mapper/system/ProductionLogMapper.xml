@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.ProductionLogMapper">
+    <resultMap type="ProductionLog" id="ProductionLogResult">
+        <result property="id" column="id" /><result property="shopCode" column="shop_code" />
+        <result property="logCode" column="log_code" /><result property="productionCode" column="production_code" />
+        <result property="operation" column="operation" /><result property="docCode" column="doc_code" />
+        <result property="docType" column="doc_type" /><result property="docDetailCode" column="doc_detail_code" />
+        <result property="goodsCode" column="goods_code" /><result property="qty" column="qty" />
+        <result property="costAmount" column="cost_amount" /><result property="operationTime" column="operation_time" />
+        <result property="remark" column="remark" />
+    </resultMap>
+    <insert id="insertLog" parameterType="map">
+        insert into sdsorder.u_f_productionlog_${tableSuffix}
+        (shop_code, logcode, productioncode, operation, doccode, doctype, docdetailcode, goodscode, qty, costamount, operationtime, remark)
+        values (#{log.shopCode}, #{log.logCode}, #{log.productionCode}, #{log.operation}, #{log.docCode}, #{log.docType},
+                #{log.docDetailCode}, #{log.goodsCode}, #{log.qty}, #{log.costAmount}, #{log.operationTime}, #{log.remark})
+    </insert>
+    <!-- 已建出来的日志月表后缀，跨月工单靠它逐张月表查 -->
+    <select id="selectLogTableSuffixes" resultType="string">
+        select substring(table_name, length('u_f_productionlog_') + 1)
+          from information_schema.tables
+         where table_schema = 'sdsorder' and table_name like 'u_f_productionlog_%'
+         order by table_name
+    </select>
+
+    <select id="selectLogList" resultMap="ProductionLogResult">
+        select id, shop_code, logcode as log_code, productioncode as production_code, operation,
+               doccode as doc_code, doctype as doc_type, docdetailcode as doc_detail_code,
+               goodscode as goods_code, qty, costamount as cost_amount,
+               operationtime as operation_time, remark
+          from sdsorder.u_f_productionlog_${tableSuffix}
+         where shop_code = #{shopCode}
+        <if test="productionCode != null and productionCode != ''">and productioncode = #{productionCode}</if>
+        <if test="operation != null and operation != ''">and operation = #{operation}</if>
+         order by operationtime desc, id desc
+    </select>
+</mapper>

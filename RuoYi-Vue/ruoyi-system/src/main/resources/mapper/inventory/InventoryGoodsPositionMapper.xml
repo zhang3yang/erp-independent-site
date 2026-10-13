@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.InventoryGoodsPositionMapper">
+
+    <resultMap id="GoodsPositionResult" type="InventoryGoodsPosition">
+        <id     property="positionId" column="position_id" />
+        <result property="shopCode"   column="shop_code" />
+        <result property="goodsCode"  column="goods_code" />
+        <result property="goodsName"  column="goods_name" />
+        <result property="spec"       column="spec" />
+        <result property="unit"       column="unit" />
+        <result property="wareCode"   column="ware_code" />
+        <result property="wareName"   column="ware_name" />
+        <result property="position"   column="position" />
+        <result property="createUser" column="create_user" />
+        <result property="createTime" column="create_time" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="selectPositionVo">
+        select p.position_id, p.shop_code, p.goods_code, p.goods_name, p.spec, p.unit,
+               p.ware_code, p.ware_name, p.position, p.create_user, p.create_time, p.update_time
+          from sdsshop.u_m_goods_position p
+    </sql>
+
+    <select id="selectPositionList" resultMap="GoodsPositionResult">
+        <include refid="selectPositionVo" />
+         where p.shop_code = #{shopCode}
+        <if test="goodsCode != null and goodsCode != ''">
+           and p.goods_code like concat('%', #{goodsCode}, '%')
+        </if>
+        <if test="goodsName != null and goodsName != ''">
+           and p.goods_name like concat('%', #{goodsName}, '%')
+        </if>
+        <if test="wareCode != null and wareCode != ''">
+           and p.ware_code = #{wareCode}
+        </if>
+        <if test="position != null and position != ''">
+           and p.position like concat('%', #{position}, '%')
+        </if>
+         order by p.update_time desc, p.position_id desc
+    </select>
+
+    <select id="selectPositionById" resultMap="GoodsPositionResult">
+        <include refid="selectPositionVo" />
+         where p.shop_code = #{shopCode}
+           and p.position_id = #{positionId}
+    </select>
+
+    <select id="selectPositionByGoodsCode" resultMap="GoodsPositionResult">
+        <include refid="selectPositionVo" />
+         where p.shop_code = #{shopCode}
+           and p.goods_code = #{goodsCode}
+        <if test="excludePositionId != null">
+           and p.position_id != #{excludePositionId}
+        </if>
+         limit 1
+    </select>
+
+    <insert id="insertPosition" parameterType="InventoryGoodsPosition" useGeneratedKeys="true" keyProperty="positionId">
+        insert into sdsshop.u_m_goods_position
+            (shop_code, goods_code, goods_name, spec, unit, ware_code, ware_name,
+             position, create_user, create_time, update_time)
+        values
+            (#{shopCode}, #{goodsCode}, #{goodsName}, #{spec}, #{unit}, #{wareCode}, #{wareName},
+             #{position}, #{createUser}, sysdate(), sysdate())
+    </insert>
+
+    <update id="updatePosition" parameterType="InventoryGoodsPosition">
+        update sdsshop.u_m_goods_position
+           set goods_code = #{goodsCode},
+               goods_name = #{goodsName},
+               spec = #{spec},
+               unit = #{unit},
+               ware_code = #{wareCode},
+               ware_name = #{wareName},
+               position = #{position},
+               update_time = sysdate()
+         where shop_code = #{shopCode}
+           and position_id = #{positionId}
+    </update>
+
+    <delete id="deletePositionByIds">
+        delete from sdsshop.u_m_goods_position
+         where shop_code = #{shopCode}
+           and position_id in
+        <foreach collection="positionIds" item="positionId" open="(" separator="," close=")">
+            #{positionId}
+        </foreach>
+    </delete>
+
+</mapper>

@@ -1,0 +1,2415 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>首页装修 · 新版 Demo</title>
+<!--
+  首页装修（重做方案）的可点 Demo —— 单文件、离线可开、不依赖任何现有代码。
+
+  这个文件只是给人看和点的，它不属于 station-console-ui / station-site 任何一方，
+  也不读写它们的接口。所有数据在浏览器 localStorage 里。
+
+  相对现在线上那版（station-shared/DecorateForm.vue）改了六处，每一处在界面上都有
+  对应的可点位置，右下角「设计说明」里也列了一遍：
+
+    1. 信息架构：从 6 个平铺 tab 改成「全站设置」+「首页区块（可排序）」两组。
+       顶栏/页脚/SEO 不是首页的一块，不该和 Banner 并列在同一排 tab 里。
+    2. 区块可增删、可排序、可关闭 —— contentJson 升 v3，首页内容是一个有序数组。
+    3. 实时预览。装修这件事没有「发布」步骤，所见即所得才对得上。
+    4. 共享粒度到字段：图片可以勾「所有语言通用」，不再是「只有 logo 能共享」。
+    5. 留空=用默认，界面上说清默认值是什么，预览里能把默认值标出来。
+    6. 无编辑权限时整页置灰并写明原因，而不是把保存按钮从 DOM 里删掉。
+
+  预览里的字体用系统衬线体兜底（真站是 Fraunces），地图是简化示意（真站是
+  world-atlas 的国界图）。除这两处，配色、圆角、版式语汇和真站一致。
+-->
+<style>
+/* ==========================================================================
+   1. 管理台外壳（中性后台风，不用真站的品牌色，避免和预览混淆）
+   ========================================================================== */
+:root{
+  --c-bg:#f4f5f7; --c-panel:#fff; --c-line:#e3e5ea; --c-line-soft:#eef0f3;
+  --c-text:#1f2430; --c-muted:#6b7280; --c-soft:#9aa1ad;
+  --c-accent:#4b6bfb; --c-accent-soft:#eef2ff; --c-warn:#b4690e; --c-warn-bg:#fff8ec;
+  --c-danger:#c0392b; --c-ok:#177245;
+  --c-mono:Consolas,Monaco,'Courier New',monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;
+  color:var(--c-text); background:var(--c-bg); overflow:hidden;
+}
+button{font:inherit;cursor:pointer}
+input,textarea,select{font:inherit;color:inherit}
+
+/* ---- 布局：顶栏 + 三列 ---- */
+.app{display:flex;flex-direction:column;height:100vh}
+.topbar{
+  flex:none;display:flex;align-items:center;gap:14px;
+  padding:0 16px;height:52px;background:var(--c-panel);
+  border-bottom:1px solid var(--c-line);
+}
+.brandmark{font-weight:700;letter-spacing:-.01em}
+.brandmark small{display:block;font-weight:400;font-size:11px;color:var(--c-soft);letter-spacing:0}
+.topbar .sp{flex:1}
+
+.cols{flex:1;display:flex;min-height:0}
+.col-list{flex:none;width:268px;border-right:1px solid var(--c-line);background:var(--c-panel);overflow:auto}
+.col-form{flex:none;width:392px;border-right:1px solid var(--c-line);background:var(--c-panel);overflow:auto}
+.col-prev{flex:1;min-width:0;display:flex;flex-direction:column;background:#e9eaee}
+
+/* ---- 语言条 ---- */
+.langbar{display:flex;align-items:center;gap:6px}
+.langbar .lb-lbl{font-size:12px;color:var(--c-muted);margin-right:2px}
+.tabbtn{
+  padding:5px 11px;border:1px solid var(--c-line);background:#fff;border-radius:7px;
+  font-size:13px;color:var(--c-muted);display:inline-flex;align-items:center;gap:5px;
+}
+.tabbtn:hover{border-color:#c9ced8}
+.tabbtn.on{background:var(--c-accent);border-color:var(--c-accent);color:#fff}
+.tabbtn .dflt{font-size:10px;opacity:.7}
+.tabbtn .miss{
+  width:6px;height:6px;border-radius:50%;background:var(--c-warn);display:inline-block;
+}
+.tabbtn.on .miss{background:#ffd79a}
+
+/* ---- 按钮 ---- */
+.btn{
+  padding:6px 13px;border:1px solid var(--c-line);border-radius:7px;background:#fff;
+  color:var(--c-text);
+}
+.btn:hover{border-color:#c9ced8;background:#fbfbfc}
+.btn-primary{background:var(--c-accent);border-color:var(--c-accent);color:#fff}
+.btn-primary:hover{background:#3a5bf0;border-color:#3a5bf0}
+.btn-ghost{border-color:transparent;background:transparent;color:var(--c-muted)}
+.btn-ghost:hover{background:#f0f1f4;border-color:transparent}
+.btn-danger{color:var(--c-danger)}
+.btn-xs{padding:3px 8px;font-size:12px;border-radius:6px}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+
+/* ---- 左列：区块列表 ---- */
+.grp{padding:14px 12px 6px}
+.grp-t{
+  font-size:11px;font-weight:700;letter-spacing:.09em;color:var(--c-soft);
+  text-transform:uppercase;padding:0 4px 8px;display:flex;align-items:center;gap:6px;
+}
+.grp-t .q{
+  width:14px;height:14px;border-radius:50%;border:1px solid var(--c-line);
+  font-size:9px;line-height:12px;text-align:center;color:var(--c-soft);cursor:help;letter-spacing:0;
+}
+.item{
+  display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:8px;
+  border:1px solid transparent;cursor:pointer;margin-bottom:2px;
+}
+.item:hover{background:#f6f7f9}
+.item.on{background:var(--c-accent-soft);border-color:#d5ddff}
+.item.dragging{opacity:.35}
+.item.dragover{box-shadow:inset 0 2px 0 var(--c-accent)}
+.item .hnd{color:#c3c8d2;cursor:grab;font-size:12px;line-height:1;letter-spacing:-1px;flex:none}
+.item .ic{flex:none;width:20px;text-align:center;color:var(--c-muted)}
+.item .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .nm b{font-weight:600}
+.item .nm span{display:block;font-size:11px;color:var(--c-soft)}
+.item.off .nm b,.item.off .ic{color:var(--c-soft);text-decoration:line-through;text-decoration-color:#ccd1da}
+.item .eye{flex:none;border:0;background:transparent;color:#b9bfc9;padding:2px;font-size:13px}
+.item .eye:hover{color:var(--c-text)}
+.item .x{flex:none;border:0;background:transparent;color:#c8ccd4;padding:2px 3px}
+.item .x:hover{color:var(--c-danger)}
+.tag{
+  flex:none;font-size:10px;padding:1px 5px;border-radius:4px;
+  background:#f0f1f4;color:var(--c-soft);
+}
+.tag-warn{background:var(--c-warn-bg);color:var(--c-warn)}
+.addrow{padding:4px 4px 16px}
+.addbtn{
+  width:100%;padding:8px;border:1px dashed var(--c-line);border-radius:8px;background:transparent;
+  color:var(--c-muted);
+}
+.addbtn:hover{border-color:var(--c-accent);color:var(--c-accent);background:var(--c-accent-soft)}
+
+/* ---- 中列：表单 ---- */
+.fhead{padding:15px 16px 12px;border-bottom:1px solid var(--c-line-soft)}
+.fhead h2{margin:0;font-size:15px}
+.fhead p{margin:5px 0 0;font-size:12px;color:var(--c-muted)}
+.fbody{padding:14px 16px 90px}
+.f{display:block;margin-bottom:15px}
+.f-lbl{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;margin-bottom:5px}
+.f-lbl em{
+  font-style:normal;font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;
+  background:#f0f1f4;color:var(--c-soft);
+}
+.f-lbl em.sh{background:#e8f5ee;color:var(--c-ok)}
+.f input[type=text],.f textarea,.f select{
+  width:100%;padding:7px 9px;border:1px solid var(--c-line);border-radius:7px;background:#fff;
+}
+.f input[type=text]:focus,.f textarea:focus,.f select:focus{outline:2px solid #d5ddff;border-color:var(--c-accent)}
+.f textarea{resize:vertical;min-height:96px;line-height:1.65}
+.f-hint{display:block;font-size:11.5px;color:var(--c-soft);margin-top:4px;line-height:1.55}
+.f-hint code{font-family:var(--c-mono);background:#f0f1f4;padding:1px 4px;border-radius:3px}
+.sec{
+  margin:20px 0 12px;padding-top:14px;border-top:1px solid var(--c-line-soft);
+  font-size:12px;font-weight:700;color:var(--c-muted);display:flex;align-items:center;gap:8px;
+}
+.sec .sp{flex:1}
+.chk{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--c-muted);margin:-4px 0 14px}
+.chk input{margin:3px 0 0}
+.rows{border:1px solid var(--c-line);border-radius:8px;overflow:hidden;margin-bottom:8px}
+.row{display:flex;gap:0;border-bottom:1px solid var(--c-line-soft);background:#fff}
+.row:last-child{border-bottom:0}
+.row.rh{background:#fafbfc;font-size:11px;color:var(--c-soft);font-weight:600}
+.row.rh div{padding:5px 8px}
+.row .cell{flex:1;min-width:0;border-right:1px solid var(--c-line-soft)}
+.row .cell:last-of-type{border-right:0}
+.row .cell input{width:100%;border:0;padding:7px 8px;background:transparent}
+.row .cell input:focus{outline:2px solid #d5ddff;outline-offset:-2px;border-radius:4px}
+.row .w-ic{flex:none;width:52px}
+.row .w-num{flex:none;width:92px}
+.row .del{flex:none;width:30px;border:0;background:transparent;color:#c8ccd4}
+.row .del:hover{color:var(--c-danger)}
+.imgf{display:flex;gap:8px;align-items:flex-start}
+.imgf input{flex:1}
+.thumb{
+  flex:none;width:74px;height:52px;border:1px solid var(--c-line);border-radius:6px;
+  background:#f6f7f9 center/cover no-repeat;display:flex;align-items:center;justify-content:center;
+  font-size:10px;color:var(--c-soft);overflow:hidden;
+}
+/* 幻灯片缩略图条。轮播的主体是「一组图」，所以它得在区块最上面、永远在视野里 ——
+   上一版把「添加一张」做成最底下一个小按钮，还被吸底保存条挡住，等于没有 */
+.strip{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.strip .sl{
+  position:relative;flex:none;width:88px;height:58px;border:2px solid var(--c-line);
+  border-radius:8px;overflow:hidden;background:#f6f7f9 center/cover no-repeat;cursor:pointer;
+}
+.strip .sl:hover{border-color:#c9ced8}
+.strip .sl.on{border-color:var(--c-accent);box-shadow:0 0 0 3px rgba(75,107,251,.15)}
+.strip .sl.dragging{opacity:.35}
+.strip .sl.dragover{border-color:var(--c-accent);border-style:dashed}
+.strip .sl .n{
+  position:absolute;left:0;top:0;min-width:17px;padding:0 3px;background:rgba(31,36,48,.72);
+  color:#fff;font-size:10px;line-height:15px;text-align:center;border-bottom-right-radius:5px;
+}
+.strip .sl .no{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--c-soft)}
+.strip .sl .x{
+  position:absolute;right:1px;top:1px;width:16px;height:16px;padding:0;border:0;border-radius:50%;
+  background:rgba(31,36,48,.6);color:#fff;font-size:9px;line-height:16px;opacity:0;
+}
+.strip .sl:hover .x{opacity:1}
+.strip .sl .x:hover{background:var(--c-danger)}
+.strip .add{
+  flex:none;width:88px;height:58px;border:2px dashed var(--c-line);border-radius:8px;
+  background:transparent;color:var(--c-soft);font-size:20px;line-height:1;
+}
+.strip .add:hover{border-color:var(--c-accent);color:var(--c-accent);background:var(--c-accent-soft)}
+.striphint{font-size:11.5px;color:var(--c-soft);margin:0 0 14px;line-height:1.55}
+.striphint a{color:var(--c-accent)}
+.slide{border:1px solid var(--c-line);border-radius:9px;padding:12px;margin-bottom:10px;background:#fcfcfd}
+.slide-h{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--c-muted);margin-bottom:10px}
+.slide-h .sp{flex:1}
+.empty{padding:40px 20px;text-align:center;color:var(--c-soft);font-size:13px}
+
+/* ---- 保存条（吸底） ---- */
+.savebar{
+  position:sticky;bottom:0;display:flex;align-items:center;gap:10px;
+  padding:11px 16px;background:#fff;border-top:1px solid var(--c-line);
+  margin:0;
+}
+.savebar .note{font-size:11.5px;color:var(--c-soft);line-height:1.4}
+.savebar .sp{flex:1}
+
+/* ---- 右列：预览 ---- */
+.pvbar{
+  flex:none;display:flex;align-items:center;gap:10px;padding:8px 14px;
+  background:var(--c-panel);border-bottom:1px solid var(--c-line);font-size:12px;color:var(--c-muted);
+}
+.pvbar .sp{flex:1}
+.pvbar label{display:flex;align-items:center;gap:5px;cursor:pointer}
+.pvstage{flex:1;overflow:auto;padding:18px;display:flex;justify-content:center;align-items:flex-start}
+.pvframe{
+  background:#fff;box-shadow:0 8px 30px rgba(20,20,40,.13);border-radius:10px;overflow:hidden;
+  transform-origin:top center;flex:none;
+}
+.pvframe.desktop{width:1280px}
+.pvframe.mobile{width:390px}
+
+/* ---- 弹层 ---- */
+.mask{
+  position:fixed;inset:0;background:rgba(20,22,30,.45);display:flex;
+  align-items:center;justify-content:center;padding:24px;z-index:50;
+}
+.mask[hidden]{display:none}
+.dlg{background:#fff;border-radius:12px;max-width:760px;width:100%;max-height:86vh;display:flex;flex-direction:column;overflow:hidden}
+.dlg-h{padding:14px 18px;border-bottom:1px solid var(--c-line);display:flex;align-items:center;gap:10px}
+.dlg-h h3{margin:0;font-size:15px}
+.dlg-h .sp{flex:1}
+.dlg-b{padding:16px 18px;overflow:auto}
+.dlg-f{padding:12px 18px;border-top:1px solid var(--c-line);display:flex;gap:10px;align-items:center}
+.dlg-f .sp{flex:1}
+pre.json{
+  margin:0;font-family:var(--c-mono);font-size:12px;line-height:1.6;white-space:pre-wrap;
+  word-break:break-all;background:#1f2430;color:#e6e8ee;padding:14px;border-radius:8px;
+}
+pre.json .k{color:#9ad1ff}
+pre.json .s{color:#c3e88d}
+pre.json .n{color:#ffcb6b}
+.picker{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.picker button{padding:0;border:2px solid var(--c-line);border-radius:8px;overflow:hidden;background:#fff}
+.picker button:hover{border-color:var(--c-accent)}
+.picker img{width:100%;height:88px;object-fit:cover;display:block}
+.picker span{display:block;padding:5px;font-size:11px;color:var(--c-muted)}
+.blocklist{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.blocklist button{
+  text-align:left;padding:12px;border:1px solid var(--c-line);border-radius:9px;background:#fff;
+}
+.blocklist button:hover{border-color:var(--c-accent);background:var(--c-accent-soft)}
+.blocklist b{display:block;margin-bottom:3px}
+.blocklist small{color:var(--c-muted);line-height:1.5;display:block}
+.blocklist button[disabled]{opacity:.45}
+
+/* ---- 无权限遮罩 ---- */
+.nop{
+  padding:10px 14px;background:var(--c-warn-bg);border-bottom:1px solid #f0dcbd;
+  font-size:12.5px;color:var(--c-warn);
+}
+.locked .col-list,.locked .col-form{position:relative}
+.locked .col-list::after,.locked .col-form::after{
+  content:'';position:absolute;inset:0;background:rgba(244,245,247,.6);cursor:not-allowed;z-index:5;
+}
+
+/* ---- toast ---- */
+.toast{
+  position:fixed;left:50%;top:14px;transform:translateX(-50%);
+  background:#1f2430;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;z-index:99;
+  box-shadow:0 6px 24px rgba(0,0,0,.25);
+}
+.toast[hidden]{display:none}
+
+/* ==========================================================================
+   2. 预览：抄 station-site/app/assets/site.css 的 token 与版式语汇
+      所有类名加 pv- 前缀，和上面的管理台样式隔开
+   ========================================================================== */
+.pv{
+  /* ---- site.css :root 原值 ---- */
+  --primary:#6c4b9c; --primary-dark:#4e3670; --primary-light:#a98fce;
+  --accent-pink:#f3d9e8; --accent-teal:#9e68f8;
+  --bg:#f5f3f8; --bg-alt:#ffffff; --surface:#ffffff; --surface-muted:#efeaf5;
+  --ink-dark:#1f1a2b;
+  --text:#2a2530; --text-muted:#6f6880; --text-soft:#948da6;
+  --border:#e7e2ef; --radius-sm:10px; --radius:18px; --radius-lg:28px;
+  /* Fraunces 装不了，退到系统衬线体。字形不同，字号和行高照抄 */
+  --font-display:Georgia,'Times New Roman','Songti SC',serif;
+  --container:1180px;
+  --shadow-sm:0 2px 10px rgba(43,30,66,.05); --shadow:0 14px 40px rgba(43,30,66,.08);
+  /* site.css 里那批旧变量名（SiteHeader / ProductCard 等文件里到处在用） */
+  --ink:var(--text); --ink-soft:var(--text-muted); --line:var(--border);
+  --bg-soft:var(--surface-muted); --brand:var(--primary); --brand-dark:var(--primary-dark);
+  --wrap:var(--container);
+
+  background:var(--bg);color:var(--text);font-family:inherit;line-height:1.65;
+}
+.pv h1,.pv h2,.pv h3,.pv h4{
+  font-family:var(--font-display);color:var(--text);font-weight:600;line-height:1.15;margin:0;
+}
+.pv .accent{color:var(--primary)}
+.pv img{max-width:100%;display:block}
+
+/* ---------------- 布局 ---------------- */
+.pv-wrap{width:100%;max-width:var(--container);margin:0 auto;padding:0 24px}
+/* ⚠ 80px，不是 64px。这一条乘以六个区块，就是整页观感的大头 */
+.pv-sec{padding:80px 0}
+.pv-sec-soft{background:var(--surface-muted)}
+.pv-sec h2{font-size:clamp(1.7rem,2.6vw,2.3rem);margin:0 0 10px;letter-spacing:-.01em}
+/* 居中的区块标题。margin-bottom 52px */
+.pv-head{text-align:center;max-width:640px;margin:0 auto 52px}
+.pv-head h2{font-size:clamp(1.9rem,3vw,2.6rem);margin-bottom:14px}
+.pv-head p{color:var(--text-muted);margin:0}
+
+/* ---------------- 按钮：site.css 原值 ---------------- */
+.pv-btn{
+  display:inline-flex;align-items:center;gap:10px;border:0;border-radius:999px;
+  padding:13px 26px;font-size:.92rem;font-weight:600;
+}
+.pv-btn-p{background:var(--primary);color:#fff}
+/* ⚠ 次按钮是「白底 85% + 边框色描边 + 正文色字」，不是紫描边紫字 */
+.pv-btn-g{background:rgba(255,255,255,.85);color:var(--text);border:1px solid var(--border)}
+.pv-link-more{font-size:.88rem;font-weight:600;color:var(--primary);white-space:nowrap}
+
+/* 角标。site.css .pill 原值 */
+.pv-pill{
+  display:inline-flex;align-items:center;gap:6px;background:#fff;color:var(--primary);
+  border-radius:999px;padding:6px 14px;font-size:.68rem;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;box-shadow:var(--shadow-sm);
+}
+
+/* ==================== 顶栏：SiteHeader.vue ====================
+   站名是 19px / weight 650 的**正文体**（不是衬线大字）；导航 15px、
+   颜色继承正文色；右侧「币种 + 语言 + 用户」三段，margin-left:auto 挂在这一组上。 */
+.pv-hd{background:rgba(255,255,255,.92);border-bottom:1px solid var(--line)}
+.pv-hd-in{
+  display:flex;align-items:center;gap:24px;height:62px;
+  max-width:var(--container);margin:0 auto;padding:0 24px;
+}
+.pv-hd-brand{display:flex;align-items:center}
+.pv-hd-logo{max-height:38px;width:auto}
+.pv-hd-name{font-size:19px;font-weight:650;letter-spacing:-.01em;color:var(--text)}
+.pv-hd-nav{display:flex;gap:22px;font-size:15px;color:var(--text)}
+.pv-hd-right{
+  display:flex;align-items:center;gap:12px;margin-left:auto;
+  flex-wrap:wrap;justify-content:flex-end;row-gap:8px;
+}
+.pv-chip{
+  display:inline-flex;align-items:center;gap:5px;padding:5px 10px;
+  border:1px solid var(--line);border-radius:6px;background:transparent;
+  color:var(--ink-soft);font-size:13px;white-space:nowrap;
+}
+.pv-chip svg{width:10px;height:10px;flex:none}
+.pv-hd-user{display:flex;align-items:center;gap:10px;margin-left:12px}
+.pv-acct{
+  max-width:160px;padding:6px 10px;border-radius:var(--radius-sm);font-size:14px;
+  color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.pv-cart{
+  position:relative;display:flex;align-items:center;justify-content:center;
+  width:38px;height:38px;border-radius:50%;color:var(--text-muted);
+}
+.pv-cart-badge{
+  position:absolute;top:2px;right:0;min-width:17px;height:17px;padding:0 4px;
+  border-radius:999px;background:var(--primary);color:#fff;font-size:10.5px;
+  font-weight:700;line-height:17px;text-align:center;
+}
+.pv-avatar{
+  width:34px;height:34px;border-radius:50%;background:var(--primary-light);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;
+}
+
+/* ==================== Banner：index.vue .hero ====================
+   真站是 calc(100vh - 62px)，预览框不是整个视口，所以用 min-height 520px
+   （真站的下限）+ 一个接近整屏的高度，观感才对得上。 */
+.pv-hero{position:relative;overflow:hidden;min-height:520px;height:76vh;display:flex;align-items:center}
+.pv-hero-bg{position:absolute;inset:0;background-position:center;background-size:cover;background-repeat:no-repeat}
+.pv-hero-ov{
+  position:absolute;inset:0;
+  background:linear-gradient(100deg,
+    rgba(245,243,248,.68) 0%, rgba(245,243,248,.68) 30%,
+    rgba(245,243,248,.55) 46%, rgba(245,243,248,0) 64%);
+}
+.pv-hero.plain{background:radial-gradient(120% 120% at 18% 0%,#efeaf5 0%,#f5f3f8 55%,#f7f4fb 100%)}
+.pv-hero.plain .pv-hero-ov{display:none}
+/* 没传 Banner 图时的替代视觉：制图纸网格 + 两团柔光。
+   真站两层都是纯 CSS，商家永远不传图也成立 */
+.pv-hero.plain::before{
+  content:'';position:absolute;inset:0;
+  background-image:
+    linear-gradient(to right,rgba(108,75,156,.07) 1px,transparent 1px),
+    linear-gradient(to bottom,rgba(108,75,156,.07) 1px,transparent 1px);
+  background-size:46px 46px;
+  -webkit-mask-image:
+    linear-gradient(100deg,#000 0%,#000 34%,transparent 76%),
+    linear-gradient(to bottom,#000 0%,#000 58%,transparent 100%);
+  mask-image:
+    linear-gradient(100deg,#000 0%,#000 34%,transparent 76%),
+    linear-gradient(to bottom,#000 0%,#000 58%,transparent 100%);
+  -webkit-mask-composite:source-in;mask-composite:intersect;
+}
+.pv-hero.plain::after{
+  content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(34% 42% at 82% 22%,rgba(243,217,232,.75) 0%,rgba(243,217,232,0) 100%),
+    radial-gradient(30% 38% at 68% 88%,rgba(169,143,206,.30) 0%,rgba(169,143,206,0) 100%);
+}
+.pv-hero-in{
+  position:relative;z-index:2;width:100%;max-width:640px;
+  margin-left:max(24px,calc((100% - var(--container)) / 2));margin-right:auto;
+  padding:60px 24px 60px 0;
+}
+.pv-hero-pill{margin-bottom:22px}
+.pv-hero-in h1{font-size:clamp(2.4rem,5vw,4rem);letter-spacing:-.02em;margin:0 0 20px}
+.pv-hero-in p{color:var(--text-muted);font-size:1.02rem;max-width:480px;margin:0 0 32px}
+.pv-hero-acts{display:flex;gap:16px;flex-wrap:wrap}
+.pv-dots{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);display:flex;gap:7px;z-index:3}
+.pv-dots i{width:7px;height:7px;border-radius:50%;background:rgba(78,54,112,.28)}
+.pv-dots i.on{background:var(--primary);width:20px;border-radius:999px}
+.pv-carou{
+  position:absolute;right:16px;top:16px;z-index:3;font-size:11px;color:var(--primary-dark);
+  background:rgba(255,255,255,.8);padding:3px 9px;border-radius:999px;
+}
+
+/* ==================== bento：index.vue ==================== */
+.pv-bento{display:grid;grid-template-columns:1.5fr 1fr;gap:20px}
+.pv-bc{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:30px;box-shadow:var(--shadow-sm);
+}
+.pv-bi{
+  display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;
+  border-radius:12px;background:var(--surface-muted);color:var(--primary);
+  font-size:1.1rem;margin-bottom:16px;
+}
+.pv-bc h3{font-size:1.25rem;margin:0 0 10px}
+.pv-bc p{color:var(--text-muted);font-size:.9rem;margin:0}
+.pv-bc.feat.tall{grid-row:1/3;display:flex;flex-direction:column;justify-content:center}
+.pv-bc.feat h3{font-size:1.5rem}
+.pv-bc.feat p{font-size:.95rem}
+.pv-bc.pink{background:var(--accent-pink);border-color:#e9c8dd;display:flex;flex-direction:column;justify-content:center}
+.pv-bc.pink .mk{font-size:1.3rem;color:var(--primary-dark);margin-bottom:10px}
+.pv-bc.pink .big{font-family:var(--font-display);font-size:3rem;font-weight:700;color:var(--ink-dark);line-height:1}
+.pv-bc.pink .cap{
+  text-transform:uppercase;letter-spacing:.12em;font-size:.72rem;font-weight:700;
+  color:var(--primary-dark);margin-top:10px;
+}
+.pv-bc.dark{
+  grid-column:1/-1;background:var(--ink-dark);border-color:var(--ink-dark);
+  display:flex;align-items:center;gap:22px;
+}
+.pv-bc.dark h3{color:#fff}
+.pv-bc.dark p{color:rgba(255,255,255,.72);max-width:720px}
+.pv-bi.light{background:rgba(255,255,255,.12);color:var(--primary-light);margin-bottom:0;flex:none}
+.pv-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+
+/* ==================== 商品：index.vue .instruments + ProductCard.vue ====================
+   ⚠ 区块留白 84px（比普通区块还大一号），网格间距 22px（site.css .grid）。
+   ⚠ 「+」加购按钮刻意不画：真站那个 v-if="buyer"，只给登录买家，
+     而首页装修要对的是访客和爬虫看到的那一版。 */
+.pv-prod{background:linear-gradient(180deg,#efeaf5 0%,#f3eef8 100%);padding:84px 0}
+.pv-prod-h{display:flex;align-items:flex-end;justify-content:space-between;gap:30px;margin-bottom:40px}
+.pv-prod-h h2{font-size:clamp(1.7rem,2.6vw,2.3rem);margin:0 0 10px}
+.pv-prod-h p{color:var(--text-muted);max-width:520px;margin:0;font-size:.92rem}
+.pv-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+.pv-card{
+  position:relative;display:flex;flex-direction:column;border:1px solid var(--border);
+  border-radius:var(--radius);overflow:hidden;background:var(--surface);
+}
+.pv-pc-img{position:relative;aspect-ratio:4/3;background:var(--surface-muted)}
+.pv-pc-img img{width:100%;height:100%;object-fit:cover}
+.pv-pc-noimg{width:100%;height:100%;background:linear-gradient(135deg,#f1ecf8,#e3daf0)}
+.pv-pc-tag{position:absolute;top:12px;left:12px}
+.pv-pc-body{display:flex;flex-direction:column;flex:1;padding:16px 17px 17px}
+.pv-pc-title{font-size:1.02rem;font-weight:600;line-height:1.35;margin:0 0 6px}
+.pv-pc-sum{
+  margin:0 0 14px;font-size:.84rem;color:var(--text-muted);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.pv-pc-meta{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-top:auto}
+/* 37px = 价格行 1.05rem×1.3 + 起订量行 .72rem×1.3。给了它，一排卡片的价格
+   才落在同一条基线上 —— 没填起订量的那张不会比左右低十几个像素 */
+.pv-pc-money{display:flex;flex-direction:column;justify-content:flex-start;min-width:0;min-height:37px}
+.pv-pc-price{font-family:var(--font-display);color:var(--primary);font-weight:600;font-size:1.05rem;line-height:1.3}
+.pv-pc-moq{font-size:.72rem;line-height:1.3;color:var(--text-soft)}
+
+/* ==================== 能力：index.vue .caps ==================== */
+.pv-caps{background:var(--bg-alt)}
+.pv-capg{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:20px}
+.pv-cap{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:26px;box-shadow:var(--shadow-sm);
+}
+.pv-ci{
+  display:inline-flex;width:40px;height:40px;align-items:center;justify-content:center;
+  border-radius:12px;background:var(--surface-muted);color:var(--primary);
+  font-size:1.1rem;margin-bottom:14px;
+}
+.pv-cap h3{font-size:1.15rem;color:var(--primary);margin:0 0 8px}
+.pv-cap p{color:var(--text-muted);font-size:.86rem;margin:0}
+.pv-cap.fill{background:var(--primary);border-color:var(--primary)}
+.pv-cap.fill h3{color:#fff}
+.pv-cap.fill p{color:rgba(255,255,255,.85)}
+.pv-ci.light{background:rgba(255,255,255,.2);color:#fff}
+
+/* ==================== 关于我们：index.vue 的错位叠卡 ==================== */
+.pv-ab{display:flex;flex-direction:column}
+.pv-ab-im{
+  width:70%;align-self:flex-start;margin:0;border-radius:var(--radius-lg);
+  overflow:hidden;box-shadow:var(--shadow-sm);
+}
+.pv-ab-im img{width:100%;height:auto}
+.pv-ab-cd{
+  position:relative;z-index:2;width:60%;align-self:flex-end;margin-top:-15%;
+  background:rgba(255,255,255,.92);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:44px 46px;box-shadow:var(--shadow);
+}
+.pv-ab-cd.solo{width:100%;align-self:stretch;margin-top:0}
+.pv-ab.side{flex-direction:row;align-items:center;gap:34px}
+.pv-ab.side .pv-ab-im{width:46%;align-self:auto}
+.pv-ab.side .pv-ab-cd{width:54%;align-self:auto;margin-top:0;padding:0;background:transparent;border:0;box-shadow:none}
+.pv-ab-cd .pv-pill{background:var(--surface-muted);box-shadow:none;margin-bottom:22px}
+.pv-ab-cd h2{font-size:clamp(1.9rem,3.4vw,2.6rem);color:var(--primary);margin:0 0 18px}
+.pv-ab-cd p{color:var(--text-muted);margin:0 0 16px}
+.pv-ab-cd p:last-of-type{margin-bottom:0}
+.pv-ab-cd p.lead{font-size:1.06rem;color:var(--text)}
+.pv-stats{display:flex;flex-wrap:wrap;gap:30px;margin-top:26px}
+.pv-stat{display:flex;flex-direction:column}
+.pv-stat strong{font-family:var(--font-display);font-size:1.9rem;color:var(--primary);line-height:1.15}
+.pv-stat span{font-size:.8rem;color:var(--text-muted)}
+
+/* ==================== 全球布局（简化地图） ==================== */
+.pv-map{
+  max-width:900px;margin:0 auto;border:1px solid var(--border);border-radius:var(--radius);
+  background:#fff;padding:12px;box-shadow:var(--shadow-sm);
+}
+.pv-map svg{width:100%;height:auto;display:block}
+.pv-map .sea{fill:#f7f4fb}
+.pv-map .grat{fill:none;stroke:#eae3f3;stroke-width:.6}
+.pv-map .land{fill:#efeaf5;stroke:#d6c9e8;stroke-width:.7}
+.pv-map .arc{fill:none;stroke:#c6b4e0;stroke-width:1.1;opacity:.85}
+.pv-map .dot{fill:var(--primary)}
+.pv-map .hq{fill:#d94f8a}
+.pv-map .hqt{font-size:9px;fill:var(--primary-dark);font-weight:700}
+.pv-legend{display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;margin:20px 0 0;padding:0;list-style:none}
+.pv-legend li{display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--text-muted)}
+.pv-legend i{width:6px;height:6px;border-radius:50%;background:var(--primary);display:inline-block}
+.pv-mapnote{text-align:center;font-size:.72rem;color:#a9a2ba;margin:10px 0 0}
+
+/* ==================== 询盘：index.vue + site.css .field ==================== */
+.pv-inq{max-width:720px;margin:0 auto}
+.pv-inq-box{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow-sm)}
+.pv-inq .fr{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.pv-inq .fk{
+  border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 14px;
+  font-size:.9rem;color:#b3aec0;background:#fff;
+}
+.pv-inq .fk.tall{height:96px;grid-column:1/-1}
+
+/* ==================== 页脚：SiteFooter.vue ====================
+   ⚠ 上一版是我凭空编的（紫黑底、三栏、带一栏导航）。真页脚：
+     · 冷灰黑 #14181d + 冷灰字 #c8cfd8，14px —— 不走主题 token，是另一套色；
+     · 只有**两栏**：品牌 / 联系方式。**没有导航栏**；
+     · 联系方式是「82px 大写标签 + 值」的行，标签是写死的英文，不跟语言切换；
+     · 底部一条 #232a32 的分隔线 + © 年份。 */
+.pv-ft{margin-top:40px;background:#14181d;color:#c8cfd8;font-size:14px}
+.pv-ft-in{display:flex;flex-wrap:wrap;gap:32px;padding-top:40px;padding-bottom:28px}
+.pv-ft-brand{flex:1 1 260px}
+.pv-ft-name{color:#fff;font-size:18px;font-weight:650}
+.pv-ft-slogan{margin:6px 0 0;color:#93a0ae}
+.pv-ft-contact{flex:1 1 320px;display:grid;gap:6px}
+.pv-ft-row{display:flex;gap:10px}
+.pv-ft-label{
+  flex:0 0 82px;color:#7d8996;font-size:12px;text-transform:uppercase;
+  letter-spacing:.04em;padding-top:2px;
+}
+.pv-ft-bottom{border-top:1px solid #232a32;padding-top:16px;padding-bottom:22px;color:#6f7b88;font-size:13px}
+.pv-ft-hint{color:#5c6772;font-size:12px;font-style:italic}
+
+/* 「这是默认值」标记 */
+.pv-def{background:rgba(255,214,102,.28);box-shadow:inset 0 -1px 0 rgba(180,105,14,.5);border-radius:2px}
+/* 区块定位高亮 */
+.pv-focus{outline:2px dashed rgba(75,107,251,.7);outline-offset:-2px}
+
+/* ==================== 窄屏 ====================
+   真站有三处断点：site.css 900/560、index.vue 900/640、SiteHeader 760。
+   预览框固定 390px 宽，所以三处一起生效，这里把它们并成一组。 */
+.pvframe.mobile .pv-sec{padding:56px 0}
+.pvframe.mobile .pv-wrap,.pvframe.mobile .pv-hd-in{padding-left:20px;padding-right:20px}
+/* 顶栏（760px）：不再是固定 62px 一行，导航换到第二行整宽横滑 */
+.pvframe.mobile .pv-hd-in{height:auto;padding-top:10px;padding-bottom:10px;flex-wrap:wrap;gap:10px 16px}
+.pvframe.mobile .pv-hd-nav{order:3;width:100%;overflow-x:auto;font-size:14px}
+.pvframe.mobile .pv-hd-user{margin-left:8px}
+/* Banner（640px） */
+.pvframe.mobile .pv-hero{height:auto;min-height:74vh}
+.pvframe.mobile .pv-hero.plain::before{background-size:32px 32px}
+.pvframe.mobile .pv-hero-in{margin-left:0;max-width:100%;padding:40px 20px 72px}
+.pvframe.mobile .pv-hero-in h1{font-size:2.4rem}
+.pvframe.mobile .pv-hero-in p{font-size:.96rem}
+/* 整宽文字块下改成竖向渐变：上面压得住字，下面把图透出来 */
+.pvframe.mobile .pv-hero-ov{
+  background:linear-gradient(180deg,
+    rgba(245,243,248,.86) 0%, rgba(245,243,248,.66) 44%,
+    rgba(245,243,248,.34) 74%, rgba(245,243,248,.12) 100%);
+}
+.pvframe.mobile .pv-hero-acts .pv-btn{flex:1 1 100%;justify-content:center}
+/* bento / 商品 / 能力（900px 起两列，560/640px 起一列。预览框按一列算） */
+.pvframe.mobile .pv-bento,.pvframe.mobile .pv-grid3,.pvframe.mobile .pv-cards{grid-template-columns:1fr}
+.pvframe.mobile .pv-bc.feat.tall{grid-row:auto}
+.pvframe.mobile .pv-bc.dark{flex-direction:column;align-items:flex-start;gap:14px}
+.pvframe.mobile .pv-bi.light{margin-bottom:0}
+.pvframe.mobile .pv-prod{padding:60px 0}
+.pvframe.mobile .pv-prod-h{flex-direction:column;align-items:flex-start}
+.pvframe.mobile .pv-capg{grid-template-columns:1fr}
+/* 关于我们：窄屏放不下错位，图和卡各占整宽，只留一点点压叠 */
+.pvframe.mobile .pv-ab-im{width:100%}
+.pvframe.mobile .pv-ab-cd{width:100%;margin-top:-28px;padding:32px 26px}
+.pvframe.mobile .pv-ab.side{flex-direction:column}
+.pvframe.mobile .pv-ab.side .pv-ab-im,.pvframe.mobile .pv-ab.side .pv-ab-cd{width:100%}
+.pvframe.mobile .pv-stats{gap:20px 26px}
+.pvframe.mobile .pv-inq .fr{grid-template-columns:1fr}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ============ 顶栏 ============ -->
+  <div class="topbar">
+    <div class="brandmark">首页装修<small>Demo · 不连后端，数据存在浏览器里</small></div>
+    <div class="langbar" id="langbar"></div>
+    <div class="sp"></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--c-muted)">
+      <input type="checkbox" id="noperm"> 模拟「无编辑权限」
+    </label>
+    <button class="btn" id="btn-sample">载入示例内容</button>
+    <button class="btn" id="btn-json">查看 contentJson</button>
+    <button class="btn" id="btn-help">设计说明</button>
+  </div>
+
+  <div class="nop" id="nopbar" hidden>
+    你的角色没有「装修编辑」权限（<code>site:station:edit</code>），下面的内容只能看不能改。
+    需要开权限请找站长。
+  </div>
+
+  <div class="cols">
+    <!-- ============ 左列 ============ -->
+    <div class="col-list" id="col-list"></div>
+
+    <!-- ============ 中列 ============ -->
+    <div class="col-form">
+      <div id="form-host"></div>
+      <div class="savebar">
+        <button class="btn btn-primary" id="btn-save">保存装修</button>
+        <button class="btn" id="btn-revert">放弃修改</button>
+        <div class="sp"></div>
+        <span class="note">保存的是<b>全部语言</b><br>没有「发布」这一步</span>
+      </div>
+    </div>
+
+    <!-- ============ 右列 ============ -->
+    <div class="col-prev">
+      <div class="pvbar">
+        <span style="font-weight:600;color:var(--c-text)">实时预览</span>
+        <button class="btn btn-xs" id="pv-desk">桌面</button>
+        <button class="btn btn-xs" id="pv-mob">手机</button>
+        <span id="pv-zoom" style="color:var(--c-soft)"></span>
+        <span style="width:1px;height:16px;background:var(--c-line)"></span>
+        <span title="真站顶栏登录前后是两副面孔：登录后导航整条收起来，换成购物车和头像">顶栏</span>
+        <button class="btn btn-xs" id="pv-guest">访客</button>
+        <button class="btn btn-xs" id="pv-buyer">已登录</button>
+        <div class="sp"></div>
+        <label><input type="checkbox" id="pv-mark"> 标出用了默认值的地方</label>
+      </div>
+      <div class="pvstage" id="pvstage"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 弹层 ============ -->
+<div class="mask" id="mask" hidden>
+  <div class="dlg">
+    <div class="dlg-h"><h3 id="dlg-t"></h3><div class="sp"></div><button class="btn btn-ghost" data-close>关闭</button></div>
+    <div class="dlg-b" id="dlg-b"></div>
+    <div class="dlg-f" id="dlg-f" hidden></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+'use strict';
+/* ==========================================================================
+   数据模型：contentJson v3
+   --------------------------------------------------------------------------
+   和线上 v2 的区别有两条，都是刻意的：
+
+   1. 首页内容是一个**有序数组** blocks[]，不再是固定的几个顶层键。
+      顺序 = 页面上的先后，on = 要不要出现，variant = 用哪套版式。
+
+   2. 共享层从「只有顶层标量能共享」放宽到**字段级**：
+      每个 block 有 shared / i18n 两半，字段自己声明去哪一半。
+      图片默认进 shared（一张厂房图不会因为语言不同而换），
+      但可以按块勾掉，改成每种语言各配一张。
+
+   顶栏/页脚/SEO 不是首页的一块，所以不在 blocks 里，单独放 global。
+
+   {
+     v: 3,
+     shared: { logo },
+     global: { brand:{i18n:{en:{companyName,slogan}}}, nav:{i18n:{en:[…]}},
+               contact:{i18n:{…}}, seo:{i18n:{…}} },
+     blocks: [ { id, type, on, variant, shared:{…}, i18n:{ en:{…} } } ]
+   }
+   ========================================================================== */
+
+var LANGS = ['en','zh','ja'];
+var LANG_NAME = {en:'英语（en）', zh:'中文（zh）', ja:'日语（ja）'};
+var DEFAULT_LANG = 'en';
+var SITE_NAME = 'Tongling Shidai';
+
+/* ---- 内置默认文案。「留空 = 用默认」里的那个默认，就是这一份 ---- */
+var BUILTIN = {
+  en:{ nav:[{title:'Home',url:'/'},{title:'Products',url:'/products'},
+            {title:'About Us',url:'/#about'},{title:'Contact',url:'/#inquiry'}],
+       bentoH:'What Sets Us Apart', bentoLead:'The details that decide whether a part works in your product.',
+       prodH:'Products', prodLead:'Selected items from our catalog.', viewAll:'View complete catalog',
+       capsH:'What We Offer', capsLead:'The capabilities behind every order we take.',
+       aboutH:'About Us', aboutPill:'Who We Are',
+       reachH:'Shipping Worldwide', reachLead:'Delivered from {city} to customers on six continents.',
+       inqH:'Send an Inquiry', inqLead:'Tell us what you need and we will reply with a quotation.',
+       viewProducts:'View Products', contactUs:'Contact Us', signIn:'Sign in',
+       fName:'Your name', fMail:'Email', fMsg:'What do you need?', fSend:'Send inquiry' },
+  zh:{ nav:[{title:'首页',url:'/'},{title:'产品中心',url:'/products'},
+            {title:'关于我们',url:'/#about'},{title:'联系我们',url:'/#inquiry'}],
+       bentoH:'我们的不同', bentoLead:'决定一个零件能不能用在你产品里的，是这些细节。',
+       prodH:'产品', prodLead:'目录中的精选产品。', viewAll:'查看完整目录',
+       capsH:'我们能做什么', capsLead:'每一单背后，我们自己能做的那些事。',
+       aboutH:'关于我们', aboutPill:'我们是谁',
+       reachH:'全球发货', reachLead:'从{city}出发，交付到六大洲的客户手上。',
+       inqH:'发送询盘', inqLead:'告诉我们您的需求，我们会尽快回复报价。',
+       viewProducts:'查看产品', contactUs:'联系我们', signIn:'登录',
+       fName:'您的姓名', fMail:'邮箱', fMsg:'您需要什么？', fSend:'发送询盘' },
+  ja:{ nav:[{title:'ホーム',url:'/'},{title:'製品情報',url:'/products'},
+            {title:'会社概要',url:'/#about'},{title:'お問い合わせ',url:'/#inquiry'}],
+       bentoH:'選ばれる理由', bentoLead:'その部品が製品で使えるかどうかを決めるのは、こうした細部です。',
+       prodH:'製品', prodLead:'カタログからの厳選製品。', viewAll:'すべての製品を見る',
+       capsH:'提供できること', capsLead:'すべての受注を支える自社の能力。',
+       aboutH:'会社概要', aboutPill:'私たちについて',
+       reachH:'世界へ出荷', reachLead:'{city}から六大陸のお客様へお届けします。',
+       inqH:'お問い合わせ', inqLead:'ご要望をお知らせください。お見積りをお送りします。',
+       viewProducts:'製品を見る', contactUs:'お問い合わせ', signIn:'ログイン',
+       fName:'お名前', fMail:'メール', fMsg:'ご要望', fSend:'送信' }
+};
+
+/* ---- 图片素材：内嵌 SVG，离线也能看 ---- */
+function svgImg(w,h,c1,c2,label){
+  var s='<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'">'
+    +'<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
+    +'<stop offset="0" stop-color="'+c1+'"/><stop offset="1" stop-color="'+c2+'"/></linearGradient></defs>'
+    +'<rect width="'+w+'" height="'+h+'" fill="url(#g)"/>'
+    +'<g fill="rgba(255,255,255,.22)">'
+    +'<rect x="'+(w*.08)+'" y="'+(h*.55)+'" width="'+(w*.2)+'" height="'+(h*.4)+'"/>'
+    +'<rect x="'+(w*.32)+'" y="'+(h*.42)+'" width="'+(w*.16)+'" height="'+(h*.53)+'"/>'
+    +'<rect x="'+(w*.52)+'" y="'+(h*.62)+'" width="'+(w*.24)+'" height="'+(h*.33)+'"/>'
+    +'<circle cx="'+(w*.82)+'" cy="'+(h*.3)+'" r="'+(h*.12)+'"/></g>'
+    +'<text x="'+(w/2)+'" y="'+(h*.28)+'" text-anchor="middle" fill="rgba(255,255,255,.85)"'
+    +' font-family="sans-serif" font-size="'+Math.round(h*.075)+'" font-weight="700">'+label+'</text></svg>';
+  return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(s);
+}
+var MEDIA = [
+  {url:svgImg(960,540,'#6c4b9c','#a98fce','WORKSHOP'),   name:'厂房全景'},
+  {url:svgImg(960,540,'#4e3670','#d94f8a','ASSEMBLY'),   name:'装配线'},
+  {url:svgImg(960,540,'#2b7a78','#7fd1cc','CLEANROOM'),  name:'洁净车间'},
+  {url:svgImg(960,540,'#b4690e','#f3c76b','WAREHOUSE'),  name:'仓库'},
+  {url:svgImg(960,540,'#1f1a2b','#6f6880','LAB'),        name:'实验室'},
+  {url:svgImg(960,540,'#31527d','#8fb6e8','SHIPPING'),   name:'装柜发货'}
+];
+var PROD_IMG = [
+  svgImg(600,420,'#6c4b9c','#c9b3e6','TUBE'),
+  svgImg(600,420,'#4e3670','#a98fce','PUMP'),
+  svgImg(600,420,'#31527d','#9ec0ea','CABLE'),
+  svgImg(600,420,'#2b7a78','#9ed8d4','BATTERY'),
+  svgImg(600,420,'#b4690e','#ecc07a','VALVE'),
+  svgImg(600,420,'#8d3a5c','#e5a3c0','FITTING')
+];
+/*
+ * 预览用的假商品。真站这一块从商品库取，装修里配不了内容，只配标题和取几个。
+ *
+ * 每条是 [标题, 摘要, 价格, 起订量, 单位, 是否主推]。
+ * ⚠ 第 3 条刻意**不填起订量**、第 5 条刻意**价格为 0**（= 面议）：
+ *   这两种数据在真站卡片上各有专门的处理（价格列 min-height 的基线对齐、
+ *   0 显示成「价格面议」而不是免费），预览里得能看出来。
+ */
+var FAKE_PRODUCTS = {
+  en:[['Platinum-Cured Silicone Tube','Medical grade, 2–25 mm bore, FDA and LFGB compliant',4.20,500,'pcs',1],
+      ['Micro Diaphragm Air Pump','Whisper-quiet, 12 V DC, 45 kPa at free flow',5.90,200,'pcs',1],
+      ['Custom Wiring Harness','UL-listed wire, IATF process, built to your drawing',7.60,0,'',0],
+      ['Li-ion Battery Pack','7.4 V / 2600 mAh, PCM built in, UN38.3 tested',12.40,100,'packs',0],
+      ['Precision Check Valve','Cracking pressure 2 kPa, silicone diaphragm',0,1000,'pcs',0],
+      ['Quick-Connect Fitting','PBT body, food-safe seal, 4–12 mm tube',1.85,2000,'pcs',0]],
+  zh:[['铂金硫化硅胶管','医用级，内径 2–25 mm，符合 FDA 与 LFGB',4.20,500,'米',1],
+      ['微型隔膜气泵','低噪，12V 直流，自由流量下 45 kPa',5.90,200,'台',1],
+      ['定制线束','UL 认证线材，IATF 流程，按图定制',7.60,0,'',0],
+      ['锂电池组','7.4V / 2600mAh，内置保护板，过 UN38.3',12.40,100,'组',0],
+      ['精密止回阀','开启压力 2 kPa，硅胶膜片',0,1000,'个',0],
+      ['快插接头','PBT 本体，食品级密封，适配 4–12 mm 管',1.85,2000,'个',0]],
+  ja:[['白金加硫シリコンチューブ','医療グレード、内径 2–25 mm、FDA・LFGB 適合',4.20,500,'m',1],
+      ['小型ダイヤフラムポンプ','静音、DC 12V、自由流量時 45 kPa',5.90,200,'台',1],
+      ['カスタムワイヤーハーネス','UL 認定電線、IATF 工程、図面対応',7.60,0,'',0],
+      ['リチウムイオン電池パック','7.4V / 2600mAh、保護回路内蔵、UN38.3 試験済',12.40,100,'組',0],
+      ['精密チェックバルブ','開弁圧 2 kPa、シリコンダイヤフラム',0,1000,'個',0],
+      ['ワンタッチ継手','PBT 本体、食品対応シール、4–12 mm 対応',1.85,2000,'個',0]]
+};
+/* 商品卡上的几处界面文案。取自真站：ProductCard 的 FEATURED、useShopCopy 的 inquire/moq */
+var PC_COPY = {
+  en:{featured:'Featured', inquire:'Inquire for price',  moq:'MOQ',      lang:'English'},
+  zh:{featured:'主推',     inquire:'价格面议',            moq:'起订量',    lang:'中文'},
+  ja:{featured:'おすすめ', inquire:'価格はお問い合わせ',  moq:'最小ロット', lang:'日本語'}
+};
+function pc(l){ return PC_COPY[l] || PC_COPY.en; }
+
+/* ---- 城市表：商家选城市，不填经纬度 ---- */
+var CITIES = [
+  ['天津 Tianjin',117.2,39.13],['上海 Shanghai',121.47,31.23],['深圳 Shenzhen',114.06,22.54],
+  ['Los Angeles',-118.24,34.05],['New York',-74.01,40.71],['Toronto',-79.38,43.65],
+  ['São Paulo',-46.63,-23.55],['Hamburg',10.0,53.55],['Rotterdam',4.48,51.92],
+  ['Milan',9.19,45.46],['Madrid',-3.7,40.42],['Moscow',37.62,55.75],
+  ['Istanbul',28.98,41.01],['Dubai',55.27,25.2],['Mumbai',72.88,19.08],
+  ['Bangkok',100.5,13.76],['Ho Chi Minh City',106.63,10.82],['Tokyo',139.69,35.69],
+  ['Seoul',126.98,37.57],['Sydney',151.21,-33.87],['Johannesburg',28.03,-26.2]
+];
+
+/* ==========================================================================
+   区块类型定义
+   --------------------------------------------------------------------------
+   每个类型声明：图标、名字、一句解释、可选版式、字段表。
+   字段的 scope：'lang' = 分语言各存一份；'shared' = 所有语言通用。
+   有 defaultOf 的字段就是「留空 → 用默认」，界面上必须把默认值说出来。
+   ========================================================================== */
+var TYPES = {
+  hero:{
+    icon:'▤', name:'Banner', once:true, always:true,
+    desc:'首屏那一整屏。背景图 + 大标题 + 两个按钮。',
+    variants:[['single','单张背景图'],['carousel','多张轮播']],
+    shareMediaLabel:'所有语言用同一组背景图',
+    fields:[
+      {k:'eyebrow',t:'眉标',scope:'lang',hint:'标题上面那个小圆标。留空则用标语（只有副标题也填了才显示，同一句话不会出现两次）'},
+      {k:'slides',t:'幻灯片',scope:'lang',type:'slides'}
+    ]
+  },
+  bento:{
+    icon:'▦', name:'三栏特色', once:true,
+    desc:'Banner 下面那一组卡。主卡 + 粉色数字卡 + 深色横条。',
+    variants:[['bento','错落 bento（主卡 + 数字卡 + 深色横条）'],['grid3','三等分卡片']],
+    fields:[
+      {k:'heading',t:'区块标题',scope:'lang',def:'bentoH'},
+      {k:'lead',t:'区块副标题',scope:'lang',def:'bentoLead'},
+      {k:'cards',t:'特色条目',scope:'lang',type:'rows',cols:[['icon','图标',52],['title','标题',0],['desc','说明',0]],max:3,
+       hint:'最多 3 条。第 1 条进主卡，第 2 条进小卡，第 3 条进深色横条。'},
+      {k:'stat',t:'数字卡',scope:'lang',type:'stat',
+       hint:'粉色那张卡上的大数字。⚠ 这是它自己的字段 —— 线上那版是从「关于我们」的数字亮点里借第一条，结果同一个数字在一屏里出现两次。留空则这张卡不出现，主卡自动不跨行。'}
+    ]
+  },
+  products:{
+    icon:'▣', name:'主推商品', once:true, always:true,
+    desc:'从商品库里取，不在装修里填内容。这里只管标题和取几个。',
+    variants:[['grid','三列卡片'],['wide','两列大图']],
+    fields:[
+      {k:'heading',t:'区块标题',scope:'lang',def:'prodH'},
+      {k:'lead',t:'区块副标题',scope:'lang',def:'prodLead'},
+      {k:'limit',t:'显示几个',scope:'shared',type:'select',opts:[[3,'3 个'],[6,'6 个（两行满）'],[9,'9 个']],
+       hint:'优先取「主推」商品，不够则补最新上架的。'}
+    ]
+  },
+  caps:{
+    icon:'◆', name:'能力介绍', once:true,
+    desc:'「我们能做什么」那一组卡，几条都行。',
+    variants:[['auto','自适应列数（推荐）'],['g3','固定三列']],
+    fields:[
+      {k:'heading',t:'区块标题',scope:'lang',def:'capsH'},
+      {k:'lead',t:'区块副标题',scope:'lang',def:'capsLead'},
+      {k:'items',t:'能力条目',scope:'lang',type:'rows',cols:[['icon','图标',52],['title','标题',0],['desc','说明',0]],
+       hint:'条数不限。自适应列数下 3/4/5 条都不会留空缺。'},
+      {k:'accent',t:'强调哪一张',scope:'shared',type:'select',
+       opts:[[-1,'都不强调'],[0,'第 1 张'],[1,'第 2 张（推荐）'],[2,'第 3 张']],
+       hint:'被强调的那张填成实心紫。整排都填就没有重点了，所以只能挑一张。'}
+    ]
+  },
+  about:{
+    icon:'▧', name:'关于我们', once:true,
+    desc:'配图 + 正文 + 一排数字。首页 #about 这个锚点指向它。',
+    variants:[['stagger','错位叠卡（图在上、文字卡压上来）'],['side','左图右文'],['solo','只有文字卡']],
+    shareMediaLabel:'所有语言用同一张配图',
+    fields:[
+      {k:'title',t:'标题',scope:'lang',def:'aboutH'},
+      {k:'content',t:'正文',scope:'lang',type:'textarea',
+       hint:'段与段之间空一行，前台会拆成独立段落。第一段字号略大，承接标题。'},
+      {k:'image',t:'配图',scope:'media',type:'image',hint:'留空则退成一张整宽文字卡（错位效果本来是靠图撑出来的）。'},
+      {k:'stats',t:'数字亮点',scope:'lang',type:'rows',cols:[['value','数值',92],['label','说明',0]],
+       hint:'如 15+ / Years of Export。不填就不显示这一排。'}
+    ]
+  },
+  reach:{
+    icon:'◍', name:'全球布局', once:true, always:true,
+    desc:'世界地图，从总部向各目的地辐射弧线。',
+    variants:[['map','地图 + 图例'],['listonly','只列目的地，不画地图']],
+    fields:[
+      {k:'heading',t:'区块标题',scope:'lang',def:'reachH'},
+      {k:'lead',t:'区块副标题',scope:'lang',def:'reachLead',hint:'文案里的 <code>{city}</code> 会替换成总部城市名。'},
+      {k:'hq',t:'总部',scope:'shared',type:'city',hint:'地图的投影中心跟着它走。'},
+      {k:'dest',t:'目的地',scope:'shared',type:'cities',
+       hint:'选城市就行，不用填经纬度。⚠ 这一块是所有语言通用的：城市点位不分语言。'},
+      {k:'stats',t:'数字',scope:'lang',type:'rows',cols:[['value','数值',92],['label','说明',0]],
+       hint:'留空时组件按地图上的地点数自己算两个，不会空着。⚠ 刻意不回退「关于我们」的数字，否则同一组数字一屏出现三次。'}
+    ]
+  },
+  inquiry:{
+    icon:'✉', name:'询盘表单', once:true, always:true,
+    desc:'首页 #inquiry 这个锚点指向它。表单字段固定，不在装修里配。',
+    variants:[['soft','浅底'],['plain','白底']],
+    fields:[
+      {k:'heading',t:'区块标题',scope:'lang',def:'inqH'},
+      {k:'lead',t:'区块副标题',scope:'lang',def:'inqLead'}
+    ]
+  }
+};
+
+/* ---- 全站设置（不是首页区块，所以不在 blocks 里） ---- */
+var GLOBALS = {
+  brand:{icon:'✳',name:'品牌与 Logo',desc:'顶栏和页脚上的名字、标语、Logo 图。',fields:[
+    {k:'logo',t:'Logo 图',scope:'sharedTop',type:'image',hint:'所有语言通用。留空则顶栏显示公司名的文字。'},
+    {k:'companyName',t:'公司名',scope:'lang',hint:'对外用的名字，往往和 ERP 里的站点名称不是一回事。留空用站点名称（'+SITE_NAME+'）。'},
+    {k:'slogan',t:'一句话标语',scope:'lang',hint:'显示在页脚；Banner 副标题没填时也用它兜底。'}
+  ]},
+  nav:{icon:'☰',name:'导航菜单',desc:'顶栏那一排链接。',fields:[
+    {k:'rows',t:'菜单项',scope:'lang',type:'rows',cols:[['title','名称',0],['url','地址',0]],
+     hint:'留空则用默认导航。地址填站内根相对路径，如 <code>/products</code>、<code>/#about</code>。'
+        + '<b>语言前缀不要写在这里</b>，前台会按当前语言自己拼。<br>'
+        + '⚠ <b>登录买家的顶栏里没有导航</b>：真站登录后整条收起来，顶栏留给购物车和账号'
+        + '（买家是来下单的，不是来看「关于我们」的）。所以这里配的导航，面向的是'
+        + '访客和搜索引擎爬虫。用预览工具条上的「已登录」能看到这个差别。'}
+  ]},
+  contact:{icon:'✆',name:'联系方式',desc:'显示在页脚；询盘发送失败时也提示客户直接发这个邮箱。',fields:[
+    {k:'address',t:'地址',scope:'lang'},
+    {k:'phone',t:'电话',scope:'shared',hint:'所有语言通用（号码不分语言）。'},
+    {k:'email',t:'邮箱',scope:'shared'},
+    {k:'whatsapp',t:'WhatsApp',scope:'shared'}
+  ]},
+  seo:{icon:'⌕',name:'SEO 标题与描述',desc:'搜索结果里显示的那两行。',fields:[
+    {k:'seoTitle',t:'SEO 标题',scope:'lang',hint:'留空用公司名。'},
+    {k:'seoDescription',t:'SEO 描述',scope:'lang',type:'textarea',
+     hint:'⚠ 一定要按语言分别填 —— 搜索引擎是按语言分别收录的。'}
+  ]}
+};
+
+/* ==========================================================================
+   状态
+   ========================================================================== */
+var LS_KEY = 'decorate-demo-v3';
+var state = null;      // 当前编辑态（contentJson v3 的对象形态）
+var saved = null;      // 上一次「保存」的快照，放弃修改回到它
+var lang = DEFAULT_LANG;
+var sel = {kind:'global', key:'brand'};   // 当前编辑的对象
+var pvMode = 'desktop';
+var slideIdx = 0;         // 缩略图条上选中的那一张（UI 状态，不存进 contentJson）
+/*
+ * 预览里的顶栏按谁的视角画。
+ *
+ * 真站顶栏登录前后是两副面孔（SiteHeader.vue 的「两副面孔」那段）：未登录是
+ * Logo + 导航 + 币种/语言 + 「登录」；登录后**导航整条收起来**，换成购物车 + 头像。
+ *
+ * 默认 guest —— 首页装修要对的就是访客和爬虫看到的那一版。
+ * 但得能切到 buyer 看一眼：商家在「导航菜单」里配的东西登录买家根本看不到，
+ * 这件事只有亲眼看见导航消失才会真的记住。
+ */
+var hdView = 'guest';     // 'guest' | 'buyer'
+var markDefaults = false;
+var noPerm = false;
+
+function uid(){ return 'b' + (uid.n = (uid.n||0) + 1) + '-' + LANGS.length; }
+
+function emptyContent(){
+  var g = {};
+  Object.keys(GLOBALS).forEach(function(k){ g[k] = {shared:{}, i18n:blankI18n()}; });
+  return {v:3, shared:{logo:''}, global:g, blocks:defaultBlocks()};
+}
+function blankI18n(){ var o={}; LANGS.forEach(function(l){ o[l]={}; }); return o; }
+
+/* 新站的默认区块顺序 = 现在前台首页的顺序。都开着但内容为空，
+   所以首页此时全靠内置默认文案撑住 —— 这正是要在预览里能看到的状态 */
+function defaultBlocks(){
+  return ['hero','bento','products','caps','about','reach','inquiry'].map(function(t){
+    return newBlock(t);
+  });
+}
+function newBlock(type){
+  var b = {id:uid(), type:type, on:true, variant:TYPES[type].variants[0][0], shared:{}, i18n:blankI18n()};
+  if(type==='hero'){ b.shareMedia = true; b.shared.slides = [{id:'s1'}]; }
+  if(type==='about'){ b.shareMedia = true; }
+  if(type==='products'){ b.shared.limit = 6; }
+  if(type==='caps'){ b.shared.accent = 1; }
+  if(type==='reach'){ b.shared.hq = 0; b.shared.dest = [3,7,12,17,19]; }
+  return b;
+}
+
+/* ==========================================================================
+   小工具
+   ========================================================================== */
+function esc(s){
+  return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function $(id){ return document.getElementById(id); }
+function txt(v){ return String(v==null?'':v).trim(); }
+function toast(msg){
+  var t=$('toast'); t.textContent=msg; t.hidden=false;
+  clearTimeout(toast.h); toast.h=setTimeout(function(){ t.hidden=true; }, 2200);
+}
+function deepCopy(o){ return JSON.parse(JSON.stringify(o)); }
+function bi(l){ return BUILTIN[l] || BUILTIN[DEFAULT_LANG]; }
+
+/* 取一个字段的值。scope 决定它存在哪一半 */
+function fieldHost(owner, f, l){
+  if(f.scope==='sharedTop') return state.shared;
+  if(f.scope==='shared') return owner.shared;
+  if(f.scope==='media')  return owner.shareMedia ? owner.shared : owner.i18n[l];
+  return owner.i18n[l];
+}
+function getF(owner, f, l){ return fieldHost(owner,f,l)[f.k]; }
+function setF(owner, f, l, v){ fieldHost(owner,f,l)[f.k] = v; }
+
+/* 当前选中的对象 + 它的定义 */
+function current(){
+  if(sel.kind==='global') return {owner:state.global[sel.key], def:GLOBALS[sel.key], isBlock:false};
+  var b = state.blocks.filter(function(x){ return x.id===sel.key; })[0];
+  return b ? {owner:b, def:TYPES[b.type], isBlock:true} : null;
+}
+
+/* ==========================================================================
+   「有没有内容」判断 —— 决定左列徽标和预览要不要渲染
+   ========================================================================== */
+function blockFilled(b, l){
+  var t = TYPES[b.type];
+  var any = false;
+  t.fields.forEach(function(f){
+    var v = getF(b, f, l);
+    if(f.type==='rows'||f.type==='cities'){ if((v||[]).length) any=true; return; }
+    if(f.type==='slides'){
+      slideList(b).forEach(function(s){
+        var t2 = (b.i18n[l].slides||{})[s.id] || {};
+        if(txt(t2.title)||txt(t2.subtitle)) any=true;
+        if(txt(slideImage(b,l,s.id))) any=true;
+      });
+      return;
+    }
+    if(f.type==='stat'){ if(v && (txt(v.value)||txt(v.label))) any=true; return; }
+    if(f.type==='image'){ if(txt(v)) any=true; return; }
+    if(f.k==='heading'||f.k==='lead'||f.k==='title') return;  // 标题类不算「有内容」
+    if(txt(v)) any=true;
+  });
+  return any;
+}
+/*
+ * 这一块会不会出现在页面上。
+ *
+ * always 的四块无论填不填都渲染（内置默认撑着），其余三块「没配就不渲染」——
+ * 空着不出现比显示一个空框好。判断要看两种语言：当前语言没填但默认语言填了，
+ * 前台是退回默认语言渲染，不是不渲染。
+ */
+function renders(b,l){
+  if(!b.on) return false;
+  if(TYPES[b.type].always) return true;
+  return blockFilled(b,l) || blockFilled(b,DEFAULT_LANG);
+}
+/* 用哪种语言的内容渲染。两种都没填时用当前语言 —— 那时页面上全是内置默认文案，
+   默认文案必须是当前语言的，否则编辑日语时预览里蹦出一堆英文标题 */
+function renderLang(b,l){
+  if(blockFilled(b,l)) return l;
+  return blockFilled(b,DEFAULT_LANG) ? DEFAULT_LANG : l;
+}
+/* =======================================================================
+   幻灯片的存法
+   -----------------------------------------------------------------------
+   ⚠ 这里刻意**不用两个按下标配对的数组**。上一版是：
+
+       shared.slides   = [{image},{image}]        图，所有语言通用
+       i18n.en.slides  = [{title,subtitle}, …]    文案，分语言
+
+   两个数组靠下标配对，而存库前要剪空值（「没填 = 用默认」的前提）。
+   一张「有图、还没写文案」的幻灯片，文案那边整条被剪掉、图那边留着，
+   两个数组**各自压缩**，重新载入后图和文案就错开一位。
+   拖拽排序时也一样，要记得两边一起搬，漏一边就错位。
+
+   现在：顺序和身份放在共享的一半，文案按 id 存成对象。
+
+       shared.slides  = [{id:'s1', image:'…'}, {id:'s2'}]   ← 顺序 + 身份 + 图
+       i18n.en.slides = { s1:{title,subtitle}, s2:{…} }      ← 文案，按 id
+
+   有几张、什么顺序，本来就和语言无关（同一个轮播不会日语三张英语两张），
+   所以它属于共享的那一半。文案对象被剪空后只是这个 id 没有键 = 那张用默认文案，
+   下标不会动，错位从结构上就不可能发生。拖拽只动 shared.slides 一个数组。
+
+   勾掉「所有语言用同一组背景图」时，图改存到 i18n[l].slides[id].image。
+   ======================================================================= */
+function slideList(b){ return (b.shared.slides = b.shared.slides || []); }
+function slideEntry(b,id){
+  return slideList(b).filter(function(x){ return x.id===id; })[0];
+}
+/** 某种语言下这张的文案对象，没有就建一个（模板里就不用到处判空） */
+function slideText(b,l,id){
+  var m = (b.i18n[l].slides = b.i18n[l].slides || {});
+  return (m[id] = m[id] || {});
+}
+function slideImage(b,l,id){
+  if(b.shareMedia){ var e = slideEntry(b,id); return (e && e.image) || ''; }
+  var t = (b.i18n[l].slides||{})[id];
+  return (t && t.image) || '';
+}
+function setSlideImage(b,l,id,url){
+  if(b.shareMedia){ var e = slideEntry(b,id); if(e) e.image = url; }
+  else slideText(b,l,id).image = url;
+}
+/** 新 id。取现有最大号 +1，删掉再加不会撞上已经删了的那些语言残留 */
+function newSlideId(b){
+  var max = 0;
+  slideList(b).forEach(function(s){
+    var n = parseInt(String(s.id).replace(/^s/,''),10);
+    if(n>max) max = n;
+  });
+  LANGS.forEach(function(l){
+    Object.keys(b.i18n[l].slides||{}).forEach(function(k){
+      var n = parseInt(String(k).replace(/^s/,''),10);
+      if(n>max) max = n;
+    });
+  });
+  return 's' + (max+1);
+}
+/** 加一张，返回它的 id */
+function addSlide(b){
+  var id = newSlideId(b);
+  slideList(b).push({id:id});
+  return id;
+}
+/** 删一张。⚠ 所有语言的文案都要删：有几张是共享的，这一张对谁都不存在了。
+    上一版只删了当前语言那一条，别的语言留下一条对不上任何幻灯片的孤儿文案 */
+function removeSlide(b, i){
+  var l0 = slideList(b);
+  var s = l0[i]; if(!s) return;
+  l0.splice(i,1);
+  LANGS.forEach(function(l){
+    if(b.i18n[l].slides) delete b.i18n[l].slides[s.id];
+  });
+}
+
+/* ==========================================================================
+   渲染：左列
+   ========================================================================== */
+function renderList(){
+  var h = '';
+
+  h += '<div class="grp"><div class="grp-t">全站设置'
+     + '<span class="q" title="这些不是首页的一块，而是每个页面都在用的东西。放在这里，首页区块列表才只剩首页的事">?</span></div>';
+  Object.keys(GLOBALS).forEach(function(k){
+    var g = GLOBALS[k], on = sel.kind==='global' && sel.key===k;
+    h += '<div class="item'+(on?' on':'')+'" data-g="'+k+'">'
+       + '<span class="hnd" style="visibility:hidden">⋮⋮</span>'
+       + '<span class="ic">'+g.icon+'</span>'
+       + '<span class="nm"><b>'+esc(g.name)+'</b></span>'
+       + globalBadge(k) + '</div>';
+  });
+  h += '</div>';
+
+  h += '<div class="grp"><div class="grp-t">首页区块 · 可拖拽排序'
+     + '<span class="q" title="顺序就是页面上的先后。眼睛图标 = 暂时不显示但内容留着">?</span></div>';
+  state.blocks.forEach(function(b){
+    var t = TYPES[b.type], on = sel.kind==='block' && sel.key===b.id;
+    var vn = (t.variants.filter(function(v){return v[0]===b.variant;})[0]||t.variants[0])[1];
+    h += '<div class="item'+(on?' on':'')+(b.on?'':' off')+'" data-b="'+b.id+'" draggable="true">'
+       + '<span class="hnd" title="拖动排序">⋮⋮</span>'
+       + '<span class="ic">'+t.icon+'</span>'
+       + '<span class="nm"><b>'+esc(t.name)+'</b><span>'+esc(vn)+'</span></span>'
+       + blockBadge(b)
+       + '<button class="eye" data-eye="'+b.id+'" title="'+(b.on?'点击隐藏这一块':'点击显示这一块')+'">'+(b.on?'◉':'◌')+'</button>'
+       + '<button class="x" data-del="'+b.id+'" title="删除这一块">✕</button>'
+       + '</div>';
+  });
+  h += '</div><div class="addrow"><button class="addbtn" id="btn-add">＋ 添加区块</button></div>';
+
+  $('col-list').innerHTML = h;
+}
+function globalBadge(k){
+  var g = GLOBALS[k], owner = state.global[k], any=false;
+  g.fields.forEach(function(f){
+    var v = getF(owner,f,lang);
+    if(f.type==='rows'){ if((v||[]).length) any=true; return; }
+    if(txt(v)) any=true;
+  });
+  return any ? '' : '<span class="tag">用默认</span>';
+}
+function blockBadge(b){
+  if(!b.on) return '<span class="tag">已隐藏</span>';
+  if(blockFilled(b, lang)) return '';
+  // 这个语言没填，但默认语言填了 → 前台退回默认语言渲染，得说出来
+  if(lang!==DEFAULT_LANG && blockFilled(b, DEFAULT_LANG))
+    return '<span class="tag tag-warn">退回 '+DEFAULT_LANG+'</span>';
+  // always 的几块空着也会出现，只是全用内置默认文案
+  return TYPES[b.type].always
+    ? '<span class="tag">用默认</span>'
+    : '<span class="tag">空 · 不显示</span>';
+}
+
+/* ==========================================================================
+   渲染：中列表单
+   ========================================================================== */
+function renderForm(){
+  var c = current();
+  if(!c){ $('form-host').innerHTML = '<div class="empty">左边挑一块来编辑</div>'; return; }
+  var d = c.def, owner = c.owner;
+  var h = '<div class="fhead"><h2>'+d.icon+' '+esc(d.name)+'</h2><p>'+d.desc+'</p></div><div class="fbody">';
+
+  if(c.isBlock && d.variants.length>1){
+    h += '<label class="f"><span class="f-lbl">版式 <em>所有语言通用</em></span><select data-variant="1">';
+    d.variants.forEach(function(v){
+      h += '<option value="'+v[0]+'"'+(owner.variant===v[0]?' selected':'')+'>'+esc(v[1])+'</option>';
+    });
+    h += '</select><span class="f-hint">同一份内容换一种排法，文案不用重填。</span></label>';
+  }
+  if(c.isBlock && d.shareMediaLabel){
+    h += '<label class="chk"><input type="checkbox" data-sharemedia="1"'+(owner.shareMedia?' checked':'')
+       + '><span>'+esc(d.shareMediaLabel)+'<br><span style="color:var(--c-soft)">勾掉后每种语言各配一张 —— '
+       + '外贸站给不同市场配不同的图是常见做法，所以这是个选项，不是规定。</span></span></label>';
+  }
+
+  d.fields.forEach(function(f){ h += fieldHtml(owner, f); });
+  h += '</div>';
+  $('form-host').innerHTML = h;
+}
+
+function scopeTag(f, owner){
+  if(f.scope==='lang')      return '<em>分语言</em>';
+  if(f.scope==='shared'||f.scope==='sharedTop') return '<em class="sh">所有语言通用</em>';
+  if(f.scope==='media')     return owner.shareMedia ? '<em class="sh">所有语言通用</em>' : '<em>分语言</em>';
+  return '';
+}
+function defHint(f){
+  if(!f.def) return '';
+  var v = bi(lang)[f.def] || '';
+  return '留空 → 用默认：「'+String(v).replace(/\{city\}/g, cityName(0))+'」';
+}
+
+function fieldHtml(owner, f){
+  var v = getF(owner, f, lang);
+  var lbl = '<span class="f-lbl">'+esc(f.t)+' '+scopeTag(f,owner)+'</span>';
+  var hint = '';
+  if(f.hint) hint += f.hint;
+  if(f.def)  hint += (hint?'<br>':'') + esc(defHint(f));
+  hint = hint ? '<span class="f-hint">'+hint+'</span>' : '';
+
+  if(f.type==='textarea')
+    return '<label class="f">'+lbl+'<textarea data-f="'+f.k+'" rows="6">'+esc(v)+'</textarea>'+hint+'</label>';
+
+  if(f.type==='select'){
+    var o='';
+    f.opts.forEach(function(p){ o += '<option value="'+p[0]+'"'+(String(v)===String(p[0])?' selected':'')+'>'+esc(p[1])+'</option>'; });
+    return '<label class="f">'+lbl+'<select data-f="'+f.k+'">'+o+'</select>'+hint+'</label>';
+  }
+
+  if(f.type==='image')
+    return '<div class="f">'+lbl+'<div class="imgf">'
+      + '<input type="text" data-f="'+f.k+'" value="'+esc(v)+'" placeholder="图片地址，或点右边选一张">'
+      + '<button class="btn btn-xs" data-pick="'+f.k+'">选图片</button>'
+      + '<span class="thumb"'+(txt(v)?' style="background-image:url('+esc(v)+')"':'')+'>'+(txt(v)?'':'无图')+'</span>'
+      + '</div>'+hint+'</div>';
+
+  if(f.type==='stat'){
+    v = v || {value:'',label:''};
+    return '<div class="f">'+lbl
+      + '<div class="rows"><div class="row"><div class="cell w-num"><input type="text" data-f="'+f.k
+      + '" data-sub="value" value="'+esc(v.value)+'" placeholder="15+"></div>'
+      + '<div class="cell"><input type="text" data-f="'+f.k+'" data-sub="label" value="'+esc(v.label)
+      + '" placeholder="Years of Export"></div></div></div>'+hint+'</div>';
+  }
+
+  if(f.type==='rows') return rowsHtml(f, v||[], hint, lbl);
+  if(f.type==='slides') return slidesHtml(owner, f, hint);
+  if(f.type==='city') return cityHtml(f, v, hint, lbl);
+  if(f.type==='cities') return citiesHtml(f, v||[], hint, lbl);
+
+  return '<label class="f">'+lbl+'<input type="text" data-f="'+f.k+'" value="'+esc(v)
+    + '" placeholder="'+esc(f.def?'留空用默认':'')+'">'+hint+'</label>';
+}
+
+function rowsHtml(f, list, hint, lbl){
+  var h = '<div class="f">'+lbl+'<div class="rows"><div class="row rh">';
+  f.cols.forEach(function(c){ h += '<div class="cell'+(c[2]===52?' w-ic':c[2]===92?' w-num':'')+'">'+esc(c[1])+'</div>'; });
+  h += '<div style="width:30px"></div></div>';
+  if(!list.length) h += '<div class="row"><div class="cell" style="padding:9px;color:var(--c-soft);font-size:12px">还没有条目 —— 这一块暂时不会出现在首页</div></div>';
+  list.forEach(function(row,i){
+    h += '<div class="row">';
+    f.cols.forEach(function(c){
+      h += '<div class="cell'+(c[2]===52?' w-ic':c[2]===92?' w-num':'')+'">'
+        +  '<input type="text" data-rows="'+f.k+'" data-i="'+i+'" data-c="'+c[0]+'" value="'+esc(row[c[0]])+'"></div>';
+    });
+    h += '<button class="del" data-rowdel="'+f.k+'" data-i="'+i+'" title="删除这一条">✕</button></div>';
+  });
+  h += '</div>';
+  var full = f.max && list.length>=f.max;
+  h += '<button class="btn btn-xs" data-rowadd="'+f.k+'"'+(full?' disabled':'')+'>＋ 添加一条'
+     + (f.max?'（'+list.length+'/'+f.max+'）':'')+'</button>' + hint + '</div>';
+  return h;
+}
+
+/*
+ * 幻灯片编辑器。
+ *
+ * ⚠ 上一版的教训：把每张幻灯片平铺成一张大卡，「添加一张」是最底下一个 btn-xs。
+ *   切到轮播版式后，界面上最显眼的位置是眉标和主标题，而人想做的第一件事是加图；
+ *   那个按钮既小、又压在一段灰字提示下面、还被吸底保存条挡住 —— 有等于没有。
+ *
+ * 现在：区块顶上一条缩略图，点缩略图切换编辑哪一张，点 ＋ 直接进选图（选完就多一张）。
+ * 只展开当前那一张的文案，5 张图时表单也不会长到几屏。
+ */
+function slidesHtml(owner, f, hint){
+  var single = owner.variant==='single';
+  var list = slideList(owner);
+  if(!list.length) addSlide(owner);
+
+  if(single){
+    slideIdx = 0;
+    return '<div class="sec">'+esc(f.t)+'</div>' + slideCard(owner, 0, true) + hint;
+  }
+
+  if(slideIdx >= list.length) slideIdx = list.length - 1;
+  if(slideIdx < 0) slideIdx = 0;
+
+  var h = '<div class="sec">'+esc(f.t)+' · '+list.length+' 张<div class="sp"></div>'
+        + '<span style="font-size:11px;color:var(--c-soft);font-weight:400">拖缩略图改轮播顺序</span></div>'
+        + '<div class="strip">';
+  list.forEach(function(s, i){
+    var im = slideImage(owner, lang, s.id);
+    var t2 = (owner.i18n[lang].slides||{})[s.id] || {};
+    h += '<div class="sl'+(i===slideIdx?' on':'')+'" data-slidesel="'+i+'" draggable="true"'
+      +  (im?' style="background-image:url('+esc(im)+')"':'')
+      +  ' title="第 '+(i+1)+' 张'+(txt(t2.title)?'：'+esc(t2.title):'')+'">'
+      +  '<span class="n">'+(i+1)+'</span>'
+      +  (im?'':'<span class="no">无图</span>')
+      +  (list.length>1?'<button class="x" data-slidedel="'+i+'" title="删除这一张（所有语言）">✕</button>':'')
+      +  '</div>';
+  });
+  h += '<button class="add" data-slideaddpick="1" title="加一张（先选图）">＋</button></div>'
+    +  '<p class="striphint">点 <b>＋</b> 选一张图，就多一张幻灯片。'
+    +  '<a href="javascript:void 0" data-slideadd="1">也可以加一张没有图的</a>'
+    +  '（只有文字，背景用纯色底纹）。<br>有几张、什么顺序是<b>所有语言通用</b>的，'
+    +  '文案分语言；图按上面那个勾决定。'
+    +  '</p>'
+    +  slideCard(owner, slideIdx, false);
+  return h + hint;
+}
+
+/* 一张幻灯片的字段。⚠ 背景图放最前面：它是这一屏视觉上的主体，
+   也是「切到轮播之后想干的第一件事」。上一版排在主标题、副标题之后，
+   还被吸底的保存条挡住，等于没有 */
+function slideCard(owner, i, single){
+  var ent = slideList(owner)[i]; if(!ent) return '';
+  var s = (owner.i18n[lang].slides||{})[ent.id] || {};
+  var im = slideImage(owner, lang, ent.id);
+  return '<div class="slide">'
+    + '<div class="slide-h">'+(single?'背景与文案':'第 '+(i+1)+' 张')
+    + '<div class="sp"></div><span style="font-weight:400;color:var(--c-soft);font-size:11px">'
+    + esc(ent.id)+'</span></div>'
+    + '<div class="f"><span class="f-lbl">背景图 '
+    + (owner.shareMedia?'<em class="sh">所有语言通用</em>':'<em>分语言</em>')+'</span>'
+    + '<div class="imgf"><input type="text" data-slideimg="'+i+'" value="'+esc(im)
+    + '" placeholder="图片地址，或点右边选一张">'
+    + '<button class="btn btn-xs" data-pickslide="'+i+'">选图片</button>'
+    + '<span class="thumb"'+(txt(im)?' style="background-image:url('+esc(im)+')"':'')+'>'
+    + (txt(im)?'':'无图')+'</span></div>'
+    + '<span class="f-hint">建议 1920×700 以上的横图。留空则用一套纯 CSS 的柔和底纹 —— '
+    + '商家上线初期普遍没传图，那个降级版式是常态，不是偶发。</span></div>'
+    + '<div class="f"><span class="f-lbl">主标题 <em>分语言</em></span>'
+    + '<input type="text" data-slide="'+i+'" data-c="title" value="'+esc(s.title)
+    + '" placeholder="留空 → 用公司名">'
+    + '<span class="f-hint">按句读断行，最后一段会上强调色。填「A. B.」这种两句式效果最好；'
+    + '一整句不带标点也不会出错，只是没有强调色。</span></div>'
+    + '<div class="f"><span class="f-lbl">副标题 <em>分语言</em></span>'
+    + '<input type="text" data-slide="'+i+'" data-c="subtitle" value="'+esc(s.subtitle)
+    + '" placeholder="留空 → 用标语"></div>'
+    + '</div>';
+}
+
+function cityName(idx){ var c=CITIES[idx]||CITIES[0]; return c[0]; }
+function cityOpts(v){
+  var o='';
+  CITIES.forEach(function(c,i){ o += '<option value="'+i+'"'+(String(v)===String(i)?' selected':'')+'>'+esc(c[0])+'</option>'; });
+  return o;
+}
+function cityHtml(f, v, hint, lbl){
+  return '<label class="f">'+lbl+'<select data-f="'+f.k+'">'+cityOpts(v==null?0:v)+'</select>'+hint+'</label>';
+}
+function citiesHtml(f, list, hint, lbl){
+  var h = '<div class="f">'+lbl+'<div class="rows">';
+  if(!list.length) h += '<div class="row"><div class="cell" style="padding:9px;color:var(--c-soft);font-size:12px">没有目的地 —— 地图只显示总部一个点</div></div>';
+  list.forEach(function(ci,i){
+    h += '<div class="row"><div class="cell"><select data-cities="'+f.k+'" data-i="'+i
+      +  '" style="width:100%;border:0;padding:6px 8px;background:transparent">'+cityOpts(ci)+'</select></div>'
+      +  '<button class="del" data-citydel="'+f.k+'" data-i="'+i+'">✕</button></div>';
+  });
+  h += '</div><button class="btn btn-xs" data-cityadd="'+f.k+'">＋ 添加目的地</button>'+hint+'</div>';
+  return h;
+}
+
+/* ==========================================================================
+   渲染：预览
+   ========================================================================== */
+function D(v, dflt){
+  // 有值用值；没值用默认，并且在「标出默认值」开着时套一层底色
+  var t = txt(v);
+  if(t) return esc(t);
+  if(dflt==null || dflt==='') return '';
+  return markDefaults ? '<span class="pv-def">'+esc(dflt)+'</span>' : esc(dflt);
+}
+function g(key, f, l){ // 取全站设置的某个字段
+  var owner = state.global[key], def = GLOBALS[key];
+  var fd = def.fields.filter(function(x){ return x.k===f; })[0];
+  return fd ? getF(owner, fd, l||lang) : '';
+}
+function companyName(){ return txt(g('brand','companyName')) || SITE_NAME; }
+function slogan(){ return txt(g('brand','slogan')); }
+
+function splitHeadline(s){
+  var parts = String(s||'').match(/[^.。！!？?，、；;]+[.。！!？?，、；;]?/g) || [];
+  var out = parts.map(function(x){ return x.trim(); }).filter(Boolean);
+  return out.length ? out : [String(s||'')];
+}
+
+function renderPreview(){
+  var b = bi(lang);
+  var h = '<div class="pv">';
+
+  /* ---- 顶栏 ---- */
+  h += pvHeader();
+
+  /* ---- 区块 ---- */
+  state.blocks.forEach(function(bk){
+    if(!renders(bk, lang)) return;
+    var L = renderLang(bk, lang);
+    var focus = (sel.kind==='block' && sel.key===bk.id) ? ' pv-focus' : '';
+    h += pvBlock(bk, L, focus);
+  });
+
+  /* ---- 页脚 ---- */
+  h += pvFooter();
+  h += '</div>';
+
+  var frame = '<div class="pvframe '+pvMode+'" id="pvframe">'+h+'</div>';
+  $('pvstage').innerHTML = frame;
+  fitPreview();
+}
+
+function pvBlock(bk, L, focus){
+  var b = bi(L);
+  var f = function(k){ // 快捷：取该块某字段
+    var fd = TYPES[bk.type].fields.filter(function(x){ return x.k===k; })[0];
+    return fd ? getF(bk, fd, L) : '';
+  };
+  var head = function(hk, lk, dh, dl){
+    return '<div class="pv-head"><h2>'+D(f(hk), dh)+'</h2><p>'+D(f(lk), dl)+'</p></div>';
+  };
+
+  if(bk.type==='hero'){
+    var slides = slideList(bk);
+    // 正在编辑这一块时，预览显示缩略图条上选中的那一张
+    var editing = (sel.kind==='block' && sel.key===bk.id && bk.variant==='carousel');
+    var si = editing ? Math.min(slideIdx, Math.max(0, slides.length-1)) : 0;
+    var ent = slides[si];
+    var s = ent ? ((bk.i18n[L].slides||{})[ent.id] || {}) : {};
+    var im = ent ? slideImage(bk, L, ent.id) : '';
+    var title = txt(s.title) || companyName();
+    var isDefTitle = !txt(s.title);
+    var sub = txt(s.subtitle) || slogan();
+    var eye = txt(s.subtitle) ? slogan() : txt(f('eyebrow'));
+    if(txt(f('eyebrow'))) eye = txt(f('eyebrow'));
+    var lines = splitHeadline(title);
+    var inner = lines.map(function(x,i){
+      var cls = lines.length>1 && i===lines.length-1 ? ' class="accent"' : '';
+      return '<span'+cls+'>'+esc(x)+'</span>';
+    }).join('<br>');
+    if(isDefTitle && markDefaults) inner = '<span class="pv-def">'+inner+'</span>';
+    var multi = bk.variant==='carousel';
+    var n = multi ? Math.max(1, slides.length) : 1;
+    return '<section class="pv-hero'+(im?'':' plain')+focus+'">'
+      + (im ? '<div class="pv-hero-bg" style="background-image:url('+esc(im)+')"></div><div class="pv-hero-ov"></div>' : '')
+      + (multi ? '<span class="pv-carou">轮播 '+n+' 张 · 5 秒自动切'+(editing&&n>1?' · 正在看第 '+(si+1)+' 张':'')+'</span>' : '')
+      + '<div class="pv-hero-in">'
+      + (eye ? '<span class="pv-pill pv-hero-pill">✦ '+esc(eye)+'</span>' : '')
+      + '<h1>'+inner+'</h1>'
+      + (sub ? '<p>'+esc(sub)+'</p>' : '')
+      + '<div class="pv-hero-acts"><span class="pv-btn pv-btn-p">'+esc(b.viewProducts)
+      + '</span><span class="pv-btn pv-btn-g">'+esc(b.contactUs)+'</span></div></div>'
+      + (multi && n>1 ? '<div class="pv-dots">'+Array.apply(null,Array(n)).map(function(_,i){
+          return '<i'+(i===si?' class="on"':'')+'></i>'; }).join('')+'</div>' : '')
+      + '</section>';
+  }
+
+  if(bk.type==='bento'){
+    var cards = (f('cards')||[]).filter(function(c){ return txt(c.title)||txt(c.desc); }).slice(0,3);
+    if(!cards.length) return '';
+    var st = f('stat')||{};
+    var hasStat = txt(st.value)||txt(st.label);
+    var body;
+    if(bk.variant==='grid3'){
+      body = '<div class="pv-grid3">'+cards.map(function(c){
+        return '<article class="pv-bc">'+(txt(c.icon)?'<span class="pv-bi">'+esc(c.icon)+'</span>':'')
+          + '<h3>'+esc(c.title)+'</h3>'+(txt(c.desc)?'<p>'+esc(c.desc)+'</p>':'')+'</article>';
+      }).join('')+(hasStat?'<article class="pv-bc pink"><div class="mk">◷</div><div class="big">'
+          +esc(st.value)+'</div><span class="cap">'+esc(st.label)+'</span></article>':'')+'</div>';
+    }else{
+      var tall = hasStat && cards[1];
+      body = '<div class="pv-bento">'
+        + '<article class="pv-bc feat'+(tall?' tall':'')+'">'
+        + (txt(cards[0].icon)?'<span class="pv-bi">'+esc(cards[0].icon)+'</span>':'')
+        + '<h3>'+esc(cards[0].title)+'</h3>'+(txt(cards[0].desc)?'<p>'+esc(cards[0].desc)+'</p>':'')+'</article>'
+        + (hasStat?'<article class="pv-bc pink"><div class="mk">◷</div><div class="big">'+esc(st.value)
+            +'</div><span class="cap">'+esc(st.label)+'</span></article>':'')
+        + (cards[1]?'<article class="pv-bc"><span class="pv-bi">'+esc(cards[1].icon||'')+'</span><h3>'
+            +esc(cards[1].title)+'</h3>'+(txt(cards[1].desc)?'<p>'+esc(cards[1].desc)+'</p>':'')+'</article>':'')
+        + (cards[2]?'<article class="pv-bc dark"><span class="pv-bi light">'+esc(cards[2].icon||'')
+            +'</span><div><h3>'+esc(cards[2].title)+'</h3>'
+            +(txt(cards[2].desc)?'<p>'+esc(cards[2].desc)+'</p>':'')+'</div></article>':'')
+        + '</div>';
+    }
+    return '<section class="pv-sec'+focus+'"><div class="pv-wrap">'
+      + head('heading','lead', b.bentoH, b.bentoLead) + body + '</div></section>';
+  }
+
+  if(bk.type==='products'){
+    var n2 = Number(bk.shared.limit||6);
+    var wide = bk.variant==='wide';
+    var items = (FAKE_PRODUCTS[L]||FAKE_PRODUCTS.en).slice(0, n2);
+    return '<section class="pv-prod'+focus+'"><div class="pv-wrap">'
+      + '<div class="pv-prod-h"><div><h2>'+D(f('heading'), b.prodH)+'</h2><p>'+D(f('lead'), b.prodLead)+'</p></div>'
+      + '<a class="pv-link-more">'+esc(b.viewAll)+' →</a></div>'
+      + '<div class="pv-cards"'+(wide?' style="grid-template-columns:repeat(2,1fr)"':'')+'>'
+      + items.map(function(p,i){ return pvCard(p, i, L); }).join('')
+      + '</div><p style="text-align:center;font-size:.72rem;color:#a9a2ba;margin:18px 0 0">'
+      + '（商品是假数据，真站从商品库取。第 3 张没填起订量、第 5 张价格为 0 = 面议，'
+      + '真站对这两种各有专门处理）</p></div></section>';
+  }
+
+  if(bk.type==='caps'){
+    var items2 = (f('items')||[]).filter(function(c){ return txt(c.title)||txt(c.desc); });
+    if(!items2.length) return '';
+    var ac = Number(bk.shared.accent);
+    return '<section class="pv-sec pv-caps'+focus+'"><div class="pv-wrap">'
+      + head('heading','lead', b.capsH, b.capsLead)
+      + '<div class="pv-capg"'+(bk.variant==='g3'?' style="grid-template-columns:repeat(3,1fr)"':'')+'>'
+      + items2.map(function(c,i){
+          var fill = i===ac;
+          return '<article class="pv-cap'+(fill?' fill':'')+'">'
+            + (txt(c.icon)?'<span class="pv-ci'+(fill?' light':'')+'">'+esc(c.icon)+'</span>':'')
+            + '<h3>'+esc(c.title)+'</h3>'+(txt(c.desc)?'<p>'+esc(c.desc)+'</p>':'')+'</article>';
+        }).join('')
+      + '</div></div></section>';
+  }
+
+  if(bk.type==='about'){
+    var content = txt(f('content'));
+    var ttl = f('title');
+    if(!content && !txt(ttl)) return '';
+    var img = txt(f('image'));
+    var stats = (f('stats')||[]).filter(function(s){ return txt(s.value)||txt(s.label); });
+    var paras = content.split(/\n\s*\n/).map(function(x){ return x.trim(); }).filter(Boolean);
+    var vr = bk.variant;
+    var solo = vr==='solo' || !img;
+    return '<section class="pv-sec'+focus+'" style="background:var(--bg)"><div class="pv-wrap">'
+      + '<div class="pv-ab'+(vr==='side'&&img?' side':'')+'">'
+      + (img && vr!=='solo' ? '<figure class="pv-ab-im"><img src="'+esc(img)+'" alt=""></figure>' : '')
+      + '<div class="pv-ab-cd'+(solo&&vr!=='side'?' solo':'')+'">'
+      + '<span class="pv-pill">✦ '+esc(b.aboutPill)+'</span>'
+      + '<h2>'+D(ttl, b.aboutH)+'</h2>'
+      + (paras.length ? paras.map(function(p,i){ return '<p'+(i===0?' class="lead"':'')+'>'+esc(p)+'</p>'; }).join('')
+                      : '<p style="color:#b3aec0">（正文还没填 —— 这一块要有正文或标题才会出现在首页）</p>')
+      + (stats.length ? '<div class="pv-stats">'+stats.map(function(s){
+            return '<div class="pv-stat"><strong>'+esc(s.value)+'</strong><span>'+esc(s.label)+'</span></div>'; }).join('')+'</div>' : '')
+      + '</div></div></div></section>';
+  }
+
+  if(bk.type==='reach'){
+    var hqI = Number(bk.shared.hq||0), dest = bk.shared.dest||[];
+    var hq = CITIES[hqI]||CITIES[0];
+    var lead = txt(f('lead')) || String(b.reachLead).replace('{city}', hq[0]);
+    var isDefLead = !txt(f('lead'));
+    var stats3 = (f('stats')||[]).filter(function(s){ return txt(s.value)||txt(s.label); });
+    var autoStats = !stats3.length;
+    if(autoStats) stats3 = [{value:String(dest.length), label:L==='zh'?'个目的地':L==='ja'?'の出荷先':'Destinations'},
+                            {value:'6', label:L==='zh'?'个大洲':L==='ja'?'大陸':'Continents'}];
+    return '<section class="pv-sec pv-sec-soft'+focus+'"><div class="pv-wrap">'
+      + '<div class="pv-head"><h2>'+D(f('heading'), b.reachH)+'</h2><p>'
+      + (isDefLead && markDefaults ? '<span class="pv-def">'+esc(lead)+'</span>' : esc(lead))+'</p></div>'
+      + (bk.variant==='map' ? mapSvg(hqI, dest) : '')
+      + (dest.length ? '<ul class="pv-legend">'+dest.map(function(i){
+            return '<li><i></i>'+esc((CITIES[i]||['?'])[0])+'</li>'; }).join('')+'</ul>' : '')
+      + '<div class="pv-stats" style="justify-content:center;margin-top:24px">'
+      + stats3.map(function(s){
+          var inner = '<strong>'+esc(s.value)+'</strong><span>'+esc(s.label)+'</span>';
+          return '<div class="pv-stat"'+(autoStats&&markDefaults?' style="background:rgba(255,214,102,.28);border-radius:4px;padding:2px 6px"':'')+'>'+inner+'</div>';
+        }).join('')
+      + '</div></div></section>';
+  }
+
+  if(bk.type==='inquiry'){
+    return '<section class="pv-sec'+(bk.variant==='soft'?' pv-sec-soft':'')+focus+'"><div class="pv-wrap">'
+      + head('heading','lead', b.inqH, b.inqLead)
+      + '<div class="pv-inq"><div class="pv-inq-box">'
+      + '<div class="fr"><div class="fk">'+esc(b.fName)+'</div><div class="fk">'+esc(b.fMail)
+      + '</div><div class="fk tall">'+esc(b.fMsg)+'</div></div>'
+      + '<span class="pv-btn pv-btn-p">'+esc(b.fSend)+'</span>'
+      + '</div></div></div></section>';
+  }
+  return '';
+}
+
+/* 简化的等距圆柱投影地图。真站是 world-atlas 国界图 + d3-geo，
+   这里只要能判断「点位和弧线的观感」就够了 */
+function mapSvg(hqI, dest){
+  var W=880, H=420;
+  function xy(lon,lat){ return [ (lon+180)/360*W, (90-lat)/180*H ]; }
+  var hq = CITIES[hqI]||CITIES[0];
+  var hp = xy(hq[1],hq[2]);
+  var s = '<div class="pv-map"><svg viewBox="0 0 '+W+' '+H+'">';
+  s += '<rect class="sea" x="0" y="0" width="'+W+'" height="'+H+'" rx="10"/>';
+  for(var la=-60; la<=60; la+=30){ var p=xy(-180,la); s += '<path class="grat" d="M0 '+p[1]+' H'+W+'"/>'; }
+  for(var lo=-150; lo<=150; lo+=30){ var q=xy(lo,0); s += '<path class="grat" d="M'+q[0]+' 0 V'+H+'"/>'; }
+  // 极粗略的陆块示意（只为让点位有参照，不是真国界）
+  var LAND = [
+    [[-168,66],[-120,70],[-60,60],[-52,47],[-80,25],[-98,18],[-125,40],[-140,60]],
+    [[-82,10],[-60,5],[-35,-8],[-40,-23],[-58,-35],[-72,-45],[-70,-18],[-78,0]],
+    [[-10,36],[10,38],[30,36],[40,45],[30,60],[10,58],[-8,44]],
+    [[-17,15],[10,5],[35,12],[42,0],[35,-25],[18,-35],[8,-5],[-10,5]],
+    [[45,42],[80,50],[110,45],[135,50],[140,35],[120,22],[100,10],[75,22],[50,30]],
+    [[115,-12],[135,-12],[152,-25],[145,-38],[120,-33],[113,-22]]
+  ];
+  LAND.forEach(function(poly){
+    s += '<path class="land" d="M'+poly.map(function(p){ var c=xy(p[0],p[1]); return c[0].toFixed(1)+' '+c[1].toFixed(1); }).join(' L')+' Z"/>';
+  });
+  dest.forEach(function(i){
+    var c = CITIES[i]; if(!c) return;
+    var p = xy(c[1],c[2]);
+    var mx=(hp[0]+p[0])/2, my=(hp[1]+p[1])/2 - Math.abs(p[0]-hp[0])*0.18 - 14;
+    s += '<path class="arc" d="M'+hp[0].toFixed(1)+' '+hp[1].toFixed(1)+' Q'+mx.toFixed(1)+' '+my.toFixed(1)
+      +  ' '+p[0].toFixed(1)+' '+p[1].toFixed(1)+'"/>';
+    s += '<circle class="dot" cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="3.4"><title>'+esc(c[0])+'</title></circle>';
+  });
+  s += '<circle class="hq" cx="'+hp[0].toFixed(1)+'" cy="'+hp[1].toFixed(1)+'" r="5"/>';
+  s += '<text class="hqt" x="'+(hp[0]+9).toFixed(1)+'" y="'+(hp[1]+4).toFixed(1)+'">'+esc(hq[0])+'</text>';
+  s += '</svg></div><p class="pv-mapnote">（Demo 里的地图是简化示意；真站用 world-atlas 的国界图，服务端渲染成 SVG）</p>';
+  return s;
+}
+
+/*
+ * 顶栏。照 SiteHeader.vue 画。
+ *
+ * ⚠ Logo 那一支要和真站一致：填了图就**只**渲染 img、不渲染公司名文字，
+ *   两个都渲染的话有 Logo 的站页头会出现「图 + 重复的公司名」。
+ *   真站还过一道 isUsableImageUrl（相对路径不渲染 img，退到文字），
+ *   这里 txt() 非空即渲染，够用。
+ */
+function pvHeader(){
+  var b = bi(lang);
+  var logo = txt(state.shared.logo);
+  var navRows = (g('nav','rows')||[]).filter(function(r){ return txt(r.title)&&txt(r.url); });
+  var usingDefaultNav = !navRows.length;
+  if(usingDefaultNav) navRows = b.nav;
+  var buyer = hdView === 'buyer';
+
+  var chev = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4.2 6 8.2l4-4" fill="none"'
+           + ' stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  var h = '<div class="pv-hd"><div class="pv-hd-in">'
+    + '<span class="pv-hd-brand">'
+    + (logo ? '<img class="pv-hd-logo" src="'+esc(logo)+'" alt="">'
+            : '<span class="pv-hd-name">'+esc(companyName())+'</span>')
+    + '</span>';
+
+  // 登录后导航整条不渲染 —— 这是真站的行为，不是预览偷懒
+  if(!buyer){
+    h += '<nav class="pv-hd-nav">';
+    navRows.forEach(function(r){
+      h += '<span>'+(usingDefaultNav && markDefaults
+            ? '<span class="pv-def">'+esc(r.title)+'</span>' : esc(r.title))+'</span>';
+    });
+    h += '</nav>';
+  }
+
+  h += '<div class="pv-hd-right">'
+    // 币种切换器：真站只在「开了两种以上币种、且后端算得出汇率」时渲染。
+    // 币种不是装修内容（在站点档案里），所以这里是静态示意
+    + '<span class="pv-chip" title="币种切换器。开了两种以上币种才有，不是装修内容">USD ' + chev + '</span>'
+    // 语言切换器：只开一种语言就不显示。demo 固定三种
+    + '<span class="pv-chip">' + esc(pc(lang).lang) + ' ' + chev + '</span>'
+    + '<div class="pv-hd-user">';
+
+  if(buyer){
+    h += '<span class="pv-cart" title="购物车。未登录不显示 —— 匿名只能询盘，下单要先登录">'
+      +  '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">'
+      +  '<path d="M3.4 4.2h2.3l2.1 10.1a1.6 1.6 0 0 0 1.6 1.3h7.6a1.6 1.6 0 0 0 1.6-1.2l1.5-6.2H6.2'
+      +  'M10 19.4a1.1 1.1 0 1 1-2.2 0 1.1 1.1 0 0 1 2.2 0Zm8 0a1.1 1.1 0 1 1-2.2 0 1.1 1.1 0 0 1 2.2 0Z"'
+      +  ' fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
+      +  '</svg><span class="pv-cart-badge">3</span></span>'
+      +  '<span class="pv-avatar" title="登录后显示头像、不显示名字：公司名动辄二十几个字符，'
+      +  '在顶栏里只能截断成「Shenzhen Kangwan…」，既认不出是谁又占掉半条导航">AB</span>';
+  }else{
+    h += '<span class="pv-acct">' + esc(b.signIn) + '</span>';
+  }
+
+  return h + '</div></div></div></div>';
+}
+
+/*
+ * 一张商品卡。照 ProductCard.vue 画。
+ * ⚠ 没有「+」加购按钮：真站那个 v-if="buyer"，只给登录买家 —— 而首页装修
+ *   要对的是访客那一版。图标藏了按钮还留着的话，游客点一下会看到打勾动画，
+ *   然后翻遍顶栏找不到清单在哪。
+ */
+function pvCard(item, i, L){
+  var c = pc(L);
+  var price = Number(item[2]) > 0 ? ('$' + Number(item[2]).toFixed(2)) : c.inquire;
+  var moq = Number(item[3]) > 0 ? (c.moq + ' ' + item[3] + (item[4] ? ' ' + item[4] : '')) : '';
+  return '<article class="pv-card">'
+    + '<div class="pv-pc-img"><img src="' + PROD_IMG[i % PROD_IMG.length] + '" alt="">'
+    + (item[5] ? '<span class="pv-pill pv-pc-tag">' + esc(c.featured) + '</span>' : '')
+    + '</div>'
+    + '<div class="pv-pc-body">'
+    + '<h3 class="pv-pc-title">' + esc(item[0]) + '</h3>'
+    + '<p class="pv-pc-sum">' + esc(item[1]) + '</p>'
+    + '<div class="pv-pc-meta"><div class="pv-pc-money">'
+    + '<span class="pv-pc-price">' + esc(price) + '</span>'
+    + (moq ? '<span class="pv-pc-moq">' + esc(moq) + '</span>' : '')
+    + '</div></div></div></article>';
+}
+
+function pvFooter(){
+  /*
+   * ⚠ 上一版这里是我**凭空编的**：紫黑底、三栏、中间一栏还列了导航。
+   *   真页脚（SiteFooter.vue）和那个基本没有一处相同：
+   *
+   *     · 底色 #14181d、字色 #c8cfd8、14px —— 一套**不走主题 token** 的冷灰，
+   *       不是 --ink-dark 那个偏紫的黑；
+   *     · 只有两栏（品牌 / 联系方式），**没有导航栏** —— 导航只在顶栏；
+   *     · 联系方式是「82px 大写标签 + 值」的四行，标签写死英文
+   *       （Address / Tel / Email / WhatsApp），**不跟站点语言切换**；
+   *     · 邮箱和 WhatsApp 是可点链接（很多买家不填表单，直接抄邮箱或加 WhatsApp）。
+   */
+  var addr = txt(g('contact','address')), ph = txt(g('contact','phone')),
+      em = txt(g('contact','email')), wa = txt(g('contact','whatsapp'));
+  var hasContact = !!(addr || ph || em || wa);
+  var row = function(label, value){
+    return value ? '<div class="pv-ft-row"><span class="pv-ft-label">'+label+'</span>'
+                   + esc(value) + '</div>' : '';
+  };
+
+  var h = '<footer class="pv-ft"><div class="pv-wrap pv-ft-in">'
+    + '<div class="pv-ft-brand"><div class="pv-ft-name">'+esc(companyName())+'</div>'
+    + (slogan() ? '<p class="pv-ft-slogan">'+esc(slogan())+'</p>' : '')
+    + '</div>';
+
+  if(hasContact){
+    h += '<div class="pv-ft-contact">'
+      +  row('Address', addr) + row('Tel', ph) + row('Email', em) + row('WhatsApp', wa)
+      +  '</div>';
+  }else if(markDefaults){
+    // 真站这一整栏直接不渲染。只有开了「标出默认值」时才提示一句，
+    // 免得商家盯着一个空页脚猜是不是坏了
+    h += '<div class="pv-ft-contact"><span class="pv-ft-hint">'
+      +  '联系方式一项都没填 → 真站这一整栏不渲染，页脚只剩左边的公司名'
+      +  '</span></div>';
+  }
+
+  return h + '</div><div class="pv-wrap pv-ft-bottom"><span>© 2026 '
+    + esc(companyName()) + '</span></div></footer>';
+}
+
+function fitPreview(){
+  var stage=$('pvstage'), fr=$('pvframe');
+  if(!fr) return;
+  var avail = stage.clientWidth - 36;
+  var w = pvMode==='desktop' ? 1280 : 390;
+  var k = Math.min(1, avail/w);
+  fr.style.transform = 'scale('+k.toFixed(3)+')';
+  fr.style.marginBottom = (fr.offsetHeight*(k-1))+'px';
+  $('pv-zoom').textContent = Math.round(k*100)+'%';
+}
+
+/* ==========================================================================
+   导出：prune 后的 contentJson
+   --------------------------------------------------------------------------
+   剪空值这一步是必须的，不是洁癖：开放接口那边先铺一份内置默认、再让这段 JSON
+   覆盖。存进 rows: [] 会把导航整条弄没，存进 slogan: '' 会用空串盖掉页脚标语。
+   剪干净了，「没填」才真的等于「用默认」。
+   ========================================================================== */
+function prune(v){
+  if(Array.isArray(v)){
+    var a = v.map(prune).filter(function(x){ return x!==undefined; });
+    return a.length ? a : undefined;
+  }
+  if(v && typeof v==='object'){
+    var o={}; Object.keys(v).forEach(function(k){
+      var p = prune(v[k]); if(p!==undefined) o[k]=p;
+    });
+    return Object.keys(o).length ? o : undefined;
+  }
+  if(typeof v==='string'){ var t=v.trim(); return t===''?undefined:t; }
+  if(v===null||v===undefined) return undefined;
+  return v;
+}
+function exportJson(){
+  var out = {v:3};
+  var sh = prune(state.shared); if(sh) out.shared = sh;
+
+  var gl = {};
+  Object.keys(state.global).forEach(function(k){
+    var p = prune(state.global[k]); if(p) gl[k]=p;
+  });
+  if(Object.keys(gl).length) out.global = gl;
+
+  out.blocks = state.blocks.map(function(b){
+    var o = {type:b.type};
+    if(!b.on) o.on = false;
+    if(b.variant!==TYPES[b.type].variants[0][0]) o.variant = b.variant;
+    if(b.shareMedia===false) o.shareMedia = false;
+    var s = prune(b.shared); if(s) o.shared = s;
+    var i = prune(b.i18n);   if(i) o.i18n = i;
+    return o;
+  });
+  return out;
+}
+function hlJson(obj){
+  var s = JSON.stringify(obj, null, 2);
+  return esc(s)
+    .replace(/&quot;([^&]*?)&quot;(\s*:)/g, '<span class="k">&quot;$1&quot;</span>$2')
+    .replace(/:\s*&quot;([^]*?)&quot;/g, function(m,g1){ return ': <span class="s">&quot;'+g1+'&quot;</span>'; })
+    .replace(/:\s*(-?\d+(\.\d+)?|true|false)/g, ': <span class="n">$1</span>');
+}
+
+/* ==========================================================================
+   示例内容（照 sql/station/03_init_decorate.sql 的文案，三种语言）
+   ========================================================================== */
+function loadSample(){
+  var c = emptyContent();
+  var S = {
+    en:{ company:'Tongling Shidai', slogan:'Precision Airflow and Power Components',
+      seoT:'Tongling Shidai — Silicone Tube, Air Pump, Cable Assembly Supplier',
+      seoD:'Chinese manufacturer of silicone tubes, air pumps and li-ion battery packs. OEM/ODM welcome, small MOQ, worldwide shipping.',
+      heroT:'Precision Airflow. Reliable Power.',
+      heroS:'Medical-grade silicone tubing, whisper-quiet air pumps and custom cable assemblies — engineered in one plant, tested as one system.',
+      cards:[['〰','Tuned as One System','Pump, tubing and harness are matched on the same bench, so pressure stays even across every cycle.'],
+             ['☀','Medical-Grade Silicone','Platinum-cured, FDA and LFGB compliant, odourless and stable from -60 °C to 200 °C.'],
+             ['⚙','One Supplier, Whole Assembly','Tubing, pump, harness and battery pack leave here as one tested kit — one PO, one lead time.']],
+      stat:['15+','Years of OEM Manufacturing'],
+      caps:[['◆','OEM / ODM Development','Send a drawing, a sample or just a spec. We return a DFM review and a prototype within 7 to 15 days.'],
+            ['⚙','In-House Tooling','Dies, moulds and cable fixtures are cut in our own tool room, so a revision takes days instead of weeks.'],
+            ['🛡','Certified Quality System','ISO 9001 and ISO 13485 lines, with 100% pressure and continuity testing before packing.'],
+            ['✓','Low MOQ, Fast Ramp','Start at 500 pieces and scale to six figures on the same tooling, with no requalification.']],
+      aboutT:'About Tongling Shidai',
+      aboutC:'What began as a single extrusion line has grown into a vertically integrated plant: our own compound laboratory, our own tool room, our own pump assembly and test benches.\n\nToday we supply silicone tubing, air pumps, wiring harnesses and li-ion battery packs to manufacturers of medical devices, beauty equipment and consumer appliances. Most of them started with a single prototype order.\n\nThat control is what lets us promise the same part in the tenth year of a programme as in the first — same durometer, same bore, same pressure curve, documented batch by batch.',
+      stats:[['40+','Countries Served'],['12M','Parts Shipped a Year'],['500','Pieces Minimum Order']],
+      addr:'Building 6, Jinghai Industrial Park, Tianjin 301600, China',
+      reachT:'Shipping Worldwide', reachL:'Consolidated DDP shipments from {city} to OEMs on six continents.'
+    },
+    zh:{ company:'统领时代', slogan:'精密气路与动力部件',
+      seoT:'统领时代 — 硅胶管、气泵、线束组件制造商',
+      seoD:'硅胶管、气泵与锂电池组的中国制造商。支持 OEM/ODM，起订量低，全球发货。',
+      heroT:'气路精准，动力可靠。',
+      heroS:'医用级硅胶管、低噪气泵与定制线束——同一间工厂研制，作为一套系统整体测试。',
+      cards:[['〰','整套系统一起调','气泵、管路与线束在同一台试验台上匹配，每一个循环的压力都保持一致。'],
+             ['☀','医用级硅胶','铂金硫化，符合 FDA 与 LFGB，无异味，-60℃ 至 200℃ 尺寸稳定。'],
+             ['⚙','一家供应商，整套组件','管路、气泵、线束、电池组作为一套已测试的成套件出厂——一张订单、一个交期。']],
+      stat:['15+','年 OEM 制造经验'],
+      caps:[['◆','OEM / ODM 开发','给图纸、给样品，或者只给一份文字规格都行。7 到 15 天内做出可用样机。'],
+            ['⚙','自有模具车间','挤出模、注塑模与线束治具都在自己的车间开，改一版设计是几天的事，不是几周。'],
+            ['🛡','体系认证齐全','ISO 9001 与 ISO 13485 产线，出货前 100% 做气密与导通测试。'],
+            ['✓','起订量低，放量快','试产 500 件起做，同一套模具可以直接放到六位数产量。']],
+      aboutT:'关于统领时代',
+      aboutC:'起步时只有一条挤出线，如今是一间垂直整合的工厂：自己的配方实验室、自己的模具车间、自己的气泵装配与测试台。\n\n现在我们向医疗器械、美容仪器与家用电器整机厂供应硅胶管、气泵、线束以及锂电池组。其中大多数客户，都是从一单样品开始的。\n\n正因为这些环节都在自己手里，我们才敢承诺一个项目做到第十年，零件还和第一年一样——同样的硬度、同样的内径、同样的压力曲线，一批一批都有记录。',
+      stats:[['40+','个出口国家'],['1200 万','件年出货量'],['500','件起订']],
+      addr:'中国天津市静海工业园 6 号厂房，邮编 301600',
+      reachT:'全球发货', reachL:'从{city}集运发出，DDP 直达六大洲的整机厂。'
+    },
+    ja:{ company:'Tongling Shidai', slogan:'精密なエア回路とパワー部品',
+      seoT:'Tongling Shidai — シリコンチューブ・エアポンプ・ワイヤーハーネス製造',
+      seoD:'シリコンチューブ、エアポンプ、リチウムイオン電池パックの中国メーカー。OEM/ODM 対応、小ロット可、全世界へ出荷。',
+      heroT:'精密なエア。信頼できるパワー。',
+      heroS:'医療グレードのシリコンチューブ、静音エアポンプ、カスタムワイヤーハーネス。同一工場で開発し、一つのシステムとして試験します。',
+      cards:[['〰','システムとして調整','ポンプ・チューブ・ハーネスを同じ試験台で合わせ込むため、どのサイクルでも圧力が揃います。'],
+             ['☀','医療グレードシリコン','白金加硫、FDA および LFGB 適合。無臭で、-60℃ から 200℃ まで寸法が安定します。'],
+             ['⚙','一社で一式','チューブ、ポンプ、ハーネス、電池パックを試験済みのキットとして出荷。発注も納期も一つです。']],
+      stat:['15+','年の OEM 製造実績'],
+      caps:[['◆','OEM / ODM 開発','図面でも、サンプルでも、仕様書一枚でも構いません。7〜15 日で動く試作機をお出しします。'],
+            ['⚙','金型内製','押出ダイ、射出金型、ハーネス治具は自社製作。設計変更は数週間ではなく数日で回ります。'],
+            ['🛡','認証済み品質体制','ISO 9001 および ISO 13485 のラインで生産し、梱包前に気密・導通を全数検査します。'],
+            ['✓','小ロット対応','試作は 500 個から。同じ金型のまま六桁の量産へ移行できます。']],
+      aboutT:'会社概要',
+      aboutC:'押出ライン一本から始まり、いまでは配合ラボ、金型工場、ポンプ組立・試験設備を自社に持つ垂直統合型の工場になりました。\n\n現在はシリコンチューブ、エアポンプ、ワイヤーハーネス、リチウムイオン電池パックを、医療機器・美容機器・家電のメーカー各社へ供給しています。\n\n工程を自社に抱えているからこそ、量産十年目の部品が一年目と同じだと約束できます。同じ硬度、同じ内径、同じ圧力特性を、ロットごとの記録とともに。',
+      stats:[['40+','カ国へ輸出'],['1200万','個の年間出荷数'],['500','個から対応']],
+      addr:'中国天津市静海工業園 6 号棟（郵便番号 301600）',
+      reachT:'世界へ出荷', reachL:'{city}から集荷し、六大陸の OEM へ DDP でお届けします。'
+    }
+  };
+
+  c.shared.logo = '';
+  LANGS.forEach(function(l){
+    var d = S[l];
+    c.global.brand.i18n[l] = {companyName:d.company, slogan:d.slogan};
+    c.global.seo.i18n[l]   = {seoTitle:d.seoT, seoDescription:d.seoD};
+    c.global.contact.i18n[l] = {address:d.addr};
+  });
+  c.global.contact.shared = {phone:'+86 22 5988 6600', email:'sales@example.com', whatsapp:'+86 138 0013 8000'};
+
+  var by = {};
+  c.blocks.forEach(function(b){ by[b.type]=b; });
+
+  by.hero.variant = 'carousel';
+  by.hero.shared.slides = [{id:'s1', image:MEDIA[0].url},
+                           {id:'s2', image:MEDIA[1].url},
+                           {id:'s3', image:MEDIA[5].url}];
+  LANGS.forEach(function(l){
+    by.hero.i18n[l].slides = {
+      s1:{title:S[l].heroT, subtitle:S[l].heroS},
+      s2:{title:S[l].heroT, subtitle:S[l].slogan}
+      // s3 刻意不填文案：轮播里「只有图、没文案」是常见的，
+      // 这张在预览里会退回公司名 + 标语。也正好是上一版会错位的那种数据
+    };
+  });
+  LANGS.forEach(function(l){
+    by.bento.i18n[l].cards = S[l].cards.map(function(x){ return {icon:x[0],title:x[1],desc:x[2]}; });
+    by.bento.i18n[l].stat  = {value:S[l].stat[0], label:S[l].stat[1]};
+    by.caps.i18n[l].items  = S[l].caps.map(function(x){ return {icon:x[0],title:x[1],desc:x[2]}; });
+    by.about.i18n[l].title = S[l].aboutT;
+    by.about.i18n[l].content = S[l].aboutC;
+    by.about.i18n[l].stats = S[l].stats.map(function(x){ return {value:x[0],label:x[1]}; });
+    by.reach.i18n[l].heading = S[l].reachT;
+    by.reach.i18n[l].lead = S[l].reachL;
+  });
+  by.about.shared.image = MEDIA[2].url;
+  by.reach.shared.hq = 0;
+  by.reach.shared.dest = [3,4,7,9,11,13,15,17,19,20];
+
+  state = c;
+  saved = deepCopy(c);
+  sel = {kind:'block', key:by.hero.id};
+  renderAll();
+  toast('示例内容已载入（三种语言都填了）');
+}
+
+/* ==========================================================================
+   事件
+   ========================================================================== */
+function renderAll(){ renderLangbar(); renderList(); renderForm(); renderPreview(); }
+
+function renderLangbar(){
+  var h = '<span class="lb-lbl">编辑语言</span>';
+  LANGS.forEach(function(l){
+    // 这个语言有没有明显缺内容 —— 让商家一眼看出 ja 还没填
+    var miss = state.blocks.some(function(b){
+      return b.on && !blockFilled(b,l) && blockFilled(b,DEFAULT_LANG);
+    });
+    h += '<button class="tabbtn'+(l===lang?' on':'')+'" data-lang="'+l+'">'+esc(LANG_NAME[l])
+      +  (l===DEFAULT_LANG?'<span class="dflt">默认</span>':'')
+      +  (miss?'<span class="miss" title="这种语言有区块没填，前台会退回默认语言"></span>':'')+'</button>';
+  });
+  $('langbar').innerHTML = h;
+}
+
+/* ---- 左列点击 ---- */
+$('col-list').addEventListener('click', function(e){
+  if(noPerm) return;
+  var t = e.target;
+  var eye = t.closest('[data-eye]');
+  if(eye){ var b1=find(eye.dataset.eye); b1.on=!b1.on; renderList(); renderPreview(); renderLangbar(); return; }
+  var del = t.closest('[data-del]');
+  if(del){
+    var b2 = find(del.dataset.del);
+    if(!confirm('删除「'+TYPES[b2.type].name+'」这一块？\n\n它填过的内容（所有语言）会一起没了。想暂时不显示的话，点旁边的眼睛图标就行。')) return;
+    state.blocks = state.blocks.filter(function(x){ return x.id!==b2.id; });
+    if(sel.kind==='block'&&sel.key===b2.id) sel={kind:'global',key:'brand'};
+    renderAll(); return;
+  }
+  if(t.closest('#btn-add')){ openAdd(); return; }
+  var gi = t.closest('[data-g]');
+  if(gi){ sel={kind:'global',key:gi.dataset.g}; renderList(); renderForm(); renderPreview(); return; }
+  var bi2 = t.closest('[data-b]');
+  if(bi2){ sel={kind:'block',key:bi2.dataset.b}; slideIdx=0; renderList(); renderForm(); renderPreview(); }
+});
+function find(id){ return state.blocks.filter(function(x){ return x.id===id; })[0]; }
+
+/* ---- 拖拽排序 ---- */
+var dragId = null;
+$('col-list').addEventListener('dragstart', function(e){
+  var it = e.target.closest('[data-b]'); if(!it||noPerm) return;
+  dragId = it.dataset.b; it.classList.add('dragging');
+  e.dataTransfer.effectAllowed='move';
+  try{ e.dataTransfer.setData('text/plain', dragId); }catch(_){}
+});
+$('col-list').addEventListener('dragover', function(e){
+  var it = e.target.closest('[data-b]'); if(!it||!dragId) return;
+  e.preventDefault();
+  Array.prototype.forEach.call(document.querySelectorAll('.item.dragover'), function(x){ x.classList.remove('dragover'); });
+  it.classList.add('dragover');
+});
+$('col-list').addEventListener('drop', function(e){
+  var it = e.target.closest('[data-b]'); if(!it||!dragId) return;
+  e.preventDefault();
+  var from = state.blocks.findIndex(function(x){ return x.id===dragId; });
+  var to   = state.blocks.findIndex(function(x){ return x.id===it.dataset.b; });
+  if(from>-1 && to>-1 && from!==to){
+    var m = state.blocks.splice(from,1)[0];
+    state.blocks.splice(to,0,m);
+  }
+  dragId=null; renderList(); renderPreview();
+});
+$('col-list').addEventListener('dragend', function(){
+  dragId=null;
+  Array.prototype.forEach.call(document.querySelectorAll('.item'), function(x){ x.classList.remove('dragging','dragover'); });
+});
+
+/* ---- 表单输入。刻意只重画左列 + 预览，不重画表单本身：
+       每敲一个字就重建 DOM 的话输入框会失焦 ---- */
+var formHost = $('form-host');
+formHost.addEventListener('input', onFormInput);
+formHost.addEventListener('change', onFormInput);
+
+function onFormInput(e){
+  var t = e.target, c = current(); if(!c) return;
+  var owner = c.owner, d = c.def;
+
+  if(t.dataset.variant!==undefined){ owner.variant = t.value; renderForm(); renderList(); renderPreview(); return; }
+  if(t.dataset.sharemedia!==undefined){
+    owner.shareMedia = t.checked;
+    // 换边时把当前值搬过去，免得看起来「图丢了」
+    if(owner.type==='hero'){
+      // 按 id 搬，不按下标 —— 这就是换成 id 存法之后不会再错位的地方
+      slideList(owner).forEach(function(ent){
+        var t2 = slideText(owner, lang, ent.id);
+        if(owner.shareMedia){                    // 分语言 → 通用
+          if(!txt(ent.image)) ent.image = t2.image || '';
+          delete t2.image;
+        }else{                                   // 通用 → 分语言
+          if(!txt(t2.image)) t2.image = ent.image || '';
+        }
+      });
+    }else{
+      var f0 = d.fields.filter(function(x){ return x.scope==='media'; })[0];
+      if(f0){
+        var from = t.checked ? owner.i18n[lang] : owner.shared;
+        var to   = t.checked ? owner.shared : owner.i18n[lang];
+        if(!txt(to[f0.k])) to[f0.k] = from[f0.k]||'';
+      }
+    }
+    renderForm(); renderPreview(); return;
+  }
+
+  if(t.dataset.f!==undefined){
+    var f = d.fields.concat(GLOBALS[sel.key]?GLOBALS[sel.key].fields:[]).filter(function(x){ return x.k===t.dataset.f; })[0]
+         || d.fields.filter(function(x){ return x.k===t.dataset.f; })[0];
+    if(!f) return;
+    if(t.dataset.sub){
+      var o = getF(owner,f,lang) || {}; o[t.dataset.sub] = t.value; setF(owner,f,lang,o);
+    }else if(f.type==='select'||f.type==='city'){
+      setF(owner,f,lang, isNaN(Number(t.value))?t.value:Number(t.value));
+    }else{
+      setF(owner,f,lang,t.value);
+      if(f.type==='image') refreshThumb(t);
+    }
+    renderList(); renderLangbar(); renderPreview(); return;
+  }
+
+  if(t.dataset.rows!==undefined){
+    var f2 = fieldOf(t.dataset.rows); var arr = getF(owner,f2,lang)||[];
+    arr[+t.dataset.i][t.dataset.c] = t.value; setF(owner,f2,lang,arr);
+    renderList(); renderLangbar(); renderPreview(); return;
+  }
+  if(t.dataset.slide!==undefined){
+    var ent2 = slideList(owner)[+t.dataset.slide];
+    if(ent2) slideText(owner, lang, ent2.id)[t.dataset.c] = t.value;
+    renderList(); renderLangbar(); renderPreview(); return;
+  }
+  if(t.dataset.slideimg!==undefined){
+    var ent3 = slideList(owner)[+t.dataset.slideimg];
+    if(ent3) setSlideImage(owner, lang, ent3.id, t.value);
+    refreshThumb(t); renderList(); renderPreview(); return;
+  }
+  if(t.dataset.cities!==undefined){
+    var f3 = fieldOf(t.dataset.cities); var a3 = owner.shared[f3.k]||[];
+    a3[+t.dataset.i] = Number(t.value); owner.shared[f3.k]=a3; renderPreview(); return;
+  }
+}
+function fieldOf(k){
+  var c = current();
+  return c.def.fields.filter(function(x){ return x.k===k; })[0];
+}
+function refreshThumb(input){
+  var box = input.closest('.imgf'); if(!box) return;
+  var th = box.querySelector('.thumb'); if(!th) return;
+  var v = txt(input.value);
+  th.style.backgroundImage = v ? 'url('+v+')' : '';
+  th.textContent = v ? '' : '无图';
+}
+
+/* ---- 表单按钮 ---- */
+formHost.addEventListener('click', function(e){
+  var t = e.target, c = current(); if(!c) return;
+  var owner = c.owner;
+
+  var ra = t.closest('[data-rowadd]');
+  if(ra){
+    var f = fieldOf(ra.dataset.rowadd), arr = getF(owner,f,lang)||[];
+    if(f.max && arr.length>=f.max) return;
+    var row = {}; f.cols.forEach(function(cl){ row[cl[0]]=''; });
+    arr.push(row); setF(owner,f,lang,arr); renderForm(); renderList(); renderPreview(); return;
+  }
+  var rd = t.closest('[data-rowdel]');
+  if(rd){
+    var f4 = fieldOf(rd.dataset.rowdel), a4 = getF(owner,f4,lang)||[];
+    a4.splice(+rd.dataset.i,1); setF(owner,f4,lang,a4);
+    renderForm(); renderList(); renderLangbar(); renderPreview(); return;
+  }
+  var sa = t.closest('[data-slideadd]');
+  if(sa){
+    e.preventDefault();
+    addSlide(owner);
+    slideIdx = slideList(owner).length - 1;   // 加完就切到新那张，不然看着像没反应
+    renderForm(); renderList(); renderPreview(); return;
+  }
+  // ＋ 号：先选图，选完直接多一张带图的幻灯片。轮播的主体是图，这是最短的路径
+  var sp = t.closest('[data-slideaddpick]');
+  if(sp){
+    openPicker(function(url){
+      var nid = addSlide(owner);
+      slideIdx = slideList(owner).length - 1;
+      setSlideImage(owner, lang, nid, url);
+      renderForm(); renderList(); renderPreview();
+    });
+    return;
+  }
+  var sd = t.closest('[data-slidedel]');
+  if(sd){
+    var i5=+sd.dataset.slidedel;
+    removeSlide(owner, i5);                   // 所有语言的这一条文案一起删
+    // 删的正好是当前那张（或它后面的下标都往前挪了）→ 收回到还存在的一张
+    if(slideIdx >= i5) slideIdx = Math.max(0, slideIdx - 1);
+    renderForm(); renderList(); renderLangbar(); renderPreview(); return;
+  }
+  var ss = t.closest('[data-slidesel]');
+  if(ss){ slideIdx = +ss.dataset.slidesel; renderForm(); renderPreview(); return; }
+  var ca = t.closest('[data-cityadd]');
+  if(ca){
+    var f6 = fieldOf(ca.dataset.cityadd), a6 = owner.shared[f6.k]||[];
+    a6.push(0); owner.shared[f6.k]=a6; renderForm(); renderPreview(); return;
+  }
+  var cd = t.closest('[data-citydel]');
+  if(cd){
+    var f7 = fieldOf(cd.dataset.citydel), a7 = owner.shared[f7.k]||[];
+    a7.splice(+cd.dataset.i,1); owner.shared[f7.k]=a7; renderForm(); renderPreview(); return;
+  }
+  var pk = t.closest('[data-pick]');
+  if(pk){ openPicker(function(url){
+    var f8 = fieldOf(pk.dataset.pick) || GLOBALS[sel.key].fields.filter(function(x){return x.k===pk.dataset.pick;})[0];
+    setF(owner,f8,lang,url); renderForm(); renderList(); renderPreview();
+  }); return; }
+  var ps = t.closest('[data-pickslide]');
+  if(ps){ var idx=+ps.dataset.pickslide; openPicker(function(url){
+    var e4 = slideList(owner)[idx];
+    if(e4) setSlideImage(owner, lang, e4.id, url);
+    renderForm(); renderList(); renderPreview();
+  }); return; }
+});
+
+/* ---- 缩略图拖拽 = 改轮播顺序 ---- */
+var dragSlide = null;
+formHost.addEventListener('dragstart', function(e){
+  var s = e.target.closest('[data-slidesel]'); if(!s||noPerm) return;
+  dragSlide = +s.dataset.slidesel; s.classList.add('dragging');
+  e.dataTransfer.effectAllowed='move';
+  try{ e.dataTransfer.setData('text/plain', String(dragSlide)); }catch(_){}
+});
+formHost.addEventListener('dragover', function(e){
+  var s = e.target.closest('[data-slidesel]'); if(!s||dragSlide===null) return;
+  e.preventDefault();
+  Array.prototype.forEach.call(formHost.querySelectorAll('.sl.dragover'), function(x){ x.classList.remove('dragover'); });
+  s.classList.add('dragover');
+});
+formHost.addEventListener('drop', function(e){
+  var s = e.target.closest('[data-slidesel]'); if(!s||dragSlide===null) return;
+  e.preventDefault();
+  var c = current(); if(!c) return;
+  var owner = c.owner, to = +s.dataset.slidesel, from = dragSlide;
+  if(from!==to){
+    // 只动 shared.slides 这一个数组：文案按 id 存，跟着 id 走，
+    // 不存在「文案搬了图没搬」这种错位。顺序对所有语言同时生效（本来就该如此）
+    var l1 = slideList(owner);
+    l1.splice(to, 0, l1.splice(from, 1)[0]);
+    slideIdx = to;
+  }
+  dragSlide = null; renderForm(); renderList(); renderPreview();
+});
+formHost.addEventListener('dragend', function(){
+  dragSlide = null;
+  Array.prototype.forEach.call(formHost.querySelectorAll('.sl'), function(x){ x.classList.remove('dragging','dragover'); });
+});
+
+/* ---- 语言切换 ---- */
+$('langbar').addEventListener('click', function(e){
+  var b = e.target.closest('[data-lang]'); if(!b) return;
+  lang = b.dataset.lang; renderAll();
+});
+
+/* ---- 顶栏 / 保存条 ---- */
+$('btn-save').addEventListener('click', function(){
+  if(noPerm) return;
+  saved = deepCopy(state);
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(_){}
+  toast('装修已保存 —— 前台刷新即生效，没有「发布」这一步');
+});
+$('btn-revert').addEventListener('click', function(){
+  if(noPerm) return;
+  if(!confirm('放弃这次的修改，回到上一次保存的样子？')) return;
+  state = deepCopy(saved); renderAll(); toast('已回到上一次保存的内容');
+});
+$('btn-sample').addEventListener('click', function(){
+  if(!confirm('载入示例内容？\n\n会覆盖现在填的东西（三种语言都会被覆盖）。')) return;
+  loadSample();
+});
+$('btn-json').addEventListener('click', function(){
+  var j = exportJson();
+  var size = JSON.stringify(j).length;
+  openDlg('存进库里的 contentJson（v3）',
+    '<p style="margin:0 0 10px;font-size:12.5px;color:var(--c-muted)">'
+    + '空值已经剪掉了 —— 这一步是必须的：接口那边先铺一份内置默认、再让这段 JSON 覆盖，'
+    + '存进一个 <code>rows: []</code> 会把导航整条弄没。<br>当前长度 '+size+' 字符。</p>'
+    + '<p style="margin:0 0 10px;padding:9px 11px;background:var(--c-accent-soft);border-radius:7px;font-size:12.5px;line-height:1.6">'
+    + '<b>看一眼 Banner 的 slides。</b>顺序和图在 <code>shared.slides</code>（数组，每项带 <code>id</code>），'
+    + '文案在 <code>i18n.&lt;语言&gt;.slides</code>（<b>按 id 的对象，不是数组</b>）。<br>'
+    + '刻意不用两个按下标配对的数组：一张「有图、还没写文案」的幻灯片，剪空值时文案那边整条被剪掉、'
+    + '图那边留着，两个数组各自压缩，重新载入后图和文案就<b>错开一位</b>。'
+    + '示例内容第 3 张就是这种数据（只有图、没文案），在下面这段 JSON 里能看到它只出现在 shared 那一半。</p>'
+    + '<pre class="json">'+hlJson(j)+'</pre>');
+});
+$('noperm').addEventListener('change', function(){
+  noPerm = this.checked;
+  $('nopbar').hidden = !noPerm;
+  document.getElementById('app').classList.toggle('locked', noPerm);
+  ['btn-save','btn-revert'].forEach(function(id){ $(id).disabled = noPerm; });
+  toast(noPerm ? '现在是「只能看不能改」 —— 注意保存按钮还在，只是禁用并说明了原因'
+               : '恢复可编辑');
+});
+$('pv-desk').addEventListener('click', function(){ pvMode='desktop'; syncPvBar(); renderPreview(); });
+$('pv-mob').addEventListener('click', function(){ pvMode='mobile'; syncPvBar(); renderPreview(); });
+$('pv-guest').addEventListener('click', function(){
+  hdView='guest'; syncPvBar(); renderPreview();
+});
+$('pv-buyer').addEventListener('click', function(){
+  hdView='buyer'; syncPvBar(); renderPreview();
+  toast('登录买家的顶栏里没有导航 —— 你在「导航菜单」里配的东西，他们看不到');
+});
+/* 四个按钮谁是当前态。不标的话点了像没反应 */
+function syncPvBar(){
+  $('pv-desk').classList.toggle('btn-primary', pvMode==='desktop');
+  $('pv-mob').classList.toggle('btn-primary', pvMode==='mobile');
+  $('pv-guest').classList.toggle('btn-primary', hdView==='guest');
+  $('pv-buyer').classList.toggle('btn-primary', hdView==='buyer');
+}
+$('pv-mark').addEventListener('change', function(){ markDefaults=this.checked; renderPreview(); });
+window.addEventListener('resize', fitPreview);
+
+/* ---- 弹层 ---- */
+function openDlg(title, body, footer){
+  $('dlg-t').textContent = title;
+  $('dlg-b').innerHTML = body;
+  $('dlg-f').innerHTML = footer||'';
+  $('dlg-f').hidden = !footer;
+  $('mask').hidden = false;
+}
+$('mask').addEventListener('click', function(e){
+  if(e.target.id==='mask' || e.target.closest('[data-close]')) $('mask').hidden = true;
+});
+function openPicker(cb){
+  var h = '<p style="margin:0 0 12px;font-size:12.5px;color:var(--c-muted)">'
+    + '从「文件资源」里挑一张。<b>不让手填 URL</b> 是刻意的：线上那版每个图片字段都是一个空文本框，'
+    + '商家得先去文件页复制地址再回来粘 —— 而粘错了要到前台才看得出来。</p><div class="picker">';
+  MEDIA.forEach(function(m,i){
+    h += '<button data-m="'+i+'"><img src="'+m.url+'" alt=""><span>'+esc(m.name)+'</span></button>';
+  });
+  h += '</div>';
+  openDlg('选图片', h);
+  $('dlg-b').addEventListener('click', function onp(e){
+    var b = e.target.closest('[data-m]'); if(!b) return;
+    $('dlg-b').removeEventListener('click', onp);
+    $('mask').hidden = true;
+    cb(MEDIA[+b.dataset.m].url);
+  });
+}
+function openAdd(){
+  var used = {}; state.blocks.forEach(function(b){ used[b.type]=1; });
+  var h = '<p style="margin:0 0 12px;font-size:12.5px;color:var(--c-muted)">'
+    + '每种区块首页只能有一块（重复两屏「关于我们」没有意义）。删掉的可以从这里加回来，'
+    + '加回来后拖到想要的位置。</p><div class="blocklist">';
+  Object.keys(TYPES).forEach(function(k){
+    var t = TYPES[k];
+    h += '<button data-add="'+k+'"'+(used[k]?' disabled':'')+'><b>'+t.icon+' '+esc(t.name)
+      +  (used[k]?'（已有）':'')+'</b><small>'+esc(t.desc)+'</small></button>';
+  });
+  h += '</div>';
+  openDlg('添加区块', h);
+  $('dlg-b').addEventListener('click', function ona(e){
+    var b = e.target.closest('[data-add]'); if(!b||b.disabled) return;
+    $('dlg-b').removeEventListener('click', ona);
+    $('mask').hidden = true;
+    var nb = newBlock(b.dataset.add);
+    state.blocks.push(nb);
+    sel = {kind:'block', key:nb.id};
+    renderAll();
+    toast('已加到末尾 —— 拖动左边的 ⋮⋮ 可以改位置');
+  });
+}
+$('btn-help').addEventListener('click', function(){
+  openDlg('这版装修改了什么', [
+   '<div style="font-size:13px;line-height:1.75">',
+   '<p style="margin:0 0 14px;color:var(--c-muted)">左边是现在线上的做法，右边是这个 Demo 的做法。每一条都能在界面上点到。</p>',
+   '<ol style="margin:0;padding-left:20px">',
+   '<li style="margin-bottom:12px"><b>信息架构</b><br>',
+   '现在：6 个平铺 tab（基本信息 / Banner / 能力 / 关于 / 联系 / 导航），顶栏和页脚的东西和 Banner 并列。<br>',
+   '这版：分成「全站设置」和「首页区块」两组。<b>顶栏、页脚、SEO 不是首页的一块。</b></li>',
+
+   '<li style="margin-bottom:12px"><b>首页内容是有序数组，不是固定几个键</b><br>',
+   '现在：装修表单里有什么区块，首页就有什么区块，顺序写死在 index.vue 里。<br>',
+   '这版：contentJson 升 v3，<code>blocks[]</code> 可增删、可拖拽排序、可单独关掉。',
+   '每块还能选版式（Banner 单图/轮播、关于我们 错位/左右/纯文字…），同一份文案换排法不用重填。</li>',
+
+   '<li style="margin-bottom:12px"><b>实时预览</b><br>',
+   '现在：填完保存，切到前台刷新才知道长什么样。<br>',
+   '这版：右边就是首页。装修本来就没有「发布」这一步，所见即所得才对得上。',
+   '选中左边某一块，预览里那一块会用虚线框标出来。</li>',
+
+   '<li style="margin-bottom:12px"><b>共享粒度到字段</b><br>',
+   '现在：后端按<b>顶层键</b>覆盖，所以能所有语言通用的只有 <code>logo</code> 一个；',
+   'Banner 背景图、关于我们配图必须每种语言各填一次。<br>',
+   '这版：每个字段自己声明去 <code>shared</code> 还是 <code>i18n</code>。',
+   '图片默认通用，但可以按块勾掉（外贸站给不同市场配不同的图是常见做法）。',
+   '电话、邮箱、城市点位这类天生不分语言的也进 shared。</li>',
+
+   '<li style="margin-bottom:12px"><b>「留空 = 用默认」说得出口</b><br>',
+   '现在：placeholder 写「留空用站点名称」，但那个默认到底是什么字，商家看不到。<br>',
+   '这版：每个有默认值的字段直接把默认文案写在提示里；',
+   '勾上预览栏的「标出用了默认值的地方」，页面上所有来自内置默认的文字会打上底色。',
+   '左列还会标出<b>空 · 不显示</b>和<b>退回 en</b>（这个语言没填、前台会退回默认语言）。</li>',
+
+   '<li style="margin-bottom:12px"><b>没权限时整页置灰，不是删掉保存按钮</b><br>',
+   '现在：保存按钮上写 <code>v-hasPermi</code>，那个指令是把元素从 DOM 里删掉 ——',
+   '整页照样能填能改，只有保存按钮不见了，人填完一屏才发现没地方存。<br>',
+   '这版：勾顶栏的「模拟无编辑权限」看效果，按钮还在、禁用，并且顶上说明原因。</li>',
+
+   '<li style="margin-bottom:12px"><b>顺带修掉的两处将就</b><br>',
+   '· 粉色数字卡有<b>自己的</b>数字字段了。现在那版是从「关于我们」的数字亮点里借第一条，',
+   '同一个「15+ 年」在一屏里出现两次。<br>',
+   '· 图片字段接「选图片」，不再是一个让人粘 URL 的空文本框。<br>',
+   '· 轮播的图在<b>缩略图条</b>上加/删/拖排序，点 ＋ 直接进选图。',
+   '（第一版把「添加一张」做成表单最底下一个小按钮，还被吸底的保存条挡住 —— 等于没有。）</li>',
+   '<li style="margin-bottom:12px"><b>预览跟着真前台走</b><br>',
+   '顶栏和商品卡照 <code>SiteHeader.vue</code> / <code>ProductCard.vue</code>（2026-09-10 那版）重画过：',
+   '站名是 19px 正文体不是衬线大字、导航 15px 且颜色不是灰的、右侧是「币种 + 语言 + 用户」三段；',
+   '商品图 4:3、主推有角标、价格那一列有 37px 最小高度（一排卡片的价格才落在同一条基线上，',
+   '没填起订量的那张不会比左右低十几个像素）。<br>',
+   '<b>两处刻意不画</b>：商品卡的「+」加购和顶栏购物车只给登录买家，而首页装修要对的是',
+   '访客和爬虫看到的那一版 —— 工具条上的「顶栏：访客 / 已登录」能切过去看，',
+   '也能看到<b>登录后导航整条消失</b>。</li>',
+   '</ol>',
+   '<p style="margin:16px 0 0;padding:10px 12px;background:var(--c-warn-bg);border-radius:8px;color:var(--c-warn);font-size:12.5px">',
+   '<b>Demo 的边界</b>：不连后端、不读写任何现有代码，数据存在浏览器 localStorage。',
+   '预览里字体用系统衬线体兜底（真站是 Fraunces），地图是简化示意（真站是 world-atlas 国界图 + d3-geo），',
+   '商品是假数据。除这三处，配色、圆角、版式和真站一致。</p>',
+   '</div>'
+  ].join(''));
+});
+
+/* ==========================================================================
+   启动
+   ========================================================================== */
+(function init(){
+  var raw = null;
+  try{ raw = localStorage.getItem(LS_KEY); }catch(_){}
+  if(raw){
+    try{ state = JSON.parse(raw); }catch(_){ state = null; }
+  }
+  if(!state || !state.blocks) state = emptyContent();
+  saved = deepCopy(state);
+  sel = {kind:'block', key:state.blocks[0] ? state.blocks[0].id : null};
+  if(!sel.key) sel = {kind:'global', key:'brand'};
+  syncPvBar();
+  renderAll();
+})();
+</script>
+</body>
+</html>

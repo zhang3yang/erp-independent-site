@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  订单行。只在下单时写一次，之后不改——它是下单当时的商品快照，
+  所以这个文件里没有 update、没有单行 delete。
+
+  ⚠ 不 join u_s_sitegoods。商品改名、调价、下架都不该改变一张已经下的单。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteOrderItemMapper">
+
+  <resultMap id="ItemResult" type="com.ruoyi.station.console.domain.SiteOrderItem">
+    <id     property="id"        column="id"/>
+    <result property="shopCode"  column="shop_code"/>
+    <result property="orderCode" column="ordercode"/>
+    <result property="goodsCode" column="goodscode"/>
+    <result property="goodsName" column="goodsname"/>
+    <result property="comboCode" column="combocode"/>
+    <result property="comboName" column="comboname"/>
+    <result property="subtitle"  column="subtitle"/>
+    <result property="imgUrl"    column="imgurl"/>
+    <result property="price"     column="price"/>
+    <result property="currency"  column="currency"/>
+    <result property="qty"       column="qty"/>
+    <result property="unit"      column="unit"/>
+    <result property="lineTotal" column="linetotal"/>
+    <result property="sortNum"   column="sortnum"/>
+  </resultMap>
+
+  <select id="selectByOrder" resultMap="ItemResult">
+    select id, shop_code, ordercode, goodscode, goodsname, combocode, comboname, subtitle, imgurl,
+           price, currency, qty, unit, linetotal, sortnum
+      from u_s_orderitem
+     where ordercode = #{orderCode}
+     order by sortnum, id
+  </select>
+
+  <!--
+    一次 insert 多值，不是循环单条。
+
+    一张单十几行的时候差别不大，但这是**在一个事务里**的十几次往返——
+    而这个方法是在前台买家点「提交」那一下的请求链上，往返次数直接算在他的等待时间里。
+  -->
+  <!--
+    ⚠ combocode / comboname 这两列**必须在这里**，2026-09-11 补回来的。
+
+    在此之前它们只存在于「读」的那一半：SiteOrderService.repriceLines 认真算出了
+    型号快照（setComboCode / setComboName，单价也按型号取），selectByOrder 查它们、
+    buyerView 下发它们、前台订单详情页显示它们——唯独这条 insert 的列清单里没有。
+    于是型号在落库那一刻被静默丢掉。
+
+    表现：买家选了型号下单，价格是对的（那是另算的），但订单详情里型号一栏永远是空；
+    同一个商品选了两个型号就是**两行一模一样的东西**，而 buyerView 和前台那几处注释
+    正好都写着「不写明型号就分不清」——它们描述的是一个当时并不成立的行为。
+
+    ⚠ 这两列在本地开发库里可能还不存在（基线 sql/station/01_station_schema.sql 有，
+      但老库没迁过）。缺列的表现是 selectByOrder 直接 BadSqlGrammarException，
+      登录买家的订单详情和匿名查单一起 500。补列：
+        alter table u_s_orderitem
+          add column combocode varchar(50)  default null after goodscode,
+          add column comboname varchar(200) default null after combocode;
+  -->
+  <insert id="insertBatch">
+    insert into u_s_orderitem(
+      shop_code, ordercode, goodscode, goodsname, combocode, comboname, subtitle, imgurl,
+      price, currency, qty, unit, linetotal, sortnum
+    ) values
+    <foreach collection="items" item="it" separator=",">
+      (#{it.shopCode}, #{it.orderCode}, #{it.goodsCode}, #{it.goodsName},
+       #{it.comboCode}, #{it.comboName}, #{it.subtitle},
+       #{it.imgUrl}, #{it.price}, #{it.currency}, #{it.qty}, #{it.unit},
+       #{it.lineTotal}, #{it.sortNum})
+    </foreach>
+  </insert>
+
+  <!-- ==================== 改结算币种时的批量换算 ====================
+
+       ⚠ 这里出现了 update，而文件头写着「行只在下单时写一次，之后不改」。
+
+       那句话现在仍然成立，它说的是**业务内容**：商品名、型号、单价、数量都是
+       下单当时的快照，商品改名调价下架都不该动已经下的单。
+
+       换币种改的不是内容，是**计价单位**。同一笔钱换一种写法，`£80.00` 写成
+       `$101.07`——买家买的东西、付的钱都没变。这是站点级的口径变更，
+       不是「事后改了某张单」。
+
+       ⚠ 但代价是真的，运营必须知道：已经发出去的报价邮件里是旧币种旧数字，
+         库里换完就和邮件对不上了。这件事在管理台的确认框里写明了。
+
+       ==================== 为什么拆成两条语句 ====================
+
+       单价和行小计有一个不变式：linetotal = price × qty。换算后两者都要动，
+       写成一条的话是这样：
+
+           set price = round(price * rate, 4),
+               linetotal = round(price * qty, 4)     ← 这个 price 是新的还是旧的？
+
+       MySQL 的答案是「新的」（多列赋值从左到右，后面看得见前面的结果），
+       而标准 SQL 和大多数数据库的答案是「旧的」。也就是说这条语句的正确性
+       押在一个方言细节上——而写反了不会报错，只会让行小计少乘一次汇率，
+       金额差出一个汇率的倍数。
+
+       拆成两条，顺序由 Service 里两次调用显式表达，看代码的人不需要知道这个细节。
+  -->
+
+  <!--
+    第一条：单价 + 币种码。
+
+    ⚠ 不带 `price > 0`（商品表那两条带）。面议行的 price 是 0，乘汇率还是 0、
+      确实什么也没变，但它的 **currency 列同样要改**——不改的话这张单里
+      标价行写着 USD、面议行写着 GBP，是一张自相矛盾的单。
+
+    u_s_orderitem 没有 sitecode 列（主键是 ordercode + 行），所以站点限定
+    只能 join u_s_order 拿。少了它就是把同库里别的站的订单金额一起乘一遍。
+  -->
+  <update id="convertPrice">
+    update u_s_orderitem i
+      join u_s_order o on o.ordercode = i.ordercode
+       set i.price    = round(i.price * #{rate}, 4),
+           i.currency = #{toCode}
+     where o.sitecode = (select sitecode from u_s_siteinfo limit 1)
+  </update>
+
+  <!--
+    第二条：按**已经换算过的**单价重算行小计。必须在 convertPrice 之后跑。
+
+    round 到 4 位和 price 列同精度，理由见 SiteGoodsMapper.xml 里那段。
+    面议行 price = 0 → linetotal = 0，和 SiteOrderService#repriceLines 里
+    「面议行的行小计记 0」是同一个结果，不需要额外条件。
+  -->
+  <update id="syncLineTotal">
+    update u_s_orderitem i
+      join u_s_order o on o.ordercode = i.ordercode
+       set i.linetotal = round(i.price * i.qty, 4)
+     where o.sitecode = (select sitecode from u_s_siteinfo limit 1)
+  </update>
+</mapper>

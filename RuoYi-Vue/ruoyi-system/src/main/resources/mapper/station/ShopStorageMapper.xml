@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.ShopStorageMapper">
+
+  <resultMap type="ShopStorage" id="ShopStorageResult">
+    <result property="shopCode"        column="shop_code" />
+    <result property="provider"        column="provider" />
+    <result property="endpoint"        column="endpoint" />
+    <result property="region"          column="region" />
+    <result property="accessKeyId"     column="access_key_id" />
+    <result property="accessKeySecret" column="access_key_secret" />
+    <result property="bucket"          column="bucket" />
+    <result property="publicUrl"       column="public_url" />
+    <result property="status"          column="status" />
+    <result property="active"          column="active" />
+    <result property="createtime"      column="createtime" />
+    <result property="updatetime"      column="updatetime" />
+    <result property="createBy"        column="create_by" />
+    <result property="updateBy"        column="update_by" />
+  </resultMap>
+
+  <sql id="columns">
+    shop_code, provider, endpoint, region, access_key_id, access_key_secret,
+    bucket, public_url, status, active, createtime, updatetime, create_by, update_by
+  </sql>
+
+  <!--
+    当前生效的那套。limit 1 是兜底：正常情况下同一商家只有一行 active='1'，
+    由 Service 保证（先全置 0 再置 1，同一事务）。真出现两行也不该报错，
+    上传功能不能因为一个标记位错乱就整个不可用。
+  -->
+  <select id="selectActive" resultMap="ShopStorageResult">
+    select <include refid="columns"/>
+      from s_m_shop_storage
+     where shop_code = #{shopCode} and active = '1'
+     limit 1
+  </select>
+
+  <select id="selectByProvider" resultMap="ShopStorageResult">
+    select <include refid="columns"/>
+      from s_m_shop_storage
+     where shop_code = #{shopCode} and provider = #{provider}
+  </select>
+
+  <select id="selectConfiguredProviders" resultType="String">
+    select provider from s_m_shop_storage
+     where shop_code = #{shopCode}
+     order by provider
+  </select>
+
+  <insert id="insertStorage" parameterType="ShopStorage">
+    insert into s_m_shop_storage(shop_code, provider, endpoint, region, access_key_id,
+                                 access_key_secret, bucket, public_url, status, active,
+                                 createtime, updatetime, create_by, update_by)
+    values(#{shopCode}, #{provider}, #{endpoint}, #{region}, #{accessKeyId},
+           #{accessKeySecret}, #{bucket}, #{publicUrl}, #{status}, #{active},
+           sysdate(), sysdate(), #{createBy}, #{updateBy})
+  </insert>
+
+  <update id="updateStorage" parameterType="ShopStorage">
+    update s_m_shop_storage
+       set endpoint          = #{endpoint},
+           region            = #{region},
+           access_key_id     = #{accessKeyId},
+           access_key_secret = #{accessKeySecret},
+           bucket            = #{bucket},
+           public_url        = #{publicUrl},
+           status            = #{status},
+           updatetime        = sysdate(),
+           update_by         = #{updateBy}
+     where shop_code = #{shopCode} and provider = #{provider}
+  </update>
+
+  <!--
+    密钥输入框留空 = 不改密钥。这条不碰 access_key_secret 那一列，
+    否则会把库里的密文覆盖成空串，下次上传就变成「配置不完整」。
+  -->
+  <update id="updateStorageKeepSecret" parameterType="ShopStorage">
+    update s_m_shop_storage
+       set endpoint      = #{endpoint},
+           region        = #{region},
+           access_key_id = #{accessKeyId},
+           bucket        = #{bucket},
+           public_url    = #{publicUrl},
+           status        = #{status},
+           updatetime    = sysdate(),
+           update_by     = #{updateBy}
+     where shop_code = #{shopCode} and provider = #{provider}
+  </update>
+
+  <update id="clearActive">
+    update s_m_shop_storage set active = '0' where shop_code = #{shopCode}
+  </update>
+
+  <update id="markActive">
+    update s_m_shop_storage set active = '1'
+     where shop_code = #{shopCode} and provider = #{provider}
+  </update>
+
+  <delete id="deleteByShop">
+    delete from s_m_shop_storage where shop_code = #{shopCode}
+  </delete>
+
+</mapper>

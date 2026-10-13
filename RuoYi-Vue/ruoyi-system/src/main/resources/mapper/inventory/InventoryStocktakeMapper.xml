@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.InventoryStocktakeMapper">
+
+    <resultMap id="StocktakeResult" type="InventoryStocktake">
+        <id     property="id"                column="id" />
+        <result property="shopCode"          column="shop_code" />
+        <result property="stocktakeCode"     column="stocktake_code" />
+        <result property="wareCode"          column="ware_code" />
+        <result property="wareName"          column="ware_name" />
+        <result property="scope"             column="scope" />
+        <result property="status"            column="status" />
+        <result property="lineCount"         column="line_count" />
+        <result property="diffCount"         column="diff_count" />
+        <result property="gainQty"           column="gain_qty" />
+        <result property="gainAmount"        column="gain_amount" />
+        <result property="lossQty"           column="loss_qty" />
+        <result property="lossAmount"        column="loss_amount" />
+        <result property="adjustDocCodes"    column="adjust_doc_codes" />
+        <result property="adjustTableSuffix" column="adjust_table_suffix" />
+        <result property="remark"            column="remark" />
+        <result property="rejectReason"      column="reject_reason" />
+        <result property="createUser"        column="create_user" />
+        <result property="createTime"        column="create_time" />
+        <result property="submitUser"        column="submit_user" />
+        <result property="submitTime"        column="submit_time" />
+        <result property="confirmUser"       column="confirm_user" />
+        <result property="confirmTime"       column="confirm_time" />
+        <result property="updateTime"        column="update_time" />
+    </resultMap>
+
+    <resultMap id="StocktakeItemResult" type="InventoryStocktakeItem">
+        <id     property="id"              column="id" />
+        <result property="shopCode"        column="shop_code" />
+        <result property="stocktakeCode"   column="stocktake_code" />
+        <result property="goodsCode"       column="goods_code" />
+        <result property="goodsName"       column="goods_name" />
+        <result property="spec"            column="spec" />
+        <result property="unit"            column="unit" />
+        <result property="qualityFlag"     column="qualityflag" />
+        <result property="bookQty"         column="book_qty" />
+        <result property="countedQty"      column="counted_qty" />
+        <result property="diffQty"         column="diff_qty" />
+        <result property="costPrice"       column="cost_price" />
+        <result property="diffAmount"      column="diff_amount" />
+        <result property="batchCode"       column="batch_code" />
+        <result property="serialNos"       column="serial_nos" />
+        <result property="remark"          column="remark" />
+        <result property="batchStrategy"   column="batchstrategy" />
+        <result property="costCalculation" column="costcalculation" />
+        <result property="currentQty"      column="current_qty" />
+        <result property="lockedQty"       column="locked_qty" />
+    </resultMap>
+
+    <sql id="selectStocktakeVo">
+        select t.id, t.shop_code, t.stocktake_code, t.ware_code, t.ware_name, t.scope, t.status,
+               t.line_count, t.diff_count, t.gain_qty, t.gain_amount, t.loss_qty, t.loss_amount,
+               t.adjust_doc_codes, t.adjust_table_suffix, t.remark, t.reject_reason,
+               t.create_user, t.create_time, t.submit_user, t.submit_time,
+               t.confirm_user, t.confirm_time, t.update_time
+          from sdsshop.u_m_stocktake t
+    </sql>
+
+    <select id="selectStocktakeList" resultMap="StocktakeResult">
+        <include refid="selectStocktakeVo" />
+         where t.shop_code = #{shopCode}
+        <if test="stocktakeCode != null and stocktakeCode != ''">
+           and t.stocktake_code like concat('%', #{stocktakeCode}, '%')
+        </if>
+        <if test="wareCode != null and wareCode != ''">
+           and t.ware_code = #{wareCode}
+        </if>
+        <if test="status != null and status != ''">
+           and t.status = #{status}
+        </if>
+         order by t.id desc
+    </select>
+
+    <select id="selectStocktakeByCode" resultMap="StocktakeResult">
+        <include refid="selectStocktakeVo" />
+         where t.shop_code = #{shopCode}
+           and t.stocktake_code = #{stocktakeCode}
+    </select>
+
+    <select id="selectStocktakeByCodeForUpdate" resultMap="StocktakeResult">
+        <include refid="selectStocktakeVo" />
+         where t.shop_code = #{shopCode}
+           and t.stocktake_code = #{stocktakeCode}
+         for update
+    </select>
+
+    <insert id="insertStocktake" parameterType="InventoryStocktake" useGeneratedKeys="true" keyProperty="id">
+        insert into sdsshop.u_m_stocktake
+            (shop_code, stocktake_code, ware_code, ware_name, scope, status, line_count,
+             remark, create_user, create_time, update_time)
+        values
+            (#{shopCode}, #{stocktakeCode}, #{wareCode}, #{wareName}, #{scope}, #{status}, #{lineCount},
+             #{remark}, #{createUser}, sysdate(), sysdate())
+    </insert>
+
+    <update id="updateStatus">
+        update sdsshop.u_m_stocktake
+           set status = #{toStatus},
+        <if test="toStatus == '待审核'">
+               submit_user = #{username},
+               submit_time = sysdate(),
+        </if>
+        <if test="rejectReason != null">
+               reject_reason = #{rejectReason},
+        </if>
+               update_time = sysdate()
+         where shop_code = #{shopCode}
+           and stocktake_code = #{stocktakeCode}
+           and status = #{fromStatus}
+    </update>
+
+    <update id="completeStocktake" parameterType="InventoryStocktake">
+        update sdsshop.u_m_stocktake
+           set status = '已完成',
+               diff_count = #{diffCount},
+               gain_qty = #{gainQty},
+               gain_amount = #{gainAmount},
+               loss_qty = #{lossQty},
+               loss_amount = #{lossAmount},
+               adjust_doc_codes = #{adjustDocCodes},
+               adjust_table_suffix = #{adjustTableSuffix},
+               confirm_user = #{confirmUser},
+               confirm_time = sysdate(),
+               update_time = sysdate()
+         where shop_code = #{shopCode}
+           and stocktake_code = #{stocktakeCode}
+           and status = '待审核'
+    </update>
+
+    <update id="refreshLineCount">
+        update sdsshop.u_m_stocktake
+           set line_count = (select count(*) from sdsshop.u_m_stocktake_item i
+                              where i.shop_code = #{shopCode} and i.stocktake_code = #{stocktakeCode}),
+               update_time = sysdate()
+         where shop_code = #{shopCode}
+           and stocktake_code = #{stocktakeCode}
+    </update>
+
+    <!-- 当前库存按盘点仓库 + 良品状态 + 在库 取，盘点只盘在库的货 -->
+    <select id="selectItems" resultMap="StocktakeItemResult">
+        select i.id, i.shop_code, i.stocktake_code, i.goods_code, i.goods_name, i.spec, i.unit,
+               i.qualityflag, i.book_qty, i.counted_qty, i.diff_qty, i.cost_price, i.diff_amount,
+               i.batch_code, i.serial_nos, i.remark,
+               g.batchstrategy, g.costcalculation,
+               coalesce(s.physicalqty, 0) as current_qty,
+               coalesce(s.lockedqty, 0)   as locked_qty
+          from sdsshop.u_m_stocktake_item i
+          join sdsshop.u_m_stocktake t
+            on t.shop_code = i.shop_code and t.stocktake_code = i.stocktake_code
+          left join sdsshop.u_m_waregoods g
+            on g.shop_code = i.shop_code and g.goodscode = i.goods_code
+          left join sdsshop.u_m_stock s
+            on s.shop_code = i.shop_code and s.goodscode = i.goods_code and s.warecode = t.ware_code
+           and s.qualityflag = i.qualityflag and s.onhandflag = 1
+         where i.shop_code = #{shopCode}
+           and i.stocktake_code = #{stocktakeCode}
+         order by i.goods_code, i.qualityflag desc
+    </select>
+
+    <insert id="batchInsertItems">
+        insert into sdsshop.u_m_stocktake_item
+            (shop_code, stocktake_code, goods_code, goods_name, spec, unit, qualityflag,
+             book_qty, counted_qty, cost_price, update_time)
+        values
+        <foreach collection="items" item="it" separator=",">
+            (#{it.shopCode}, #{it.stocktakeCode}, #{it.goodsCode}, #{it.goodsName}, #{it.spec}, #{it.unit},
+             #{it.qualityFlag}, #{it.bookQty}, #{it.countedQty}, #{it.costPrice}, sysdate())
+        </foreach>
+    </insert>
+
+    <update id="updateItemCount" parameterType="InventoryStocktakeItem">
+        update sdsshop.u_m_stocktake_item
+           set counted_qty = #{countedQty},
+               cost_price = #{costPrice},
+               batch_code = #{batchCode},
+               serial_nos = #{serialNos},
+               remark = #{remark},
+               update_time = sysdate()
+         where shop_code = #{shopCode}
+           and stocktake_code = #{stocktakeCode}
+           and id = #{id}
+    </update>
+
+    <update id="updateItemResult" parameterType="InventoryStocktakeItem">
+        update sdsshop.u_m_stocktake_item
+           set book_qty = #{bookQty},
+               diff_qty = #{diffQty},
+               diff_amount = #{diffAmount},
+               update_time = sysdate()
+         where shop_code = #{shopCode}
+           and stocktake_code = #{stocktakeCode}
+           and id = #{id}
+    </update>
+
+    <delete id="deleteItem">
+        delete from sdsshop.u_m_stocktake_item
+         where shop_code = #{shopCode}
+           and stocktake_code = #{stocktakeCode}
+           and id = #{id}
+    </delete>
+
+    <select id="selectFrozenGoods" resultMap="StocktakeItemResult">
+        select i.id, i.shop_code, i.stocktake_code, i.goods_code, i.goods_name, i.spec, i.unit,
+               i.qualityflag, i.book_qty, i.counted_qty, i.diff_qty, i.cost_price, i.diff_amount,
+               i.batch_code, i.serial_nos, i.remark,
+               null as batchstrategy, null as costcalculation, null as current_qty, null as locked_qty
+          from sdsshop.u_m_stocktake_item i
+          join sdsshop.u_m_stocktake t
+            on t.shop_code = i.shop_code and t.stocktake_code = i.stocktake_code
+         where i.shop_code = #{shopCode}
+           and t.ware_code = #{wareCode}
+           and t.status in ('盘点中', '待审核')
+        <if test="excludeStocktakeCode != null and excludeStocktakeCode != ''">
+           and t.stocktake_code != #{excludeStocktakeCode}
+        </if>
+           and i.goods_code in
+        <foreach collection="goodsCodes" item="code" open="(" separator="," close=")">
+            #{code}
+        </foreach>
+         order by i.goods_code
+    </select>
+
+</mapper>

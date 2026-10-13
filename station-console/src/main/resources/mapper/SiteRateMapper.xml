@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  汇率，表里只有一行（id 恒为 1）。
+
+  三个写操作刻意分开，不合成一个 update：
+    · updateFetched     —— 定时任务，拉成功
+    · updateFetchFailed —— 定时任务，拉失败
+    · updateOverride    —— 运营在管理台改覆盖值
+
+  合成一个的话，凌晨的定时任务会把运营白天填的 overridejson 一起冲掉，
+  而那种覆盖常常正是因为自动汇率不对才填的。反过来运营保存一次也会
+  把 fetchtime 刷成当前时间，「汇率多久没更新」就再也判不出来了。
+
+  全文不写库限定名，理由同 SiteInfoMapper。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteRateMapper">
+
+  <resultMap id="RateResult" type="com.ruoyi.station.console.domain.SiteRate">
+    <result property="id"           column="id"/>
+    <result property="baseCode"     column="base_code"/>
+    <result property="ratesJson"    column="ratesjson"/>
+    <result property="overrideJson" column="overridejson"/>
+    <result property="fetchTime"    column="fetchtime"/>
+    <result property="fetchStatus"  column="fetchstatus"/>
+    <result property="fetchError"   column="fetcherror"/>
+    <result property="updateUser"   column="updateuser"/>
+    <result property="updateTime"   column="updatetime"/>
+  </resultMap>
+
+  <!--
+    limit 1 是说明性的：这张表按设计只有一行。查不到说明建库脚本没跑完
+    （或者只跑了 01_station_schema.sql 的老版本），RateService 会当成
+    「还没有汇率」处理，前台降级成不显示切换器——不抛异常。
+  -->
+  <select id="selectRate" resultMap="RateResult">
+    select id, base_code, ratesjson, overridejson,
+           fetchtime, fetchstatus, fetcherror, updateuser, updatetime
+      from u_s_rate
+     order by id
+     limit 1
+  </select>
+
+  <!-- 拉取成功。fetcherror 显式清空，否则上一次的失败原因会一直挂在管理台上 -->
+  <update id="updateFetched">
+    update u_s_rate
+       set base_code   = #{baseCode},
+           ratesjson   = #{ratesJson},
+           fetchtime   = sysdate(),
+           fetchstatus = '成功',
+           fetcherror  = null,
+           updatetime  = sysdate()
+     where id = 1
+  </update>
+
+  <!--
+    拉取失败。⚠ ratesjson 和 fetchtime 都不动：
+      · ratesjson 不动，上一次的汇率还能继续用，页面不会突然没有价格；
+      · fetchtime 不动，它的定义是「最后一次**成功**的时间」，被失败刷新之后
+        「超过 7 天没更新」这个判断就永远为假了，而那正是这个功能最需要的告警。
+  -->
+  <update id="updateFetchFailed">
+    update u_s_rate
+       set fetchstatus = '失败',
+           fetcherror  = #{error},
+           updatetime  = sysdate()
+     where id = 1
+  </update>
+
+  <!--
+    运营改覆盖值。直赋值不用 coalesce：要能清空（「不覆盖了，用自动汇率」），
+    coalesce 的话这个动作做不到。
+  -->
+  <update id="updateOverride">
+    update u_s_rate
+       set overridejson = #{overrideJson},
+           updateuser   = #{updateUser},
+           updatetime   = sysdate()
+     where id = 1
+  </update>
+</mapper>

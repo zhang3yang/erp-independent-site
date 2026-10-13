@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  本站存储配置。替代 ERP 的 sdssys.s_m_shop_storage（boundary §5.2）。
+
+  ⚠ 那张表**不在 sdsstation，在 sdssys**，而且 ERP 自己的文件上传也在用它。
+  它留在 ERP 原地不动，这是站点自己新建的一份。
+
+  一期文件落本机磁盘（provider=local），这张表只有一行、基本不动。
+  结构照抄那一张是为了将来接对象存储时不用改表。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteStorageMapper">
+
+  <resultMap id="StorageResult" type="com.ruoyi.station.console.domain.SiteStorage">
+    <result property="provider"        column="provider"/>
+    <result property="endpoint"        column="endpoint"/>
+    <result property="region"          column="region"/>
+    <result property="accessKeyId"     column="access_key_id"/>
+    <result property="accessKeySecret" column="access_key_secret"/>
+    <result property="bucket"          column="bucket"/>
+    <result property="publicUrl"       column="public_url"/>
+    <result property="status"          column="status"/>
+    <result property="active"          column="active"/>
+    <result property="createTime"      column="createtime"/>
+    <result property="updateTime"      column="updatetime"/>
+    <result property="createBy"        column="create_by"/>
+    <result property="updateBy"        column="update_by"/>
+  </resultMap>
+
+  <sql id="columns">
+    provider, endpoint, region, access_key_id, access_key_secret, bucket, public_url,
+    status, active, createtime, updatetime, create_by, update_by
+  </sql>
+
+  <select id="selectActive" resultMap="StorageResult">
+    select <include refid="columns"/>
+      from u_s_storage
+     where active = '1' and status = '0'
+     limit 1
+  </select>
+
+  <select id="selectByProvider" resultMap="StorageResult">
+    select <include refid="columns"/>
+      from u_s_storage
+     where provider = #{provider}
+  </select>
+
+  <select id="selectAll" resultMap="StorageResult">
+    select <include refid="columns"/>
+      from u_s_storage
+     order by provider
+  </select>
+
+  <!--
+    access_key_secret 走 coalesce：前端保存时不重填密钥（它从来不下发到浏览器，
+    回显的是一个空值），传上来的就是 null。直接写进去会把已配好的密钥清掉，
+    而表现是「保存成功了，但下次上传报鉴权失败」。
+  -->
+  <insert id="upsert" parameterType="com.ruoyi.station.console.domain.SiteStorage">
+    insert into u_s_storage(
+      provider, endpoint, region, access_key_id, access_key_secret, bucket, public_url,
+      status, active, createtime, updatetime, create_by, update_by
+    ) values(
+      #{provider}, #{endpoint}, #{region}, #{accessKeyId}, #{accessKeySecret},
+      #{bucket}, #{publicUrl}, coalesce(#{status}, '0'), coalesce(#{active}, '0'),
+      sysdate(), sysdate(), #{createBy}, #{updateBy}
+    )
+    on duplicate key update
+      endpoint          = values(endpoint),
+      region            = values(region),
+      access_key_id     = values(access_key_id),
+      access_key_secret = coalesce(values(access_key_secret), access_key_secret),
+      bucket            = values(bucket),
+      public_url        = values(public_url),
+      status            = values(status),
+      active            = values(active),
+      updatetime        = sysdate(),
+      update_by         = values(update_by)
+  </insert>
+
+  <update id="deactivateOthers">
+    update u_s_storage set active = '0', updatetime = sysdate()
+     where provider != #{provider} and active = '1'
+  </update>
+</mapper>

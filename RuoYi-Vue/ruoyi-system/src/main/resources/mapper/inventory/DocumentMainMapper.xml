@@ -1,0 +1,289 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.DocumentMainMapper">
+
+    <resultMap type="DocumentMain" id="DocumentMainResult">
+        <result property="shopCode"          column="shop_code" />
+        <result property="docCode"           column="doccode" />
+        <result property="docType"           column="doctype" />
+        <result property="docTypeName"       column="doctypename" />
+        <result property="docDate"           column="docdate" />
+        <result property="fromWareCode"      column="fromwarecode" />
+        <result property="fromWareName"      column="fromwarename" />
+        <result property="toWareCode"        column="towarecode" />
+        <result property="toWareName"        column="towarename" />
+        <result property="fromQualityFlag"   column="fromqualityflag" />
+        <result property="fromOnhandFlag"    column="fromonhandflag" />
+        <result property="toQualityFlag"     column="toqualityflag" />
+        <result property="toOnhandFlag"      column="toonhandflag" />
+        <result property="partnerCode"       column="partnercode" />
+        <result property="partnerName"       column="partnername" />
+        <result property="goodsSummary"      column="goodssummary" />
+        <result property="createUser"        column="createuser" />
+        <result property="handler"           column="handler" />
+        <result property="handlerTime"       column="handlertime" />
+        <result property="confirmState"      column="confirmstate" />
+        <result property="confirmUser"       column="confirmuser" />
+        <result property="confirmTime"       column="confirmtime" />
+        <result property="sourceDocCode"     column="sourcedoccode" />
+        <result property="sourceDocType"     column="sourcedoctype" />
+        <result property="sourceDocTypeName" column="sourcedoctypename" />
+        <result property="totalQty"          column="totalqty" />
+        <result property="totalAmount"       column="totalamount" />
+        <result property="remark"            column="remark" />
+        <result property="tableSuffix"      column="table_suffix" />
+        <result property="idempotencyKey"    column="idempotency_key" />
+        <result property="createUserName"    column="create_user_name" />
+        <result property="confirmUserName"   column="confirm_user_name" />
+    </resultMap>
+
+    <!-- 展示用查询，同样带出创建人昵称。加锁查询走 selectDocumentByCodeForUpdate，不连 sys_user。 -->
+    <select id="selectDocumentByCode" resultMap="DocumentMainResult">
+        select m.shop_code, m.doccode, m.doctype, m.doctypename, m.docdate,
+               m.fromwarecode, m.fromwarename, m.towarecode, m.towarename,
+               m.fromqualityflag, m.fromonhandflag,
+               m.toqualityflag, m.toonhandflag,
+               m.partnercode, m.partnername, m.goodssummary, m.createuser, m.handler, m.handlertime,
+               m.confirmstate, m.confirmuser, m.confirmtime,
+               m.sourcedoccode, m.sourcedoctype, m.sourcedoctypename,
+               m.totalqty, m.totalamount, m.remark, m.idempotency_key,
+               '${tableSuffix}' as table_suffix,
+               cu.nick_name as create_user_name,
+               au.nick_name as confirm_user_name
+          from sdsorder.u_f_docmain_${tableSuffix} m
+          left join sys_user cu on cu.user_name = m.createuser
+          left join sys_user au on au.user_name = m.confirmuser
+         where m.shop_code = #{shopCode}
+           and m.doccode = #{docCode}
+    </select>
+
+    <select id="selectDocumentByCodeForUpdate" resultMap="DocumentMainResult">
+        select shop_code, doccode, doctype, doctypename, docdate,
+               fromwarecode, fromwarename, towarecode, towarename,
+               fromqualityflag, fromonhandflag,
+               toqualityflag, toonhandflag,
+               partnercode, partnername, goodssummary, createuser, handler, handlertime,
+               confirmstate, confirmuser, confirmtime,
+               sourcedoccode, sourcedoctype, sourcedoctypename,
+               totalqty, totalamount, remark, idempotency_key,
+               '${tableSuffix}' as table_suffix
+          from sdsorder.u_f_docmain_${tableSuffix}
+         where shop_code = #{shopCode}
+           and doccode = #{docCode}
+         for update
+    </select>
+
+    <sql id="documentMainColumns">
+        m.shop_code, m.doccode, m.doctype, m.doctypename, m.docdate,
+        m.fromwarecode, m.fromwarename, m.towarecode, m.towarename,
+        m.fromqualityflag, m.fromonhandflag,
+        m.toqualityflag, m.toonhandflag,
+        m.partnercode, m.partnername, m.goodssummary, m.createuser, m.handler, m.handlertime,
+        m.confirmstate, m.confirmuser, m.confirmtime,
+        m.sourcedoccode, m.sourcedoctype, m.sourcedoctypename,
+        m.totalqty, m.totalamount, m.remark, m.idempotency_key
+    </sql>
+
+    <!-- 列表过滤条件。跨月查询时每个 union 分支都要拼一遍，抽出来共用。 -->
+    <sql id="documentMainFilter">
+         where m.shop_code = #{query.shopCode}
+        <!--
+          单据号模糊匹配：填全就是精确定位一张单，填前缀能按号段翻（SCLL 是生产领料、
+          CK 是销售出库）。这个条件之前漏了，页面上的「单据代码」搜索框填了等于没填。
+        -->
+        <if test="query.docCode != null and query.docCode != ''">
+           and m.doccode like concat('%', #{query.docCode}, '%')
+        </if>
+        <!--
+          横向权限：只有销售退货那条服务方法会设 ownerScope（限成「自己建的单」）。
+          库存的入库/出库/调拨/生产走同一条语句，它们从不设这个字段，所以不受影响。
+        -->
+        <if test="query.ownerScope != null">
+           and m.createuser = #{query.ownerScope}
+        </if>
+        <if test="query.docType != null and query.docType != ''">
+           and m.doctype = #{query.docType}
+        </if>
+        <if test="query.docTypes != null and query.docTypes != ''">
+           and m.doctype in
+           <foreach item="type" index="index" collection="query.docTypes.split(',')" open="(" separator="," close=")">
+               #{type}
+           </foreach>
+        </if>
+        <if test="query.confirmState != null and query.confirmState != ''">
+           and m.confirmstate = #{query.confirmState}
+        </if>
+        <if test="query.partnerCode != null and query.partnerCode != ''">
+           and m.partnercode = #{query.partnerCode}
+        </if>
+        <if test="query.sourceDocCode != null and query.sourceDocCode != ''">
+           and m.sourcedoccode = #{query.sourceDocCode}
+        </if>
+        <!--
+          月表只能把范围收窄到「月」，落到具体日期还得靠这两个条件。
+          区间跨月时首尾两张月表里必然有不该出现的行，缺了它们就会多返回。
+        -->
+        <if test="query.docDateBegin != null">
+           and m.docdate &gt;= #{query.docDateBegin}
+        </if>
+        <if test="query.docDateEnd != null">
+           and m.docdate &lt;= #{query.docDateEnd}
+        </if>
+    </sql>
+
+    <!--
+      docdate 相同的单据（一次生产工单操作会用同一个 operationTime 批量开出领料/消耗/
+      退料/成品入库四类单）必须再按 doccode 兜底排序，否则 MySQL 返回顺序不稳定，翻页
+      时可能漏行或重复行。
+    -->
+    <sql id="documentMainOrderBy">
+         order by docdate desc, doccode desc
+    </sql>
+
+    <!-- 左连 sys_user 带出创建人昵称供前端展示；user_name 有唯一索引，不会放大结果行数。 -->
+    <select id="selectDocumentList" resultMap="DocumentMainResult">
+        select <include refid="documentMainColumns" />,
+               '${query.tableSuffix}' as table_suffix,
+               cu.nick_name as create_user_name,
+               au.nick_name as confirm_user_name
+          from sdsorder.u_f_docmain_${query.tableSuffix} m
+          left join sys_user cu on cu.user_name = m.createuser
+          left join sys_user au on au.user_name = m.confirmuser
+        <include refid="documentMainFilter" />
+        <include refid="documentMainOrderBy" />
+    </select>
+
+    <!--
+      跨月查询。sys_user 放到 union 外面连一次，否则每个分支都要连一遍。
+      分支内不加 limit：PageHelper 会把整条 union 包起来再切页，分支内截断
+      反而可能丢掉靠后月份里 docdate 更新的行。
+    -->
+    <select id="selectDocumentListAcrossMonths" resultMap="DocumentMainResult">
+        select dm.*, cu.nick_name as create_user_name,
+               au.nick_name as confirm_user_name
+          from (
+        <foreach collection="suffixes" item="suffix" separator=" union all ">
+            ( select <include refid="documentMainColumns" />,
+                     '${suffix}' as table_suffix
+                from sdsorder.u_f_docmain_${suffix} m
+              <include refid="documentMainFilter" /> )
+        </foreach>
+          ) dm
+          left join sys_user cu on cu.user_name = dm.createuser
+          left join sys_user au on au.user_name = dm.confirmuser
+        <include refid="documentMainOrderBy" />
+    </select>
+
+    <select id="selectDocumentMainTableSuffixes" resultType="string">
+        select substring(table_name, length('u_f_docmain_') + 1)
+          from information_schema.tables
+         where table_schema = 'sdsorder' and table_name like 'u_f_docmain_%'
+    </select>
+
+    <select id="selectDocumentByIdempotencyKey" resultMap="DocumentMainResult">
+        select shop_code, doccode, doctype, doctypename, docdate,
+               fromwarecode, fromwarename, towarecode, towarename,
+               fromqualityflag, fromonhandflag,
+               toqualityflag, toonhandflag,
+               partnercode, partnername, goodssummary, createuser, handler, handlertime,
+               confirmstate, confirmuser, confirmtime,
+               sourcedoccode, sourcedoctype, sourcedoctypename,
+               totalqty, totalamount, remark, idempotency_key,
+               '${tableSuffix}' as table_suffix
+          from sdsorder.u_f_docmain_${tableSuffix}
+         where shop_code = #{shopCode}
+           and idempotency_key = #{idempotencyKey}
+         limit 1
+    </select>
+
+    <insert id="insertDocument" parameterType="DocumentMain">
+        insert into sdsorder.u_f_docmain_${tableSuffix}(
+            shop_code, doccode, doctype, doctypename, docdate,
+            fromwarecode, fromwarename, towarecode, towarename,
+            fromqualityflag, fromonhandflag,
+            toqualityflag, toonhandflag,
+            partnercode, partnername, goodssummary, createuser, handler, handlertime,
+            confirmstate, sourcedoccode, sourcedoctype, sourcedoctypename,
+            totalqty, totalamount, remark, idempotency_key
+        ) values(
+            #{shopCode}, #{docCode}, #{docType}, #{docTypeName}, #{docDate},
+            #{fromWareCode}, #{fromWareName}, #{toWareCode}, #{toWareName},
+            #{fromQualityFlag}, #{fromOnhandFlag},
+            #{toQualityFlag}, #{toOnhandFlag},
+            #{partnerCode}, #{partnerName}, #{goodsSummary}, #{createUser}, #{handler}, #{handlerTime},
+            '待审核', #{sourceDocCode}, #{sourceDocType}, #{sourceDocTypeName},
+            #{totalQty}, #{totalAmount}, #{remark}, #{idempotencyKey}
+        )
+    </insert>
+
+    <update id="updateDocument" parameterType="DocumentMain">
+        update sdsorder.u_f_docmain_${tableSuffix}
+           set doctype = #{docType},
+               doctypename = #{docTypeName},
+               docdate = #{docDate},
+               fromwarecode = #{fromWareCode},
+               fromwarename = #{fromWareName},
+               towarecode = #{toWareCode},
+               towarename = #{toWareName},
+               fromqualityflag = #{fromQualityFlag},
+               fromonhandflag = #{fromOnhandFlag},
+               toqualityflag = #{toQualityFlag},
+               toonhandflag = #{toOnhandFlag},
+               partnercode = #{partnerCode},
+               partnername = #{partnerName},
+               goodssummary = #{goodsSummary},
+               handler = #{handler},
+               handlertime = #{handlerTime},
+               confirmstate = '待审核',
+               confirmuser = NULL,
+               confirmtime = NULL,
+               totalqty = #{totalQty},
+               totalamount = #{totalAmount},
+               remark = #{remark}
+         where shop_code = #{shopCode}
+           and doccode = #{docCode}
+           and confirmstate in ('待审核', '已驳回')
+    </update>
+
+    <delete id="deleteDocumentByCode">
+        delete from sdsorder.u_f_docmain_${tableSuffix}
+         where shop_code = #{shopCode}
+           and doccode = #{docCode}
+           and confirmstate in ('待审核', '已驳回')
+    </delete>
+
+    <update id="confirmDocument">
+        update sdsorder.u_f_docmain_${tableSuffix}
+           set confirmstate = #{confirmState},
+               confirmuser = #{confirmUser},
+               confirmtime = sysdate()
+         where shop_code = #{shopCode}
+           and doccode = #{docCode}
+           and confirmstate = '待审核'
+    </update>
+
+    <update id="updateDocumentTotalAmount">
+        update sdsorder.u_f_docmain_${tableSuffix}
+           set totalamount = #{totalAmount}
+         where shop_code = #{shopCode}
+           and doccode = #{docCode}
+    </update>
+
+    <update id="updateDocumentGoodsSummary">
+        update sdsorder.u_f_docmain_${tableSuffix}
+           set goodssummary = #{goodsSummary}
+         where shop_code = #{shopCode}
+           and doccode = #{docCode}
+    </update>
+
+    <update id="updateDocumentTotals">
+        update sdsorder.u_f_docmain_${tableSuffix}
+           set totalqty = #{totalQty},
+               totalamount = #{totalAmount}
+         where shop_code = #{shopCode}
+           and doccode = #{docCode}
+    </update>
+
+</mapper>

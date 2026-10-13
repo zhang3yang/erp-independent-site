@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.ProductionOrderDetailMapper">
+    <resultMap type="ProductionOrderDetail" id="ProductionOrderDetailResult">
+        <result property="id" column="id" /><result property="shopCode" column="shop_code" />
+        <result property="detailCode" column="detail_code" /><result property="productionCode" column="production_code" />
+        <result property="lineNo" column="line_no" /><result property="productCode" column="product_code" />
+        <result property="productName" column="product_name" /><result property="planYQty" column="plan_y_qty" />
+        <result property="actualYQty" column="actual_y_qty" /><result property="materialCost" column="material_cost" />
+        <result property="unitCost" column="unit_cost" />
+        <result property="totalCost" column="total_cost" /><result property="remark" column="remark" />
+    </resultMap>
+    <sql id="columns">select id, shop_code, detailcode as detail_code, productioncode as production_code,
+        lineno as line_no, productcode as product_code, productname as product_name,
+        planyqty as plan_y_qty, actualyqty as actual_y_qty, materialcost as material_cost,
+        unitcost as unit_cost, totalcost as total_cost, remark
+        from sdsshop.u_p_productiondetail</sql>
+    <select id="selectByProductionCode" resultMap="ProductionOrderDetailResult"><include refid="columns" />
+        where shop_code = #{shopCode} and productioncode = #{productionCode} order by lineno</select>
+    <select id="countByProductCode" resultType="int">
+        select count(1) from sdsshop.u_p_productiondetail
+         where shop_code = #{shopCode} and productcode = #{productCode}
+    </select>
+    <insert id="batchInsert">
+        insert into sdsshop.u_p_productiondetail
+        (shop_code,detailcode,productioncode,lineno,productcode,productname,planyqty,actualyqty,materialcost,unitcost,totalcost,remark)
+        values <foreach item="item" collection="items" separator=",">(
+            #{item.shopCode},#{item.detailCode},#{item.productionCode},#{item.lineNo},#{item.productCode},#{item.productName},
+            #{item.planYQty},0,0,0,0,#{item.remark})</foreach>
+    </insert>
+    <delete id="deleteByProductionCode">delete from sdsshop.u_p_productiondetail where shop_code = #{shopCode} and productioncode = #{productionCode}</delete>
+    <!-- 本行物料成本单独落库：费用调整时要按它重新分摊三项费用，只留 totalcost 就拆不回来了 -->
+    <update id="updateExecution">
+        update sdsshop.u_p_productiondetail
+           set actualyqty = #{actualQty}, materialcost = #{materialCost},
+               unitcost = #{unitCost}, totalcost = #{totalCost}
+         where shop_code = #{shopCode} and detailcode = #{detailCode}
+    </update>
+</mapper>

@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.InventorySerialMapper">
+
+    <resultMap type="InventorySerial" id="InventorySerialResult">
+        <result property="shopCode" column="shop_code" />
+        <result property="serialNo" column="serial_no" />
+        <result property="goodsCode" column="goods_code" />
+        <result property="goodsName" column="goods_name" />
+        <result property="spec" column="spec" />
+        <result property="unit" column="unit" />
+        <result property="batchCode" column="batch_code" />
+        <result property="costPrice" column="cost_price" />
+        <result property="wareCode" column="ware_code" />
+        <result property="wareName" column="ware_name" />
+        <result property="qualityFlag" column="quality_flag" />
+        <result property="onhandFlag" column="onhand_flag" />
+        <result property="inboundDoc" column="inbound_doc" />
+        <result property="inboundDetail" column="inbound_detail" />
+        <result property="outboundDoc" column="outbound_doc" />
+        <result property="outboundDetail" column="outbound_detail" />
+        <result property="status" column="serial_status" />
+        <result property="inTime" column="in_time" />
+        <result property="outTime" column="out_time" />
+        <result property="purchaseCode" column="purchase_code" />
+        <result property="partnerCode" column="partner_code" />
+        <result property="createTime" column="create_time" />
+    </resultMap>
+
+    <sql id="selectSerialVo">
+        select s.shop_code,
+               s.serialcode as serial_no,
+               s.goodscode as goods_code,
+               s.goodsname as goods_name,
+               s.spec,
+               s.unit,
+               s.batchcode as batch_code,
+               s.costprice as cost_price,
+               s.warecode as ware_code,
+               s.warename as ware_name,
+               s.qualityflag as quality_flag,
+               s.onhandflag as onhand_flag,
+               s.indoccode as inbound_doc,
+               s.indetailcode as inbound_detail,
+               s.outdoccode as outbound_doc,
+               s.outdetailcode as outbound_detail,
+               case when s.activeflag = 1 then 'instock' else 'outstock' end as serial_status,
+               s.intime as in_time,
+               s.outtime as out_time,
+               b.purchasecode as purchase_code,
+               b.partnercode as partner_code,
+               s.createtime as create_time
+          from sdsshop.u_m_serial s
+          left join sdsshop.u_m_batchinfo b
+            on b.shop_code = s.shop_code
+           and b.batchcode = s.batchcode
+           and b.goodscode = s.goodscode
+           and b.warecode = s.warecode
+           and b.qualityflag = s.qualityflag
+           and b.onhandflag = s.onhandflag
+    </sql>
+
+    <select id="selectSerialByKey" resultMap="InventorySerialResult">
+        <include refid="selectSerialVo" />
+         where s.shop_code = #{shopCode}
+           and s.serialcode = #{serialNo}
+         limit 1
+    </select>
+
+    <select id="selectSerialByContext" resultMap="InventorySerialResult">
+        <include refid="selectSerialVo" />
+         where s.shop_code = #{shopCode}
+           and s.serialcode = #{serialNo}
+           and s.goodscode = #{goodsCode}
+           and s.warecode = #{wareCode}
+           and s.qualityflag = #{state.qualityFlag}
+           and s.onhandflag = #{state.onhandFlag}
+         order by s.activeflag desc, s.intime desc, s.createtime desc, s.batchcode desc
+         limit 1
+    </select>
+
+    <select id="selectSerialList" resultMap="InventorySerialResult">
+        <include refid="selectSerialVo" />
+         where s.shop_code = #{shopCode}
+        <if test="serialNo != null and serialNo != ''">
+           and s.serialcode = #{serialNo}
+        </if>
+        <if test="goodsCode != null and goodsCode != ''">
+           and s.goodscode = #{goodsCode}
+        </if>
+        <if test="wareCode != null and wareCode != ''">
+           and s.warecode = #{wareCode}
+        </if>
+        <if test="qualityFlag != null">
+           and s.qualityflag = #{qualityFlag}
+        </if>
+        <if test="onhandFlag != null">
+           and s.onhandflag = #{onhandFlag}
+        </if>
+        <if test="status != null and status == 'instock'">
+           and s.activeflag = 1
+        </if>
+        <if test="status != null and status == 'outstock'">
+           and s.activeflag = 0
+        </if>
+        <if test="inboundDoc != null and inboundDoc != ''">
+           and s.indoccode = #{inboundDoc}
+        </if>
+        <if test="purchaseCode != null and purchaseCode != ''">
+           and b.purchasecode = #{purchaseCode}
+        </if>
+        <!-- createtime 同秒的序列号（一次入库批量登记是常态）要靠 serialcode 兜底，否则分页顺序不稳定 -->
+         order by s.createtime desc, s.serialcode desc
+    </select>
+
+    <insert id="insertSerial" parameterType="InventorySerial">
+        insert into sdsshop.u_m_serial(
+            shop_code, serialcode, goodscode, goodsname, spec, unit, batchcode, costprice,
+            warecode, warename, qualityflag, onhandflag, activeflag,
+            indoccode, indetailcode, intime, outdoccode, outdetailcode, outtime,
+            remark, createtime
+        ) values(
+            #{shopCode}, #{serialNo}, #{goodsCode}, #{goodsName},
+            #{spec, jdbcType=VARCHAR}, #{unit, jdbcType=VARCHAR},
+            coalesce(#{batchCode, jdbcType=VARCHAR}, ''), #{costPrice, jdbcType=DECIMAL},
+            #{wareCode}, #{wareName},
+            coalesce(#{qualityFlag, jdbcType=INTEGER}, 1),
+            coalesce(#{onhandFlag, jdbcType=INTEGER}, 1),
+            case when #{status} = 'outstock' then 0 else 1 end,
+            coalesce(#{inboundDoc, jdbcType=VARCHAR}, 'MANUAL'),
+            coalesce(#{inboundDetail, jdbcType=VARCHAR}, #{serialNo}),
+            coalesce(#{inTime, jdbcType=TIMESTAMP}, sysdate()),
+            #{outboundDoc, jdbcType=VARCHAR}, #{outboundDetail, jdbcType=VARCHAR},
+            #{outTime, jdbcType=TIMESTAMP}, '', sysdate()
+        )
+    </insert>
+
+    <update id="updateSerial" parameterType="InventorySerial">
+        update sdsshop.u_m_serial
+           set goodsname = #{goodsName},
+               warecode = #{wareCode},
+               warename = #{wareName},
+               qualityflag = coalesce(#{qualityFlag, jdbcType=INTEGER}, qualityflag),
+               onhandflag = coalesce(#{onhandFlag, jdbcType=INTEGER}, onhandflag),
+               costprice = coalesce(#{costPrice, jdbcType=DECIMAL}, costprice),
+               indoccode = coalesce(#{inboundDoc, jdbcType=VARCHAR}, indoccode),
+               outdoccode = #{outboundDoc, jdbcType=VARCHAR},
+               activeflag = case when #{status} = 'outstock' then 0 else 1 end,
+               intime = coalesce(#{inTime, jdbcType=TIMESTAMP}, intime),
+               outtime = #{outTime, jdbcType=TIMESTAMP}
+         where shop_code = #{shopCode}
+           and serialcode = #{serialNo}
+    </update>
+
+    <insert id="batchInsertSerial">
+        insert into sdsshop.u_m_serial(
+            shop_code, serialcode, goodscode, goodsname, spec, unit, batchcode, costprice,
+            warecode, warename, qualityflag, onhandflag, activeflag,
+            indoccode, indetailcode, intime, remark, createtime
+        ) values
+        <foreach item="item" collection="list" separator=",">
+        (
+            #{item.shopCode}, #{item.serialNo}, #{item.goodsCode}, #{item.goodsName},
+            #{item.spec, jdbcType=VARCHAR}, #{item.unit, jdbcType=VARCHAR},
+            coalesce(#{item.batchCode, jdbcType=VARCHAR}, ''), #{item.costPrice, jdbcType=DECIMAL},
+            #{item.wareCode}, #{item.wareName},
+            coalesce(#{item.qualityFlag, jdbcType=INTEGER}, 1),
+            coalesce(#{item.onhandFlag, jdbcType=INTEGER}, 1),
+            case when #{item.status} = 'outstock' then 0 else 1 end,
+            coalesce(#{item.inboundDoc, jdbcType=VARCHAR}, 'MANUAL'),
+            coalesce(#{item.inboundDetail, jdbcType=VARCHAR}, #{item.serialNo}),
+            coalesce(#{item.inTime, jdbcType=TIMESTAMP}, sysdate()), '', sysdate()
+        )
+        </foreach>
+    </insert>
+
+    <update id="outboundSerial">
+        update sdsshop.u_m_serial
+           set activeflag = 0,
+               outdoccode = #{outboundDoc},
+               outdetailcode = #{outboundDoc},
+               outtime = sysdate()
+         where shop_code = #{shopCode}
+           and serialcode = #{serialNo}
+           and goodscode = #{goodsCode}
+           and warecode = #{wareCode}
+           and qualityflag = #{state.qualityFlag}
+           and onhandflag = #{state.onhandFlag}
+           and batchcode = #{batchCode}
+           and activeflag = 1
+    </update>
+
+    <update id="updateSerialCost">
+        update sdsshop.u_m_serial
+           set costprice = #{costPrice}
+         where shop_code = #{shopCode}
+           and serialcode = #{serialNo}
+           and goodscode = #{goodsCode}
+           and warecode = #{wareCode}
+           and qualityflag = #{state.qualityFlag}
+           and onhandflag = #{state.onhandFlag}
+           and activeflag = 1
+    </update>
+
+    <update id="transferSerial">
+        update sdsshop.u_m_serial
+           set warecode = #{toWareCode},
+               warename = #{toWareName},
+               qualityflag = #{toState.qualityFlag},
+               onhandflag = #{toState.onhandFlag}
+
+         where shop_code = #{shopCode}
+           and serialcode = #{serialNo}
+           and goodscode = #{goodsCode}
+           and warecode = #{fromWareCode}
+           and qualityflag = #{fromState.qualityFlag}
+           and onhandflag = #{fromState.onhandFlag}
+           and batchcode = #{batchCode}
+           and activeflag = 1
+    </update>
+
+    <select id="checkSerialExists" resultType="int">
+        select count(*) from sdsshop.u_m_serial
+         where shop_code = #{shopCode}
+           and serialcode = #{serialNo}
+    </select>
+
+    <select id="checkSerialInStock" resultType="int">
+        select count(*) from sdsshop.u_m_serial
+         where shop_code = #{shopCode}
+           and serialcode = #{serialNo}
+           and activeflag = 1
+    </select>
+
+    <select id="selectInStockSerialList" resultMap="InventorySerialResult">
+        <include refid="selectSerialVo" />
+         where s.shop_code = #{shopCode}
+           and s.activeflag = 1
+        <if test="goodsCode != null and goodsCode != ''">
+           and s.goodscode = #{goodsCode}
+        </if>
+        <if test="wareCode != null and wareCode != ''">
+           and s.warecode = #{wareCode}
+        </if>
+           and s.qualityflag = #{state.qualityFlag}
+           and s.onhandflag = #{state.onhandFlag}
+         order by s.intime asc
+    </select>
+
+</mapper>

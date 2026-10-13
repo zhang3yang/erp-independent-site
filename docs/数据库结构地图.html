@@ -1,0 +1,1264 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wczl-erp 数据库地图</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Serif:wght@600&display=swap">
+<style>
+:root{
+  --ground:#F2F5F6; --surface:#FFFFFF; --surface-2:#E9EEF0; --sunk:#EAF0F2;
+  --ink:#0F1B21; --muted:#56686F; --line:#D3DDE1; --line-soft:#E3EAEC;
+  --erp:#1B5E8C; --erp-soft:#DCEAF3;
+  --station:#0D7A69; --station-soft:#D8EEE9;
+  --warn:#8F5510; --warn-soft:#F6E8D6;
+  --bad:#A33A32; --bad-soft:#F6E0DE;
+  --mono:"IBM Plex Mono","Cascadia Mono",Consolas,monospace;
+  --sans:"IBM Plex Sans","PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+  --serif:"IBM Plex Serif","Songti SC","PingFang SC","Microsoft YaHei",serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0C1316; --surface:#141E23; --surface-2:#1B272D; --sunk:#101A1F;
+    --ink:#E3EAED; --muted:#8FA2AA; --line:#26343B; --line-soft:#1E2A30;
+    --erp:#79B4DB; --erp-soft:#17303F;
+    --station:#4FC5AE; --station-soft:#0F2E2A;
+    --warn-soft:#2E2517;
+    --bad:#E38A82; --bad-soft:#331F1D;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0C1316; --surface:#141E23; --surface-2:#1B272D; --sunk:#101A1F;
+  --ink:#E3EAED; --muted:#8FA2AA; --line:#26343B; --line-soft:#1E2A30;
+  --erp:#79B4DB; --erp-soft:#17303F;
+  --station:#4FC5AE; --station-soft:#0F2E2A;
+  --warn:#D9A263; --warn-soft:#2E2517;
+  --bad:#E38A82; --bad-soft:#331F1D;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--ground); color:var(--ink);
+  font-family:var(--sans); font-size:15px; line-height:1.72;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1120px; margin:0 auto; padding:0 28px 96px}
+p{margin:0 0 14px; max-width:70ch}
+a{color:var(--erp)}
+code,.m{font-family:var(--mono); font-size:.88em; letter-spacing:-.01em}
+.m{color:var(--erp)}
+
+/* ---------- masthead ---------- */
+header.top{
+  border-bottom:1px solid var(--line);
+  background:var(--surface);
+}
+.top-in{max-width:1120px; margin:0 auto; padding:44px 28px 34px}
+.eyebrow{
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--muted); margin:0 0 12px;
+}
+h1{
+  font-family:var(--serif); font-weight:600; font-size:40px; line-height:1.16;
+  margin:0 0 14px; text-wrap:balance; letter-spacing:-.01em;
+}
+.lede{font-size:16.5px; color:var(--muted); max-width:64ch; margin:0}
+.lede strong{color:var(--ink); font-weight:600}
+
+.counts{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+  gap:1px; background:var(--line); border:1px solid var(--line);
+  margin-top:30px;
+}
+.count{background:var(--surface); padding:16px 18px}
+.count .n{
+  font-family:var(--mono); font-size:26px; font-weight:500;
+  font-variant-numeric:tabular-nums; line-height:1.1; display:block;
+}
+.count .k{font-family:var(--mono); font-size:12px; color:var(--muted); display:block; margin-top:4px}
+.count .d{font-size:12.5px; color:var(--muted); margin-top:6px; line-height:1.5}
+.count.erp .n{color:var(--erp)} .count.st .n{color:var(--station)}
+
+/* ---------- nav ---------- */
+nav.chips{
+  position:sticky; top:0; z-index:20;
+  background:var(--ground); border-bottom:1px solid var(--line);
+  padding:9px 0; margin-bottom:8px;
+}
+.chips-in{max-width:1120px; margin:0 auto; padding:0 28px; display:flex; gap:6px; flex-wrap:wrap}
+.chips a{
+  font-family:var(--mono); font-size:12px; text-decoration:none;
+  color:var(--muted); border:1px solid var(--line);
+  padding:4px 10px; background:var(--surface); white-space:nowrap;
+}
+.chips a:hover{color:var(--ink); border-color:var(--muted)}
+.chips a:focus-visible{outline:2px solid var(--erp); outline-offset:2px}
+
+/* ---------- sections ---------- */
+section{padding-top:56px; scroll-margin-top:56px}
+h2{
+  font-family:var(--serif); font-weight:600; font-size:27px; line-height:1.3;
+  margin:0 0 6px; text-wrap:balance;
+}
+h2 .sn{
+  font-family:var(--mono); font-size:13px; font-weight:400;
+  color:var(--muted); display:block; letter-spacing:.1em; margin-bottom:6px;
+}
+h3{
+  font-family:var(--sans); font-weight:600; font-size:16px;
+  margin:34px 0 10px; letter-spacing:.005em;
+}
+h3::before{content:"— "; color:var(--muted)}
+.sub{color:var(--muted); max-width:70ch; margin:0 0 22px}
+
+/* ---------- figure ---------- */
+figure{margin:26px 0 8px; background:var(--surface); border:1px solid var(--line); padding:22px 18px 14px}
+figure .scroll{overflow-x:auto}
+figure svg{display:block; width:100%; min-width:640px; height:auto; color:var(--ink)}
+figcaption{
+  font-size:12.8px; color:var(--muted); margin-top:14px; padding-top:12px;
+  border-top:1px solid var(--line-soft); line-height:1.6;
+}
+figcaption b{color:var(--ink); font-weight:600}
+
+/* ---------- table catalog ---------- */
+.cat{border-top:1px solid var(--line); margin-top:8px}
+.row{
+  display:grid; grid-template-columns:250px 1fr;
+  gap:0 26px; border-bottom:1px solid var(--line-soft);
+  padding:14px 0; align-items:start;
+}
+.row > .name{font-family:var(--mono); font-size:13.5px; font-weight:500; line-height:1.55; word-break:break-all}
+.row > .name .cn{display:block; font-family:var(--sans); font-size:12.5px; font-weight:400; color:var(--muted); margin-top:2px}
+.row > .body{min-width:0}
+.row .purpose{margin:0 0 8px; font-size:14.2px; max-width:66ch}
+.row.key{background:var(--sunk); padding-left:14px; padding-right:14px; margin-left:-14px; margin-right:-14px}
+.fields{display:flex; flex-wrap:wrap; gap:5px}
+.f{
+  font-family:var(--mono); font-size:11.8px; line-height:1.5;
+  border:1px solid var(--line); padding:2px 7px; color:var(--muted);
+  background:var(--surface);
+}
+.f b{color:var(--ink); font-weight:500}
+.f.hot{border-color:var(--erp); background:var(--erp-soft)}
+.f.hot b{color:var(--erp)}
+.f.st{border-color:var(--station); background:var(--station-soft)}
+.f.st b{color:var(--station)}
+.f.dead{text-decoration:line-through; opacity:.65}
+
+.tag{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.06em;
+  text-transform:uppercase; padding:1px 6px; border:1px solid currentColor;
+  vertical-align:2px; margin-left:6px; font-weight:400;
+}
+.tag.mon{color:var(--warn)}
+.tag.der{color:var(--muted)}
+.tag.leg{color:var(--bad)}
+
+/* ---------- data table ---------- */
+.tblwrap{overflow-x:auto; border:1px solid var(--line); background:var(--surface); margin:18px 0}
+table{border-collapse:collapse; width:100%; min-width:560px; font-size:13.3px}
+th,td{text-align:left; padding:8px 14px; border-bottom:1px solid var(--line-soft); vertical-align:top}
+th{
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--muted); font-weight:400; background:var(--surface-2); border-bottom:1px solid var(--line);
+  white-space:nowrap;
+}
+td.c{font-family:var(--mono); white-space:nowrap; font-size:12.5px}
+tr:last-child td{border-bottom:none}
+.dir{font-family:var(--mono); font-size:11px; padding:1px 6px; border:1px solid currentColor}
+.dir.i{color:var(--station)} .dir.o{color:var(--bad)} .dir.n{color:var(--warn)}
+
+/* ---------- traps ---------- */
+.traps{display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); margin-top:20px}
+.trap{background:var(--surface); padding:16px 18px}
+.trap h4{margin:0 0 7px; font-size:14px; font-weight:600; line-height:1.5}
+.trap h4 span{font-family:var(--mono); color:var(--bad); font-size:12px; margin-right:7px}
+.trap p{margin:0; font-size:13.2px; color:var(--muted); line-height:1.65; max-width:none}
+.trap p .m{color:var(--ink)}
+
+.note{
+  border-left:3px solid var(--warn); background:var(--warn-soft);
+  padding:12px 16px; margin:20px 0; font-size:13.6px; line-height:1.65;
+}
+.note p{margin:0; max-width:none}
+.note p + p{margin-top:8px}
+
+footer{margin-top:70px; padding-top:22px; border-top:1px solid var(--line); color:var(--muted); font-size:12.6px}
+
+@media (max-width:720px){
+  .top-in{padding:32px 20px 26px} .wrap{padding:0 20px 70px} .chips-in{padding:0 20px}
+  h1{font-size:30px} h2{font-size:22px}
+  .row{grid-template-columns:1fr; gap:8px}
+  .row.key{margin-left:0; margin-right:0}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+
+</head>
+<body style="margin:0">
+<header class="top">
+  <div class="top-in">
+    <p class="eyebrow">wczl-erp · 库表结构总览</p>
+    <h1>wczl-erp 数据库地图</h1>
+    <p class="lede">这套系统跑在 <strong>四个互不相同的库</strong>上：三个属于 ERP，一个属于独立站——而独立站那一个，每开一个站就单独一份、装在自己的服务器上。下面按库分册，讲清每张表存什么、哪几个字段是真正承载业务的，以及数据是怎么从一张单流到库存数字上的。</p>
+
+    <div class="counts">
+      <div class="count erp">
+        <span class="n">44</span><span class="k">sdssys</span>
+        <div class="d">租户、员工、角色、菜单、日志、调度。RuoYi 原生表 + 商家（多租户）那一套。</div>
+      </div>
+      <div class="count erp">
+        <span class="n">24</span><span class="k">sdsshop</span>
+        <div class="d">主数据与库存现状：商品、仓库、客户、批次、序列号、实时库存、采购单、生产工单。</div>
+      </div>
+      <div class="count erp">
+        <span class="n">7 + 12<small>×月</small></span><span class="k">sdsorder</span>
+        <div class="d">所有会不断长大的单据都在这里，并且按 <span class="m">yyyyMM</span> 拆成月表。</div>
+      </div>
+      <div class="count st">
+        <span class="n">15</span><span class="k">sdsstation</span>
+        <div class="d">一站一库。商品展示、询盘、订单、客户、在线咨询，与 ERP 无任何外键。</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<nav class="chips" aria-label="章节导航">
+  <div class="chips-in">
+    <a href="#panorama">全景</a>
+    <a href="#sys">sdssys 租户与权限</a>
+    <a href="#shop">sdsshop 主数据与库存</a>
+    <a href="#quadrant">库存四象限</a>
+    <a href="#doc">单据 → 流水 → 库存</a>
+    <a href="#order">sdsorder 单据与月表</a>
+    <a href="#fulfil">销售履约链路</a>
+    <a href="#station">sdsstation 独立站</a>
+    <a href="#traps">陷阱清单</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<!-- ============ 1 全景 ============ -->
+<section id="panorama">
+  <h2><span class="sn">01 / 全景</span>四个库，一条线</h2>
+  <p class="sub">ERP 和独立站被刻意做成两个互不认识的系统：各自有库、各自有用户体系、各自能独立跑起来。它们之间只剩一条实线——从 ERP 点一下，免密进到某个独立站的后台。</p>
+
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 920 400" role="img" aria-label="ERP 的三个数据库与独立站的独立数据库之间，只有一条登录跳转的联动；订单拉取与生产进度同步是规划中未实现的虚线。">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0 10,5 0,10" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <!-- ERP -->
+      <rect x="30" y="66" width="380" height="276" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="30" y="52" font-family="IBM Plex Mono, monospace" font-size="13" fill="currentColor">ERP 后端 · RuoYi-Vue（一套，公司内部）</text>
+
+      <rect x="52" y="94" width="336" height="66" fill="none" stroke="currentColor" stroke-width="1" opacity=".55"/>
+      <text x="68" y="118" font-family="IBM Plex Mono, monospace" font-size="14" fill="currentColor">sdssys</text>
+      <text x="68" y="140" font-size="12.5" fill="currentColor" opacity=".72">谁能用系统：租户 · 员工 · 角色 · 菜单 · 日志</text>
+
+      <rect x="52" y="176" width="336" height="66" fill="none" stroke="currentColor" stroke-width="1" opacity=".55"/>
+      <text x="68" y="200" font-family="IBM Plex Mono, monospace" font-size="14" fill="currentColor">sdsshop</text>
+      <text x="68" y="222" font-size="12.5" fill="currentColor" opacity=".72">东西有多少：商品 · 仓库 · 批次 · 实时库存</text>
+
+      <rect x="52" y="258" width="336" height="66" fill="none" stroke="currentColor" stroke-width="1" opacity=".55"/>
+      <text x="68" y="282" font-family="IBM Plex Mono, monospace" font-size="14" fill="currentColor">sdsorder</text>
+      <text x="68" y="304" font-size="12.5" fill="currentColor" opacity=".72">发生了什么：单据 · 流水 · 订单 · 资金（月表）</text>
+
+      <!-- 独立站 -->
+      <rect x="612" y="66" width="272" height="276" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="612" y="52" font-family="IBM Plex Mono, monospace" font-size="13" fill="currentColor">独立站 × N（各自一台服务器）</text>
+
+      <rect x="634" y="140" width="228" height="128" fill="none" stroke="currentColor" stroke-width="1" opacity=".55"/>
+      <text x="650" y="166" font-family="IBM Plex Mono, monospace" font-size="14" fill="currentColor">sdsstation</text>
+      <text x="650" y="188" font-size="12.5" fill="currentColor" opacity=".72">站点档案 · 商品 · 询盘</text>
+      <text x="650" y="207" font-size="12.5" fill="currentColor" opacity=".72">订单 · 客户 · 在线咨询</text>
+      <text x="650" y="234" font-size="12" fill="currentColor" opacity=".55">一站一份，互相之间</text>
+      <text x="650" y="251" font-size="12" fill="currentColor" opacity=".55">也不认识</text>
+
+      <!-- links -->
+      <line x1="412" y1="140" x2="608" y2="140" stroke="currentColor" stroke-width="2" marker-end="url(#ar)"/>
+      <text x="510" y="124" font-size="12.5" text-anchor="middle" fill="currentColor">① 登录跳转（唯一联动）</text>
+      <text x="510" y="160" font-family="IBM Plex Mono, monospace" font-size="11.5" text-anchor="middle" fill="currentColor" opacity=".7">HMAC 令牌 · consolesecret</text>
+
+      <line x1="608" y1="228" x2="412" y2="228" stroke="currentColor" stroke-width="1.4" stroke-dasharray="6 5" opacity=".55" marker-end="url(#ar)"/>
+      <text x="510" y="220" font-size="12" text-anchor="middle" fill="currentColor" opacity=".6">② 订单拉取（一期不做）</text>
+
+      <line x1="412" y1="296" x2="608" y2="296" stroke="currentColor" stroke-width="1.4" stroke-dasharray="6 5" opacity=".55" marker-end="url(#ar)"/>
+      <text x="510" y="288" font-size="12" text-anchor="middle" fill="currentColor" opacity=".6">③ 生产进度同步（一期不做）</text>
+
+      <text x="30" y="375" font-size="12" fill="currentColor" opacity=".6">跨库没有外键，也没有跨库 JOIN——ERP 三个库同进程访问，独立站库根本不在同一台机器上。</text>
+    </svg>
+    </div>
+    <figcaption><b>唯一的实线是登录跳转。</b>ERP 侧 <span class="m">u_s_site</span> 只登记「有哪些站、在哪、怎么进」；跳过去之后的一切数据都长在站点自己的库里，两边订单没有任何隶属关系。</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 2 sdssys ============ -->
+<section id="sys">
+  <h2><span class="sn">02 / sdssys</span>谁能用这套系统</h2>
+  <p class="sub">这个库回答「你是谁、你属于哪个商家、你能点哪些按钮」。它是两套东西叠在一起：RuoYi 原生的 <span class="m">sys_*</span> 用户体系，和后来加的 <span class="m">s_m_* / s_u_*</span> 商家（多租户）体系。理解的关键是 <span class="m">shop_code</span>——它是整个系统的租户键，几乎每张业务表的第一列都是它。</p>
+
+  <h3>商家与组织</h3>
+  <div class="cat">
+    <div class="row key">
+      <div class="name">s_m_shop<span class="cn">商家（租户）主表</span></div>
+      <div class="body">
+        <p class="purpose">全系统的根。一行 = 一个商家 = 一个数据隔离域。</p>
+        <div class="fields">
+          <span class="f hot"><b>shop_code</b> 主键，业务表的租户列</span>
+          <span class="f"><b>shop_name</b> 名称</span>
+          <span class="f"><b>console_url</b> 该商家专用的独立站管理台地址</span>
+          <span class="f"><b>status</b> 1 正常 / 0 停用 / -1 已删</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">s_m_shop_staff<span class="cn">商家员工</span></div>
+      <div class="body">
+        <p class="purpose">人挂到商家和部门上。主键是 <span class="m">(shop_code, user_code)</span>——同一个人在不同商家是两行。</p>
+        <div class="fields"><span class="f"><b>user_code</b></span><span class="f"><b>job_no</b> 工号</span><span class="f"><b>org_code</b> 部门</span><span class="f"><b>org_name/org_path</b> 冗余快照</span><span class="f"><b>mobile</b></span></div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">s_u_organize<span class="cn">组织机构树</span></div>
+      <div class="body">
+        <p class="purpose">部门树。<span class="m">org_parent</span> 自关联，顶级用 NULL（不是 0）。</p>
+        <div class="fields"><span class="f"><b>org_parent</b> 父节点</span><span class="f"><b>order_no</b> 同级排序</span><span class="f"><b>max_sub</b> 子编号生成用</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h3>权限：商家自己的一套四件套</h3>
+  <p class="sub">这四张表构成一条链：<span class="m">员工 → 角色 → 功能</span>。功能表是全局的（所有商家共用一份功能定义），角色和授权则是每个商家自己的。</p>
+  <div class="cat">
+    <div class="row">
+      <div class="name">s_m_function<span class="cn">系统功能表</span></div>
+      <div class="body">
+        <p class="purpose">全局功能字典，自关联成树。</p>
+        <div class="fields"><span class="f"><b>fun_code</b> 主键</span><span class="f"><b>fun_name</b> 英文标识 order_view</span><span class="f"><b>fun_parent</b> 树</span><span class="f"><b>fun_type</b> 1 模块 / 2 页面 / 3 按钮</span></div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">s_m_shop_role<span class="cn">商家角色</span></div>
+      <div class="body"><p class="purpose">每个商家自己定义的角色。<span class="m">system_flag=1</span> 是内置角色，不允许删。</p></div>
+    </div>
+    <div class="row">
+      <div class="name">s_shop_role_function<span class="cn">角色 → 功能 授权</span></div>
+      <div class="body"><p class="purpose">授权明细。大量冗余列（<span class="m">fun_name / fun_text / fun_type</span>）是为了列权限时不用 join 功能表。</p></div>
+    </div>
+    <div class="row">
+      <div class="name">s_m_staff_role<span class="cn">员工 → 角色 关联</span></div>
+      <div class="body"><p class="purpose">一个员工可以有多个角色。删角色时级联删这里（<span class="m">ON DELETE CASCADE</span>）。</p></div>
+    </div>
+  </div>
+
+  <h3>RuoYi 原生体系与桥接表</h3>
+  <div class="cat">
+    <div class="row">
+      <div class="name">sys_user / sys_role / sys_menu<br>sys_dept / sys_post<span class="cn">RuoYi 原生用户体系</span></div>
+      <div class="body"><p class="purpose">登录、菜单渲染、按钮级权限走的是这一套。<span class="m">sys_user_role / sys_role_menu / sys_user_post / sys_role_dept</span> 是配套的关联表。</p></div>
+    </div>
+    <div class="row">
+      <div class="name">sys_shop_user<br>sys_shop_user_role / _post<br>sys_shop_menu<span class="cn">租户桥接</span></div>
+      <div class="body">
+        <p class="purpose">把 RuoYi 用户接到商家上：这个人在哪个商家、店内工号、是不是店主、这个商家开通了哪些菜单。</p>
+        <div class="fields"><span class="f hot"><b>is_owner</b> 商家所有者</span><span class="f"><b>del_flag</b> 0 存在 / 2 删除</span></div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">s_m_shop_storage<span class="cn">商家对象存储配置</span></div>
+      <div class="body">
+        <p class="purpose">一个商家一套 OSS/COS 配置。</p>
+        <div class="fields">
+          <span class="f"><b>provider</b> aliyun / huawei / tencent</span>
+          <span class="f hot"><b>access_key_secret</b> AES-GCM 密文，不是明文</span>
+          <span class="f hot"><b>active</b> 同商家只有一行为 1</span>
+          <span class="f"><b>bucket</b> 腾讯云必须带 APPID</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">sys_config / sys_dict_type / sys_dict_data<br>sys_notice / sys_notice_read<br>sys_logininfor / sys_oper_log<br>sys_job / sys_job_log<br>gen_table / gen_table_column<br>qrtz_*<span class="cn">平台设施</span></div>
+      <div class="body"><p class="purpose">参数、字典、公告、登录日志、操作日志、定时任务、代码生成器、Quartz 调度。这些是 RuoYi 脚手架自带的，业务逻辑不碰。</p></div>
+    </div>
+    <div class="row">
+      <div class="name">sys_tenant_migration_issue<span class="cn">迁移问题清单</span><span class="tag der">派生</span></div>
+      <div class="body"><p class="purpose">单租户改多租户时，记录哪些旧数据没能挂到商家上、为什么没挂上。排查用，不参与业务。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 sdsshop ============ -->
+<section id="shop">
+  <h2><span class="sn">03 / sdsshop</span>东西有多少</h2>
+  <p class="sub">这个库存的是「现状」——不是发生过什么，而是此刻有多少货、在哪个仓、什么状态、值多少钱。加上定义这些货的主数据，以及正在进行中的采购单和生产工单。</p>
+
+  <h3>主数据</h3>
+  <div class="cat">
+    <div class="row key">
+      <div class="name">u_m_waregoods<span class="cn">商品档案</span></div>
+      <div class="body">
+        <p class="purpose">所有库存动作的起点。主键 <span class="m">(shop_code, goodscode)</span>。三个字段决定了这个商品在库存引擎里怎么被对待：</p>
+        <div class="fields">
+          <span class="f hot"><b>goodstype</b> raw 原料 / semifinished 半成品 / finished 成品</span>
+          <span class="f hot"><b>batchstrategy</b> none 不管批次 / batch 按批 / serial 一物一码</span>
+          <span class="f hot"><b>costcalculation</b> moving_avg 移动加权 / fifo / individual 个别计价</span>
+        </div>
+        <div class="fields" style="margin-top:6px">
+          <span class="f"><b>minstockqty / maxstockqty</b> 预警上下限</span>
+          <span class="f"><b>standardprice</b> 参考价</span>
+          <span class="f"><b>requireexpireflag</b> 必须记有效期</span>
+          <span class="f"><b>usedflag</b> 已建过单/已有库存 = 1，之后不能随便改关键属性</span>
+          <span class="f"><b>imgurl / thumburl / mainimgs</b></span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_m_warehouse<span class="cn">仓库</span></div>
+      <div class="body">
+        <p class="purpose">仓库树。<span class="m">waretype</span> 区分实体仓和虚拟仓——车间、在途、待检这类「不是真仓库但要算库存」的地方用虚拟仓。</p>
+        <div class="fields"><span class="f"><b>warecode</b></span><span class="f"><b>parentcode</b> 上级仓</span><span class="f"><b>waretype</b> 实体/虚拟</span></div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_m_goodscategory<span class="cn">商品分类树</span></div>
+      <div class="body"><p class="purpose">分类编码 <span class="m">GCxxxx</span>，<span class="m">parentcode</span> 顶级为 <span class="m">'0'</span>（注意：不是 NULL，和组织树相反）。</p></div>
+    </div>
+    <div class="row">
+      <div class="name">u_m_partner<span class="cn">往来单位</span></div>
+      <div class="body">
+        <p class="purpose">供应商、客户、内部部门共用一张表，靠 <span class="m">partnertype</span> 区分。采购单、入库单上的「对方」指的就是它。</p>
+        <div class="fields"><span class="f"><b>partnertype</b> supplier / customer / department</span></div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_m_buyer<span class="cn">销售客户主表</span></div>
+      <div class="body">
+        <p class="purpose">销售侧的客户档案，与 <span class="m">u_m_partner</span> 是两套：这张更像 CRM（有星级、业务员归属、头像、店铺图）。<span class="m">u_m_buyer2</span> 是它下面的二级客户（同一个客户的不同收货点/联系人）。</p>
+        <div class="fields">
+          <span class="f"><b>buyercode</b> KH+流水</span>
+          <span class="f"><b>staffcode</b> 归属业务员</span>
+          <span class="f"><b>starrating</b> 0–5，有 CHECK 约束</span>
+          <span class="f"><b>partnercode</b> 转正式往来单位后回填的弱关联，无外键</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_m_doctypeconfig<span class="cn">单据类型配置</span></div>
+      <div class="body"><p class="purpose"><b>整个库存引擎的行为表。</b>每种单据的方向（进/出/内部转换）、是否需要审核、是否允许负库存，都从这里读。详见下面的<a href="#doctypes">单据类型清单</a>。</p></div>
+    </div>
+    <div class="row">
+      <div class="name">u_m_goods_partner<span class="cn">商品供货关系</span><span class="tag der">派生</span></div>
+      <div class="body"><p class="purpose">纯派生表，由已审核的采购入库单累积出来，用途只有一个：下次给这个商品开采购单时推荐供应商。记 <span class="m">inboundtimes</span> 次数、<span class="m">lastcostprice</span> 最近成本。</p></div>
+    </div>
+    <div class="row">
+      <div class="name">u_m_goods_position<span class="cn">商品存放位置</span></div>
+      <div class="body"><p class="purpose">库管员手写的大文本，「A 区 3 号架第 2 层」这种。不参与任何计算，只给找货的人看。</p></div>
+    </div>
+    <div class="row">
+      <div class="name">u_s_site<span class="cn">独立站登记表（ERP 侧）</span></div>
+      <div class="body">
+        <p class="purpose">ERP 里「有哪些独立站」的名册。它<b>不存站点的任何业务数据</b>，只存怎么找到它、怎么跳进去。</p>
+        <div class="fields">
+          <span class="f"><b>sitecode</b> 与站点库 u_s_siteinfo.sitecode 必须一致</span>
+          <span class="f"><b>domain</b> 主域名，其余四个子域由它派生</span>
+          <span class="f hot"><b>consolesecret</b> 跳转签名密钥，此处存 AES-GCM 密文</span>
+          <span class="f"><b>consoledomain</b> 「进入管理」跳这里</span>
+          <span class="f"><b>status</b> 管的是 ERP 发不发令牌，不是站点前台开关</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3 id="quadrant">库存现状：四象限模型</h3>
+  <p class="sub">这是整个系统最值得先看懂的一件事。<span class="m">u_m_stock</span> 的主键是五列：<span class="m">(shop_code, goodscode, warecode, qualityflag, onhandflag)</span>。后两个 tinyint 组合出四种状态——所以<b>同一个商品在同一个仓库里，最多会有四行</b>，四行的数量各算各的。</p>
+
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 920 400" role="img" aria-label="库存四象限：良品在库、良品不在库、不良品在库、不良品不在库，以及借出、归还、损坏、送修、维修归还、生产领料、生产退料等内部转换单据在象限之间的流转方向。">
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0 10,5 0,10" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <!-- 象限 -->
+      <rect x="250" y="50" width="210" height="110" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="266" y="78" font-size="14.5" font-weight="600" fill="currentColor">良品 · 在库</text>
+      <text x="266" y="100" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor" opacity=".65">quality=1  onhand=1</text>
+      <text x="266" y="126" font-size="12.5" fill="currentColor" opacity=".8">唯一能直接销售的库存</text>
+      <text x="266" y="145" font-size="12" fill="currentColor" opacity=".55">入库出库都落在这一格</text>
+
+      <rect x="640" y="50" width="210" height="110" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="656" y="78" font-size="14.5" font-weight="600" fill="currentColor">良品 · 不在库</text>
+      <text x="656" y="100" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor" opacity=".65">quality=1  onhand=0</text>
+      <text x="656" y="126" font-size="12.5" fill="currentColor" opacity=".8">借出中 / 车间在制品</text>
+      <text x="656" y="145" font-size="12" fill="currentColor" opacity=".55">东西是好的，只是不在仓里</text>
+
+      <rect x="250" y="230" width="210" height="110" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="266" y="258" font-size="14.5" font-weight="600" fill="currentColor">不良品 · 在库</text>
+      <text x="266" y="280" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor" opacity=".65">quality=0  onhand=1</text>
+      <text x="266" y="306" font-size="12.5" fill="currentColor" opacity=".8">已登记损坏，还在仓里</text>
+
+      <rect x="640" y="230" width="210" height="110" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="656" y="258" font-size="14.5" font-weight="600" fill="currentColor">不良品 · 不在库</text>
+      <text x="656" y="280" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor" opacity=".65">quality=0  onhand=0</text>
+      <text x="656" y="306" font-size="12.5" fill="currentColor" opacity=".8">送修中，在外面</text>
+
+      <!-- 横向转换 -->
+      <line x1="462" y1="82" x2="636" y2="82" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar2)"/>
+      <text x="549" y="74" font-family="IBM Plex Mono, monospace" font-size="11.5" text-anchor="middle" fill="currentColor">JC 借出 · SCLL 领料</text>
+
+      <line x1="638" y1="120" x2="464" y2="120" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar2)"/>
+      <text x="549" y="139" font-family="IBM Plex Mono, monospace" font-size="11.5" text-anchor="middle" fill="currentColor">GH 归还 · SCTL 退料</text>
+
+      <!-- 纵向 损坏 -->
+      <line x1="330" y1="162" x2="330" y2="226" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar2)"/>
+      <text x="342" y="199" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">SHDJ 损坏登记</text>
+
+      <!-- 送修 -->
+      <line x1="462" y1="288" x2="636" y2="288" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar2)"/>
+      <text x="549" y="280" font-family="IBM Plex Mono, monospace" font-size="11.5" text-anchor="middle" fill="currentColor">SX 送修</text>
+
+      <!-- 维修归还，绕顶 -->
+      <path d="M 850 262 H 884 V 26 H 355 V 46" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="5 4" opacity=".75" marker-end="url(#ar2)"/>
+      <text x="620" y="18" font-family="IBM Plex Mono, monospace" font-size="11.5" text-anchor="middle" fill="currentColor" opacity=".8">WXGH 维修归还（修好回良品，没修好回不良品）</text>
+
+      <!-- 入库 -->
+      <line x1="196" y1="90" x2="246" y2="90" stroke="currentColor" stroke-width="2" marker-end="url(#ar2)"/>
+      <text x="14" y="76" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="500" fill="currentColor">入库 I →</text>
+      <text x="14" y="94" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity=".72">RK · SCCPRK</text>
+      <text x="14" y="110" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity=".72">XSTHRK · SCTLRK</text>
+
+      <!-- 出库 -->
+      <line x1="246" y1="140" x2="196" y2="140" stroke="currentColor" stroke-width="2" marker-end="url(#ar2)"/>
+      <text x="14" y="134" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="500" fill="currentColor">出库 O ←</text>
+      <text x="14" y="152" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity=".72">CK · OO · LLCK</text>
+      <text x="14" y="168" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity=".72">CGTHCK</text>
+
+      <!-- SHCK -->
+      <line x1="246" y1="290" x2="196" y2="290" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar2)"/>
+      <text x="14" y="286" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity=".8">SHCK 损坏出库</text>
+      <text x="14" y="302" font-size="11" fill="currentColor" opacity=".55">（报废）</text>
+
+      <!-- SCXH -->
+      <line x1="745" y1="162" x2="745" y2="206" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar2)"/>
+      <text x="757" y="190" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity=".8">SCXH 生产消耗（永久出库）</text>
+
+      <text x="250" y="378" font-size="12" fill="currentColor" opacity=".6">DB 仓库调拨不改象限，只换 warecode；上面这些「方向 N」的单据不改总量，只把数量从一格搬到另一格。</text>
+    </svg>
+    </div>
+    <figcaption><b>四象限决定了库存表有几行。</b>方向为 <span class="m">N</span> 的单据（借出、归还、损坏、送修、维修归还、生产领料/退料）总量不变，只在象限之间搬；<span class="m">I</span> 和 <span class="m">O</span> 才真正增减总量，且几乎都发生在「良品·在库」这一格。</figcaption>
+  </figure>
+
+  <div class="cat">
+    <div class="row key">
+      <div class="name">u_m_stock<span class="cn">实时库存汇总</span></div>
+      <div class="body">
+        <p class="purpose">当下有多少货、值多少钱。所有出入库最终都要落到这张表上。它有两个不同含义的「数量」，混淆它们是最常见的错。</p>
+        <div class="fields">
+          <span class="f hot"><b>physicalqty</b> 物理库存，真实存在的数量</span>
+          <span class="f hot"><b>lockedqty</b> 待审核出库单占用的量</span>
+          <span class="f dead"><b>reservedqty</b> 【已废弃】原订单预占量，机制已取消，恒为 0，无代码读写</span>
+        </div>
+        <div class="fields" style="margin-top:6px">
+          <span class="f"><b>avgcostprice</b> 移动加权平均成本</span>
+          <span class="f"><b>totalcostamount</b> 库存总成本金额</span>
+          <span class="f hot"><b>version</b> 乐观锁，并发扣减靠它</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_m_batchinfo<span class="cn">批次信息</span></div>
+      <div class="body">
+        <p class="purpose">按批管理的商品，每次到货一个批次。主键含 <span class="m">batchcode + goodscode + warecode + 两个 flag</span>，所以同一批次跨仓、跨象限也会拆行。</p>
+        <div class="fields">
+          <span class="f"><b>initialqty / remainingqty</b> 到货量 / 剩余量</span>
+          <span class="f"><b>purchaseprice</b> 批次当前成本单价</span>
+          <span class="f hot"><b>owner_orderdetailcode</b> 专属批次：非空 = 这批货是为某条销售订单明细专门生产的，出库时只能发给它</span>
+          <span class="f"><b>expiredate / productiondate</b></span>
+          <span class="f"><b>closedflag</b> 关闭后不再参与挑批次</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_m_serial<span class="cn">序列号明细</span></div>
+      <div class="body">
+        <p class="purpose">一物一码。每个序列号记住自己是怎么进来的、又是怎么出去的——入库单号和出库单号双向都留。</p>
+        <div class="fields">
+          <span class="f"><b>activeflag</b> 1 在库 / 0 已出库</span>
+          <span class="f"><b>costprice</b> 个别计价成本</span>
+          <span class="f"><b>indoccode / indetailcode / intime</b></span>
+          <span class="f"><b>outdoccode / outdetailcode / outtime</b></span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_o_reservation<span class="cn">遗留表 · 原订单预占明细</span></div>
+      <div class="body">
+        <p class="purpose"><b>订单预占机制已取消。</b>这张表是遗留表：表和历史数据都还在库里，但<b>没有任何代码读写</b>，读它没有意义。原先它是 <span class="m">u_m_stock.reservedqty</span> 的明细账——现在那个汇总列也恒为 0。别照着这张表去理解订单流程。</p>
+        <div class="fields">
+          <span class="f dead"><b>reservedqty</b> 原「当前占用」，历史遗留值</span>
+          <span class="f dead"><b>releasedqty</b> 原「已核销」</span>
+          <span class="f dead"><b>status</b> 原 有效 / 已核销 / 已取消</span>
+          <span class="f dead"><b>shipcode / doccode</b> 原核销去向</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_m_warning_rule<br>u_m_warning_record<span class="cn">低库存预警</span></div>
+      <div class="body">
+        <p class="purpose">规则表定阈值（按商品 + 仓库），记录表存触发的实例。<span class="m">active_key</span> 是「未结束预警唯一键」，保证同一个商品仓库同时只有一条未结束的预警。</p>
+        <div class="fields"><span class="f"><b>status</b> ACTIVE → ACKNOWLEDGED → RECOVERED / CLOSED</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h3>采购与生产（进行中的单）</h3>
+  <div class="cat">
+    <div class="row">
+      <div class="name">u_p_purchase<br>u_p_purchasedetail<span class="cn">采购订单主 / 明细</span></div>
+      <div class="body">
+        <p class="purpose">向供应商下的单。明细上的 <span class="m">receivedqty / remainingqty</span> 随到货逐步累加，是判断「这单收完没有」的依据。</p>
+        <div class="fields">
+          <span class="f"><b>status</b> 履约状态</span>
+          <span class="f hot"><b>paidamount</b> 已付出去的钱（方向：付出）</span>
+          <span class="f"><b>estimatedfreight / actualfreight</b> 预估 / 实付运费</span>
+          <span class="f"><b>receivedqty / remainingqty</b> 明细行的已收 / 未收</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_p_bom<br>u_p_bomdetail<span class="cn">产品配方 BOM</span></div>
+      <div class="body">
+        <p class="purpose">一个成品要用哪些料、每个用多少。<span class="m">qtyperunit</span> 是单耗（产出 1 个成品的用量，有 CHECK &gt; 0）。建工单时自动带入。</p>
+      </div>
+    </div>
+    <div class="row key">
+      <div class="name">u_p_production<br>u_p_productiondetail<br>u_p_productionmaterial<span class="cn">生产工单：主 / 产出 / 物料</span></div>
+      <div class="body">
+        <p class="purpose">三层结构：工单 → 产出哪几样（可多产出） → 每个产出要领哪些料。物料行的四个数量列构成一条完整的领退料账。</p>
+        <div class="fields">
+          <span class="f hot"><b>sourcetype</b> order 为订单生产 / stock 备库</span>
+          <span class="f hot"><b>orderallocation</b> JSON：这批产出分给哪几条订单明细各多少</span>
+          <span class="f"><b>status</b> 待生产 / 生产中 / 已完工 / 已关闭</span>
+        </div>
+        <div class="fields" style="margin-top:6px">
+          <span class="f"><b>totalqty</b> 计划用量 = 单耗 × 计划产出</span>
+          <span class="f"><b>pickedqty</b> 已领</span>
+          <span class="f"><b>actualqty</b> 实际耗用</span>
+          <span class="f"><b>returnedqty</b> 已退回</span>
+          <span class="f">CHECK: actualqty + returnedqty ≤ pickedqty</span>
+        </div>
+        <div class="fields" style="margin-top:6px">
+          <span class="f"><b>materialcost + processingcost + freightcost + othercost = totalcost</b></span>
+          <span class="f"><b>unitcost</b> 完工时写回成品成本</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_f_account<span class="cn">资金账户</span></div>
+      <div class="body">
+        <p class="purpose">银行账户/钱包。<span class="m">currentbalance</span> 只由资金流水「完成」时驱动，不允许手工改；一个账户只对应一种币种。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 单据引擎 ============ -->
+<section id="doc">
+  <h2><span class="sn">04 / 引擎</span>单据 → 流水 → 库存</h2>
+  <p class="sub">库存数字不是被直接改的。所有变动都走同一条三层管道，且分成两个时刻：<b>建单</b>只写单据，一个数字都不动；<b>审核通过</b>的那一刻，在同一个事务里写流水、改库存。</p>
+
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 920 330" role="img" aria-label="建单只写单据主表与明细表，审核通过后在同一事务内写入库存流水，并更新实时库存、批次和序列号三张表。">
+      <defs>
+        <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0 10,5 0,10" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <rect x="20" y="98" width="205" height="94" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="36" y="126" font-size="13.5" font-weight="600" fill="currentColor">① 单据</text>
+      <text x="36" y="148" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_f_docmain_YYYYMM</text>
+      <text x="36" y="166" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_f_docdetail_YYYYMM</text>
+      <text x="36" y="184" font-size="11.5" fill="currentColor" opacity=".6">confirmstate = 待审核</text>
+
+      <line x1="229" y1="145" x2="336" y2="145" stroke="currentColor" stroke-width="2" marker-end="url(#ar3)"/>
+      <text x="282" y="122" font-size="12" text-anchor="middle" fill="currentColor">审核通过</text>
+      <text x="282" y="170" font-family="IBM Plex Mono, monospace" font-size="10.5" text-anchor="middle" fill="currentColor" opacity=".6">同一事务</text>
+
+      <rect x="340" y="98" width="195" height="94" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="356" y="126" font-size="13.5" font-weight="600" fill="currentColor">② 流水</text>
+      <text x="356" y="148" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_f_ledger_YYYYMM</text>
+      <text x="356" y="168" font-size="11.5" fill="currentColor" opacity=".7">每条明细一行</text>
+      <text x="356" y="185" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="currentColor" opacity=".6">before / change / after_qty</text>
+
+      <line x1="539" y1="145" x2="600" y2="145" stroke="currentColor" stroke-width="2"/>
+      <path d="M 600 145 V 62 H 664" fill="none" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar3)"/>
+      <path d="M 600 145 H 664" fill="none" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar3)"/>
+      <path d="M 600 145 V 228 H 664" fill="none" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar3)"/>
+
+      <rect x="668" y="34" width="232" height="56" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="684" y="58" font-family="IBM Plex Mono, monospace" font-size="12" fill="currentColor">u_m_stock</text>
+      <text x="684" y="78" font-size="11.5" fill="currentColor" opacity=".7">数量 + 移动加权成本（乐观锁）</text>
+
+      <rect x="668" y="117" width="232" height="56" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="684" y="141" font-family="IBM Plex Mono, monospace" font-size="12" fill="currentColor">u_m_batchinfo</text>
+      <text x="684" y="161" font-size="11.5" fill="currentColor" opacity=".7">remainingqty 扣减 / 新批次</text>
+
+      <rect x="668" y="200" width="232" height="56" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="684" y="224" font-family="IBM Plex Mono, monospace" font-size="12" fill="currentColor">u_m_serial</text>
+      <text x="684" y="244" font-size="11.5" fill="currentColor" opacity=".7">activeflag 翻转 + 出入库单号</text>
+
+      <text x="20" y="300" font-size="12" fill="currentColor" opacity=".62">u_f_docmain 的主键是复合的 (doccode, sourcedoctype)，不是单一 doccode；idempotency_key 保证同一个客户端请求不会建出两张单。</text>
+    </svg>
+    </div>
+    <figcaption><b>流水是唯一的真相来源。</b><span class="m">u_m_stock</span> 是可以从 <span class="m">u_f_ledger_*</span> 重算出来的汇总；对不上账时，以流水为准回推。</figcaption>
+  </figure>
+
+  <h3 id="doctypes">单据类型清单 <span class="tag der">u_m_doctypeconfig</span></h3>
+  <p class="sub"><span class="dir i">I</span> 入库（总量增） · <span class="dir o">O</span> 出库（总量减） · <span class="dir n">N</span> 内部转换（总量不变，换象限或换仓库）</p>
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>类型</th><th>名称</th><th>方向</th><th>作用</th></tr></thead>
+      <tbody>
+        <tr><td class="c">RK</td><td>采购入库</td><td><span class="dir i">I</span></td><td>供应商到货签收，产生新批次、拉动移动加权成本</td></tr>
+        <tr><td class="c">SCCPRK</td><td>生产成品入库</td><td><span class="dir i">I</span></td><td>工单完工，成品进仓；定制件在这里写 <span class="m">owner_orderdetailcode</span></td></tr>
+        <tr><td class="c">SCTLRK</td><td>生产退料入库</td><td><span class="dir i">I</span></td><td>未耗用的料退回仓库</td></tr>
+        <tr><td class="c">XSTHRK</td><td>销售退货入库</td><td><span class="dir i">I</span></td><td>客户退货，成本按原出库实际成本还回</td></tr>
+        <tr><td class="c">CK</td><td>销售出库</td><td><span class="dir o">O</span></td><td>发货批次完成时自动生成</td></tr>
+        <tr><td class="c">LLCK</td><td>领料出库</td><td><span class="dir o">O</span></td><td>工单从物料仓领料出库</td></tr>
+        <tr><td class="c">SCXH</td><td>生产消耗</td><td><span class="dir o">O</span></td><td>从车间在制品永久出库，是工单物料成本的来源</td></tr>
+        <tr><td class="c">CGTHCK</td><td>采购退货出库</td><td><span class="dir o">O</span></td><td>退回供应商</td></tr>
+        <tr><td class="c">SHCK</td><td>损坏出库</td><td><span class="dir o">O</span></td><td>报废，来源必须是「不良品·在库」</td></tr>
+        <tr><td class="c">OO</td><td>其他出库</td><td><span class="dir o">O</span></td><td>兜底类型</td></tr>
+        <tr><td class="c">DB</td><td>仓库调拨</td><td><span class="dir n">N</span></td><td>换 <span class="m">warecode</span>，象限不变</td></tr>
+        <tr><td class="c">JC / GH</td><td>借出 / 归还</td><td><span class="dir n">N</span></td><td>良品·在库 ⇄ 良品·不在库</td></tr>
+        <tr><td class="c">SCLL / SCTL</td><td>生产领料 / 退料</td><td><span class="dir n">N</span></td><td>良品·在库 ⇄ 良品·不在库（料领到车间就算离库）</td></tr>
+        <tr><td class="c">SHDJ</td><td>损坏登记</td><td><span class="dir n">N</span></td><td>任意象限 → 不良品·在库</td></tr>
+        <tr><td class="c">SX</td><td>送修</td><td><span class="dir n">N</span></td><td>不良品·在库 → 不良品·不在库</td></tr>
+        <tr><td class="c">WXGH</td><td>维修归还</td><td><span class="dir n">N</span></td><td>不良品·不在库 → 良品·在库 或 不良品·在库</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 5 sdsorder ============ -->
+<section id="order">
+  <h2><span class="sn">05 / sdsorder</span>发生了什么</h2>
+  <p class="sub">凡是「会一直长下去」的表都在这个库，并且按月拆表。<span class="m">MonthlyTableInitializer</span> 在启动时和每天凌晨各跑一次，提前把<b>当月和下月</b>的表建好——请求链路上不建表，因为在业务事务里执行 DDL 会撞 MySQL 的 1412。</p>
+
+  <h3>十一张月表，各自按不同的日期落表</h3>
+  <p class="sub">这是查数据时最容易踩空的地方：<b>决定一条记录落进哪张月表的日期列，每种单据都不一样</b>。一张订单的多个发货批次完全可能落在不同月份的表里。</p>
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>月表</th><th>存什么</th><th>落表依据</th></tr></thead>
+      <tbody>
+        <tr><td class="c">u_f_docmain_<i>YYYYMM</i><br>u_f_docdetail_<i>YYYYMM</i></td><td>库存单据主表 / 明细</td><td class="c">docdate 单据日期</td></tr>
+        <tr><td class="c">u_f_ledger_<i>YYYYMM</i></td><td>库存流水，每条明细一行</td><td class="c">随所属单据</td></tr>
+        <tr><td class="c">u_o_order_<i>YYYYMM</i><br>u_o_orderdetail_<i>YYYYMM</i></td><td>销售订单主表 / 明细</td><td class="c">createtime 创建时间</td></tr>
+        <tr><td class="c">u_f_shipbatch_<i>YYYYMM</i><br>u_f_shipbatchdetail_<i>YYYYMM</i></td><td>发货批次主 / 明细</td><td class="c">shipdate 计划发货日</td></tr>
+        <tr><td class="c">u_p_receive_<i>YYYYMM</i><br>u_p_receivedetail_<i>YYYYMM</i></td><td>采购到货（发货单）</td><td class="c">senddate 发货日期</td></tr>
+        <tr><td class="c">u_f_productionlog_<i>YYYYMM</i></td><td>生产执行日志</td><td class="c">operationtime 操作时间</td></tr>
+        <tr><td class="c">u_f_transaction_<i>YYYYMM</i></td><td>资金流水</td><td class="c">createtime</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>销售订单</h3>
+  <div class="cat">
+    <div class="row key">
+      <div class="name">u_o_order_<i>YYYYMM</i><span class="cn">销售订单主表</span><span class="tag mon">月表</span></div>
+      <div class="body">
+        <p class="purpose">最宽的一张表。三个关键设计：客户信息是<b>建单当时的快照</b>（之后不跟档案联动）；<b>履约和支付是两条独立的状态线</b>；金额方向与采购单相反。</p>
+        <div class="fields">
+          <span class="f hot"><b>orderstate</b> 草稿/待审核/已驳回/已备货/备货中/发货中/已完成/已取消/已关闭</span>
+          <span class="f hot"><b>paystatus</b> 未支付/部分支付/已支付/超额支付</span>
+          <span class="f"><b>receivestatus</b> 回款状态，财务回写</span>
+        </div>
+        <div class="fields" style="margin-top:6px">
+          <span class="f hot"><b>paidamount</b> 已<u>收到</u>的钱（与采购单同名反向）</span>
+          <span class="f hot"><b>freightamount</b> 向客户<u>收</u>的运费</span>
+          <span class="f"><b>goodsamount + freightamount = totalamount</b></span>
+          <span class="f"><b>sendpercent</b> 发货比例 %，有 0–100 的 CHECK</span>
+        </div>
+        <div class="fields" style="margin-top:6px">
+          <span class="f"><b>buyercode / buyername / buyerimage</b> 客户快照</span>
+          <span class="f"><b>buyer2code / buyer2name</b> 二级客户快照</span>
+          <span class="f"><b>platcode / platorderid / platorderurl</b> 平台订单信息</span>
+          <span class="f"><b>goodsinfo</b> 自由文本</span>
+          <span class="f"><b>goodssummary</b> 派生摘要「可乐等3种」，不参与计算</span>
+          <span class="f dead"><b>buyershop / buyeruser</b> 恒空串，独立站拆分后已无来源</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_o_orderdetail_<i>YYYYMM</i><span class="cn">销售订单明细</span><span class="tag mon">月表</span></div>
+      <div class="body">
+        <p class="purpose">明细跟随所属订单的月份，不按自己的时间落表。</p>
+        <div class="fields">
+          <span class="f"><b>qty − shippedqty = remainingqty</b></span>
+          <span class="f hot"><b>custom_made</b> 定制品：库存里的通用货顶不上，必须为这一行单独做一批</span>
+          <span class="f"><b>sourcecode</b> 正在负责这条明细的生产工单号</span>
+          <span class="f dead"><b>reservedqty</b> 已废弃，恒 0</span>
+          <span class="f dead"><b>stock_source</b> 已废弃，恒「现货」</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_f_shipbatch_<i>YYYYMM</i><br>u_f_shipbatchdetail_<i>YYYYMM</i><span class="cn">发货批次主 / 明细</span><span class="tag mon">月表</span></div>
+      <div class="body">
+        <p class="purpose">一张订单可以分多次发货，每次一个批次。<b>库存只在批次状态变成「已完成」时才扣</b>——前面几个状态都只是流程，球在业务员和仓库之间来回传四次。</p>
+        <div class="fields">
+          <span class="f hot"><b>status</b> 待确认 →<i>业务员确认</i> 已提交仓库 →<i>仓库</i> 已打印备货单 →<i>仓库传照片</i> 备货完成 →<i>业务员</i> 已录入快递单号 →<i>仓库</i> 已打印快递单号 →<i>仓库</i> 已完成 / 已取消</span>
+          <span class="f hot"><b>pickphotos</b> 备货照片，逗号分隔 URL。「备货完成」那一步至少一张（备货照片与产品照片不分类别，一列存完）</span>
+          <span class="f st"><b>录入快递单号那一步卡付款额度</b>：整单累计发货货值（已完成批次 + 在途批次 + 本次）不能超过订单 paidamount</span>
+          <span class="f"><b>pickuser / picktime</b> 备货完成人（库管员）</span>
+          <span class="f"><b>logisticsuser / logisticstime</b> 录快递单号的人（业务员）</span>
+          <span class="f"><b>shipuser / shiptime</b> 发货人，在「完成」那一步落——那一刻货才真的离开仓库</span>
+          <span class="f hot"><b>freightamount</b> 本批次实<u>付</u>运费（与订单主表同名反向）</span>
+          <span class="f"><b>orderdetailcode</b> 明细行指回订单明细</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3 id="fulfil">销售履约链路</h3>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 940 470" role="img" aria-label="销售订单全程不占库存，经发货批次生成销售出库单，过账时才扣减库存；采购到货与生产完工两条补货线为库存补充可用数量。">
+      <defs>
+        <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0 10,5 0,10" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <text x="20" y="26" font-family="IBM Plex Mono, monospace" font-size="12" fill="currentColor" opacity=".65">补货线 · 两条</text>
+
+      <!-- 采购线 -->
+      <rect x="20" y="40" width="168" height="54" fill="none" stroke="currentColor" stroke-width="1" opacity=".8"/>
+      <text x="34" y="63" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_p_purchase</text>
+      <text x="34" y="82" font-size="11.5" fill="currentColor" opacity=".7">采购订单</text>
+
+      <line x1="192" y1="67" x2="248" y2="67" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar4)"/>
+
+      <rect x="252" y="40" width="196" height="54" fill="none" stroke="currentColor" stroke-width="1" opacity=".8"/>
+      <text x="266" y="63" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_p_receive_YYYYMM</text>
+      <text x="266" y="82" font-size="11.5" fill="currentColor" opacity=".7">到货签收 · 实付运费</text>
+
+      <line x1="452" y1="67" x2="508" y2="67" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar4)"/>
+      <text x="480" y="58" font-family="IBM Plex Mono, monospace" font-size="10.5" text-anchor="middle" fill="currentColor" opacity=".7">RK</text>
+
+      <!-- 生产线 -->
+      <rect x="20" y="128" width="168" height="54" fill="none" stroke="currentColor" stroke-width="1" opacity=".8"/>
+      <text x="34" y="151" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_p_production</text>
+      <text x="34" y="170" font-size="11.5" fill="currentColor" opacity=".7">生产工单</text>
+
+      <line x1="192" y1="155" x2="248" y2="155" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar4)"/>
+
+      <rect x="252" y="128" width="196" height="54" fill="none" stroke="currentColor" stroke-width="1" opacity=".8"/>
+      <text x="266" y="151" font-size="11.5" fill="currentColor">领料 LLCK/SCLL → 消耗 SCXH</text>
+      <text x="266" y="170" font-size="11.5" fill="currentColor" opacity=".7">物料成本在这里算出来</text>
+
+      <line x1="452" y1="155" x2="508" y2="155" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar4)"/>
+      <text x="480" y="146" font-family="IBM Plex Mono, monospace" font-size="10.5" text-anchor="middle" fill="currentColor" opacity=".7">SCCPRK</text>
+
+      <!-- 库存 -->
+      <rect x="512" y="62" width="212" height="98" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="528" y="88" font-size="13.5" font-weight="600" fill="currentColor">库存</text>
+      <text x="528" y="110" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_m_stock</text>
+      <text x="528" y="128" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_m_batchinfo</text>
+      <text x="528" y="148" font-size="11" fill="currentColor" opacity=".6">定制件带 owner_orderdetailcode</text>
+
+      <!-- 销售主线 -->
+      <text x="20" y="248" font-family="IBM Plex Mono, monospace" font-size="12" fill="currentColor" opacity=".65">销售主线</text>
+
+      <rect x="20" y="262" width="176" height="66" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="34" y="286" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_o_order_YYYYMM</text>
+      <text x="34" y="304" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_o_orderdetail_</text>
+      <text x="34" y="321" font-size="11" fill="currentColor" opacity=".6">审核通过后开始备货</text>
+
+      <line x1="200" y1="295" x2="484" y2="295" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar4)"/>
+      <text x="342" y="288" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".7">订单全程不占货</text>
+
+      <!-- 原「u_o_reservation 订单预占 → 写 stock.reservedqty」那一环已取消，这里不再有方框 -->
+
+      <rect x="492" y="262" width="186" height="66" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="506" y="286" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_f_shipbatch_YYYYMM</text>
+      <text x="506" y="304" font-size="11.5" fill="currentColor" opacity=".75">发货批次</text>
+      <text x="506" y="321" font-size="11" fill="currentColor" opacity=".6">状态走到「已完成」才扣库存</text>
+
+      <line x1="682" y1="295" x2="734" y2="295" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar4)"/>
+
+      <rect x="738" y="262" width="182" height="66" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="752" y="286" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">CK 销售出库单</text>
+      <text x="752" y="304" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity=".7">u_f_docmain_YYYYMM</text>
+      <text x="752" y="321" font-size="11" fill="currentColor" opacity=".6">→ 流水 → 扣库存</text>
+
+      <!-- 原来的「预占 → 库存」虚线（占用 reservedqty、不减 physicalqty）已随预占机制一并取消 -->
+
+      <!-- CK → 库存 -->
+      <path d="M 829 258 V 210 H 676 V 164" fill="none" stroke="currentColor" stroke-width="1.8" marker-end="url(#ar4)"/>
+      <text x="838" y="232" font-family="IBM Plex Mono, monospace" font-size="10.5" text-anchor="end" fill="currentColor" opacity=".8">真正扣减</text>
+
+      <!-- 定制回指 -->
+      <path d="M 610 164 V 182 H 130 V 258" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 4" opacity=".55" marker-end="url(#ar4)"/>
+      <text x="140" y="244" font-size="10.5" fill="currentColor" opacity=".6">定制件完工回写 orderdetail.sourcecode</text>
+
+      <text x="20" y="418" font-size="12" fill="currentColor" opacity=".62">订单链不占货：从建单到发货批次，一件货都不写库存——原来的「预占」这一环已整体取消，reservedqty 恒为 0。</text>
+      <text x="20" y="440" font-size="12" fill="currentColor" opacity=".62">全过程还有一条旁路：u_f_productionlog_YYYYMM 记下工单的每一次领料 / 消耗 / 入库 / 退料，用来倒查成本是怎么算出来的。</text>
+    </svg>
+    </div>
+    <figcaption><b>订单不占库存，扣减只发生在出库过账那一刻。</b>整条订单链一件货都不占——不下 <span class="m">reservedqty</span>（已废弃，恒 0），也不减 <span class="m">physicalqty</span>；只有发货批次走到「已完成」、生成 CK 出库单并审核过账，<span class="m">physicalqty</span> 才真的减。</figcaption>
+  </figure>
+
+  <h3>财务与销售辅助主数据</h3>
+  <div class="cat">
+    <div class="row">
+      <div class="name">u_f_transaction_<i>YYYYMM</i><span class="cn">资金流水</span><span class="tag mon">月表</span></div>
+      <div class="body">
+        <p class="purpose">收付款的唯一记账入口。<b>金额带符号</b>：收入为正、支出为负，有 CHECK 约束兜底；账户余额一律 <span class="m">currentbalance + amount</span>，不按 <span class="m">transtype</span> 分支。</p>
+        <div class="fields">
+          <span class="f hot"><b>amount</b> 收入 &gt; 0 / 支出 &lt; 0</span>
+          <span class="f"><b>status</b> 草稿 → 待审核 → 已审核 → 已完成 / 已驳回</span>
+          <span class="f"><b>biztype + bizcode</b> 关联到采购单 / 销售单</span>
+          <span class="f"><b>tradetime</b> 实际交易时间，对账排序用</span>
+          <span class="f"><b>balance</b> 执行完成后的账户余额快照</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_f_accountcategory<span class="cn">收支分类</span></div>
+      <div class="body"><p class="purpose">给流水打分类。<span class="m">type</span> 收入/支出，<span class="m">biztype</span> 采购/销售/费用/工资/其他。</p></div>
+    </div>
+    <div class="row">
+      <div class="name">u_o_platform<br>u_o_platform_store<span class="cn">销售平台 / 平台店铺</span></div>
+      <div class="body"><p class="purpose">两级：平台（如某电商）下面挂店铺。订单主表的 <span class="m">platcode / shopcode</span> 指向这里。</p></div>
+    </div>
+    <div class="row">
+      <div class="name">u_o_package<br>u_o_package_item<span class="cn">销售套餐</span></div>
+      <div class="body"><p class="purpose">一组商品打包卖。下单时按 <span class="m">goods_code</span> 展开成明细行，并<b>重新取当前商品档案</b>——套餐里的名称规格只是快照。</p></div>
+    </div>
+    <div class="row">
+      <div class="name">u_o_sales_reship<br>u_o_sales_reship_detail<span class="cn">销售补发</span></div>
+      <div class="body">
+        <p class="purpose">发错/发少了要补寄。它指回原订单，但因为原订单可能在别的月表里，所以专门存了 <span class="m">originalordersuffix</span>（yyyyMM）来定位。整单一次性发货，生成一张出库单。</p>
+        <div class="fields"><span class="f hot"><b>originalordercode + originalordersuffix</b> 跨月表定位原单</span><span class="f"><b>outbounddoccode</b> 生成的销售出库单号</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6 sdsstation ============ -->
+<section id="station">
+  <h2><span class="sn">06 / sdsstation</span>独立站，一站一库</h2>
+  <p class="sub">每开一个独立站，就是一台服务器 + 一份 <span class="m">sdsstation</span> 库 + 一套自己的用户体系。它与 ERP 之间<b>没有任何外键、没有跨库查询</b>；两边的「订单」「客户」是完全不同的两回事，同名只是巧合。</p>
+
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 920 420" role="img" aria-label="独立站数据流：商品与多语言文案、图片视频资源供前台展示；访客的询盘、订单、在线咨询三条入口都按邮箱归档到站点客户档案。">
+      <defs>
+        <marker id="ar5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <polygon points="0,0 10,5 0,10" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <!-- 内容侧 -->
+      <text x="20" y="26" font-family="IBM Plex Mono, monospace" font-size="12" fill="currentColor" opacity=".65">运营维护的内容</text>
+      <rect x="20" y="40" width="210" height="52" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="34" y="62" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_s_siteinfo</text>
+      <text x="34" y="81" font-size="11" fill="currentColor" opacity=".7">单行 · contentjson 装修内容</text>
+
+      <rect x="20" y="104" width="210" height="66" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <text x="34" y="126" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_s_sitegoods</text>
+      <text x="34" y="144" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_s_sitegoods_lang</text>
+      <text x="34" y="162" font-size="11" fill="currentColor" opacity=".7">商品 + 每种语言一行文案</text>
+
+      <rect x="20" y="182" width="210" height="52" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="34" y="204" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_s_siteimage / sitevideo</text>
+      <text x="34" y="223" font-size="11" fill="currentColor" opacity=".7">文件资源库（对象存储）</text>
+
+      <path d="M 234 138 H 300" fill="none" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar5)"/>
+      <path d="M 234 66 H 268 V 130" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".6" marker-end="url(#ar5)"/>
+      <path d="M 234 208 H 268 V 148" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".6" marker-end="url(#ar5)"/>
+
+      <!-- 前台 -->
+      <rect x="304" y="104" width="150" height="66" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="318" y="132" font-size="13.5" font-weight="600" fill="currentColor">前台站点</text>
+      <text x="318" y="153" font-size="11.5" fill="currentColor" opacity=".7">多语言 · 谷歌引流</text>
+
+      <!-- 三条入口 -->
+      <path d="M 458 130 H 520 V 62" fill="none" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar5)"/>
+      <path d="M 458 137 H 560" fill="none" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar5)"/>
+      <path d="M 458 145 H 520 V 232" fill="none" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar5)"/>
+
+      <rect x="564" y="26" width="212" height="60" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="578" y="48" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_s_inquiry</text>
+      <text x="578" y="68" font-size="11" fill="currentColor" opacity=".7">询盘 XP+流水 · 触发邮件通知</text>
+
+      <rect x="564" y="106" width="212" height="60" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="578" y="128" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_s_order / u_s_orderitem</text>
+      <text x="578" y="148" font-size="11" fill="currentColor" opacity=".7">订单 DD+流水 · 商品快照</text>
+
+      <rect x="564" y="202" width="212" height="60" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="578" y="224" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_s_chat / u_s_chatmessage</text>
+      <text x="578" y="244" font-size="11" fill="currentColor" opacity=".7">在线咨询 · 已读游标 = 消息 id</text>
+
+      <!-- 汇入客户 -->
+      <path d="M 780 56 H 830 V 300" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="5 4" opacity=".75"/>
+      <path d="M 780 136 H 830" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="5 4" opacity=".75"/>
+      <path d="M 780 232 H 830 V 300" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="5 4" opacity=".75"/>
+      <path d="M 830 300 H 700" fill="none" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar5)"/>
+
+      <rect x="474" y="276" width="222" height="60" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="488" y="298" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_s_buyer</text>
+      <text x="488" y="318" font-size="11" fill="currentColor" opacity=".75">按 email 归档 · 与 ERP 客户无关</text>
+      <text x="700" y="268" font-size="11" text-anchor="end" fill="currentColor" opacity=".6">邮箱就是身份</text>
+
+      <!-- 管理台 -->
+      <rect x="20" y="276" width="210" height="60" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="34" y="298" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">u_s_user / u_s_role</text>
+      <text x="34" y="318" font-size="11" fill="currentColor" opacity=".7">管理台账号 · 无登录页</text>
+
+      <path d="M 125 272 V 244" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ar5)"/>
+      <text x="136" y="262" font-size="11" fill="currentColor" opacity=".7">维护左侧全部内容、处理右侧全部来件</text>
+
+      <text x="20" y="378" font-size="12" fill="currentColor" opacity=".62">从 ERP 跳进来的人，会自动在 u_s_user 落一行（source=erpsso，erpuser 记住 ERP 侧的用户名）。</text>
+      <text x="20" y="398" font-size="12" fill="currentColor" opacity=".62">u_s_sequence 是本库自己的发号器：inquiry / image / video / goods 各一行 nextval。</text>
+    </svg>
+    </div>
+    <figcaption><b>三条来件、一个客户档案。</b>询盘、订单、在线咨询是访客的三种开口方式，都靠 <span class="m">email</span> 挂到同一条 <span class="m">u_s_buyer</span> 上——所以邮箱在这个库里是事实上的身份键。</figcaption>
+  </figure>
+
+  <div class="cat">
+    <div class="row key">
+      <div class="name">u_s_siteinfo<span class="cn">本站档案（只有一行）</span></div>
+      <div class="body">
+        <p class="purpose">一个部署一个站，所以这张表 <span class="m">id</span> 恒为 1。整站的装修内容都塞在一个 JSON 里。</p>
+        <div class="fields">
+          <span class="f st"><b>contentjson</b> v3 分语言结构（老数据 v1/v2 也认）：顶层是共享层（图片、电话、地图点位），i18n 下按语言覆盖，缺的项按项退回默认语言</span>
+          <span class="f st"><b>consolesecret</b> 此处存<u>明文</u>，与 ERP 侧的密文是同一个密钥的两种形态</span>
+          <span class="f"><b>langs</b> 开放语言，第一个是默认语言</span>
+          <span class="f"><b>status</b> 前台开关，与 ERP 侧 u_s_site.status 是两个独立决定</span>
+          <span class="f"><b>notifyemail</b> 询盘通知收件人</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_s_sitegoods<br>u_s_sitegoods_lang<span class="cn">站点商品 + 多语言文案</span></div>
+      <div class="body">
+        <p class="purpose">商品档案已经<b>完全长在站点这边</b>，不再 join ERP。主表存不分语言的东西（价格、图、排序），语言表存每种语言的标题、卖点、富文本详情、SEO 关键词。</p>
+        <div class="fields">
+          <span class="f st"><b>publishstatus</b> 草稿 / 已上架 / 已下架，只有已上架对外可见</span>
+          <span class="f"><b>price</b> 0 = 不标价，只显示 Inquiry</span>
+          <span class="f"><b>siteimgs</b> 站点专用图，留空回退 imgurl / mainimgs</span>
+          <span class="f"><b>specsjson</b> 规格键值对，详情页渲染成表格</span>
+          <span class="f"><b>featured / sortnum</b> 首页推荐与排序</span>
+          <span class="f">语言表 <b>description</b> 输出前必须做 HTML 白名单过滤</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_s_inquiry<span class="cn">站点询盘</span></div>
+      <div class="body">
+        <p class="purpose">前台表单提交的意向。除了姓名邮箱留言，还留了 <span class="m">pageurl / clientip / useragent</span> 用来判断哪个页面带来的询盘。表里有一大批 <b>RFQ 留位置</b>的列（运输偏好、付款偏好、收货地址），一期不用但结构先建好。</p>
+        <div class="fields"><span class="f"><b>status</b> 待处理 / 已联系 / 已成交 / 无效</span><span class="f"><b>goodscode / producttitle</b> 从详情页提交时带上</span></div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_s_order<br>u_s_orderitem<span class="cn">站点订单 + 明细</span></div>
+      <div class="body">
+        <p class="purpose">前台自助下单或管理台代录。<b>站上不收款</b>，所以没有支付状态，只有履约流程。明细全是下单当时的商品快照。</p>
+        <div class="fields">
+          <span class="f st"><b>inquireonly</b> 面议行数 &gt; 0 时，subtotal 不是订单全部金额</span>
+          <span class="f"><b>price = 0</b> 在明细里表示「价格面议」，不是免费</span>
+          <span class="f"><b>status</b> 待确认 / 已确认 / 已发货 / 已完成 / 已取消</span>
+          <span class="f"><b>source</b> site 自助 / console 代录</span>
+          <span class="f"><b>qty</b> decimal——外贸按米/千克下单</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_s_buyer<span class="cn">站点客户档案</span></div>
+      <div class="body">
+        <p class="purpose">邮箱唯一。<span class="m">passwordhash</span> 为 NULL 是常态而非缺失——发过询盘但没注册账号的人，也有档案。</p>
+        <div class="fields">
+          <span class="f st"><b>email</b> 事实上的身份键</span>
+          <span class="f"><b>emailverified</b> 0 时不许登录</span>
+          <span class="f"><b>lastactive</b> 最近一次询盘或下单（≠ lastlogintime）</span>
+          <span class="f"><b>inquirycount / ordercount</b> 累计计数</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_s_chat<br>u_s_chatmessage<span class="cn">在线咨询</span></div>
+      <div class="body">
+        <p class="purpose">一个访客一行会话。未读数靠两个游标现算，不额外存计数。消息内容<b>存原文不做 HTML 过滤</b>——过滤会把买家问的「&lt;M8 螺丝」吃掉；两侧都用文本插值渲染。</p>
+        <div class="fields">
+          <span class="f st"><b>consolereadid / buyerreadid</b> 已读游标 = 消息表自增 id</span>
+          <span class="f"><b>lastmessage / lastmessagetime</b> 冗余，列表不用 join</span>
+          <span class="f"><b>visitortoken</b> Cookie 里的访客令牌</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_s_user / u_s_role<span class="cn">管理台账号与角色</span></div>
+      <div class="body">
+        <p class="purpose">本站没有登录页，唯一入口是从 ERP 免密跳进来。首次跳转自动落一行（<span class="m">source=erpsso</span>），靠 <span class="m">erpuser</span> 认人。</p>
+        <div class="fields"><span class="f dead"><b>password</b> 已废弃，新行恒 NULL</span><span class="f"><b>rolecode</b> 角色，perms 里的 <span class="m">*</span> 表示全部权限</span></div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_s_storage<span class="cn">本站对象存储配置</span></div>
+      <div class="body"><p class="purpose">结构与 ERP 侧的 <span class="m">s_m_shop_storage</span> 一致，多一个 <span class="m">local</span> provider。<span class="m">active=1</span> 的只能有一行。</p></div>
+    </div>
+    <div class="row">
+      <div class="name">u_s_sequence<span class="cn">本库发号器</span></div>
+      <div class="body"><p class="purpose">四行：<span class="m">inquiry / image / video / goods</span>，各存一个 <span class="m">nextval</span>。单号前缀 XP 询盘、DD 订单、KH 客户、LT 会话。</p></div>
+    </div>
+    <div class="row">
+      <div class="name">u_s_sitegoods_combo<br>u_s_sitegoods_combo_lang<span class="cn">商品规格组合 + 多语言名称</span></div>
+      <div class="body">
+        <p class="purpose">一个商品下的规格型号组合。主表存<b>语言无关</b>的部分（价格、缩略图、排序、可选/停用），语言表<b>只有 title 一个字段</b>——价格图片排序改一次所有语言一起变，放进语言表就要改七行，还会出现「六种语言 199、一种语言 299」这种没人发现的错。</p>
+        <div class="fields">
+          <span class="f st"><b>combocode</b> 稳定标识：名称分七种语言、还会被商家改，只有它不变，单据快照与深链 <span class="m">?combo=</span> 全靠它</span>
+          <span class="f"><b>price</b> 0 = 面议，不是免费（与 <span class="m">u_s_sitegoods.price</span> 同一约定）</span>
+          <span class="f"><b>status</b> 可选 / 停用。停用的不对外返回，但历史单据里的快照还在</span>
+          <span class="f">语言表没填的语言，接口退回站点默认语言那一条</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_s_pageview<span class="cn">前台浏览明细</span></div>
+      <div class="body">
+        <p class="purpose">前台的每一次页面浏览一行，是流量统计的原始事实。<b>只保留 90 天</b>，到期由 <span class="m">PageViewCleaner</span> 批量清掉；算 UV 只看 <span class="m">visitorid</span>（SITE_VISITOR Cookie 里一个 16 字节随机串，与买家账号无关）。</p>
+        <div class="fields">
+          <span class="f st"><b>visitorid / sessionid</b> 算 UV 的唯一依据；清 Cookie 或换浏览器就算新访客，这是这种统计方式的固有误差</span>
+          <span class="f"><b>pagetype / goodscode / pagepath / lang</b> 看了哪一类页面、哪个商品、哪个语种</span>
+          <span class="f"><b>referrer</b> 比 PV 值钱：区分「搜索进来的」和「直接输网址的」</span>
+          <span class="f"><b>device / browser</b> 由 UserAgentParser 从 useragent 解析落列，不采集新数据</span>
+          <span class="f"><b>isbot</b> 判定为爬虫的行<b>照样入库</b>，只在统计时排除——删了就永远找不回来</span>
+          <span class="f"><b>clientip</b> 已截断，不是完整 IP；<b>country</b> 现在恒 NULL，留列等接了 IP 归属库再回填</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_s_pv_daily<span class="cn">前台浏览日聚合</span></div>
+      <div class="body">
+        <p class="purpose">上面那张明细表的日聚合，一次上报往这里写<b>两行</b>：一行 <span class="m">_all</span>（当天全站合计），一行真实页面类型。<b>永不删除</b>，是 90 天之后唯一剩下的历史。</p>
+        <div class="fields">
+          <span class="f st"><b>pagetype = _all</b> ⚠ 它不是一种类型，是当天全站合计；查趋势只读它，<b>查分布和排行必须排除它，否则总数正好翻倍</b></span>
+          <span class="f"><b>pv / pvhuman</b> 含爬虫 / 排除爬虫。看报表要看 <span class="m">pvhuman</span>，<span class="m">pv</span> 只用来估爬虫占比</span>
+          <span class="f st"><b>uv</b> ⚠ <b>今天这一行恒为 0</b>，次日 01:50 才由 PageViewMaintenance 回填；且 <b>uv 不能相加</b>（同一访客会同时出现在 home 行和 detail 行）</span>
+          <span class="f"><b>statdate</b> 「一天」按 <span class="m">Asia/Shanghai</span> 切，不按 UTC</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_s_rate<span class="cn">汇率表（只有一行）</span></div>
+      <div class="body">
+        <p class="purpose">前台币种切换用的汇率，<span class="m">id</span> 恒为 1，整表只有一行。后端启动后 30 秒拉第一次，拉到之前前台只有本币、不显示切换器（降级成没有这个功能的样子，不报错）。<b>换算只发生在展示层</b>：结算页回到本币，<span class="m">u_s_order</span> 落的一律是本币，否则汇率一变老订单就对不上账。</p>
+        <div class="fields">
+          <span class="f st"><b>base_code</b> ⚠ 是<b>汇率源返回值的基准</b>，跟着 API 走，<u>不是</u>站点本币（站点本币在 <span class="m">u_s_siteinfo.currency</span>）；混淆会让换算方向整个反过来</span>
+          <span class="f"><b>ratesjson</b> 自动拉回来的完整汇率表，相对 base_code</span>
+          <span class="f"><b>overridejson</b> 运营手工覆盖，逐币种压过 ratesjson；给汇率加 buffer 或 API 挂掉时兜底</span>
+          <span class="f"><b>fetchtime / fetchstatus / fetcherror</b> 最后一次<u>成功</u>拉取的时间与结果，超 7 天管理台标红</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_s_schema_migration<span class="cn">迁移台账</span></div>
+      <div class="body">
+        <p class="purpose">人工登记这个库跑过 <span class="m">sql/station/migration/</span> 下的哪几个脚本。<b>不是 Flyway</b>：没有校验和、不阻止乱序、不自动执行任何东西，准确性靠人——跑完忘了登记，台账就是错的，而错的台账比没有台账更危险。</p>
+        <div class="fields">
+          <span class="f st"><b>source</b> ⚠ 最关键的一列：<span class="m">执行</span>=确实跑过；<span class="m">回填</span>=无执行记录、只是按结构比对确认改动已生效。两者可信度不同，别混着看</span>
+          <span class="f"><b>filename</b> 与 migration 目录下的文件名一字不差，用它做主键</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="name">u_s_inquiry_item<span class="cn">遗留表 · 原询盘商品明细</span></div>
+      <div class="body"><p class="purpose">遗留表：2026-09-04 结构化 RFQ 那一版建的询盘商品清单（<span class="m">inquiryid + goodscode + price + qty</span> 全快照），<b>后端零引用、一直是空表</b>，2026-09-06 的清理迁移已把它列入删除，但活库里还在。读它没有意义。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7 陷阱 ============ -->
+<section id="traps">
+  <h2><span class="sn">07 / 陷阱</span>看库时最容易想错的地方</h2>
+  <p class="sub">下面每一条都是结构里真实存在的、但从表名和列名读不出来的东西。</p>
+
+  <div class="traps">
+    <div class="trap">
+      <h4><span>01</span>同名反向的两个 paidamount</h4>
+      <p>采购单 <span class="m">u_p_purchase.paidamount</span> 是「付出去的钱」；销售订单 <span class="m">u_o_order_*.paidamount</span> 是「收进来的钱」。<span class="m">freightamount</span> 同理：订单主表是向客户<u>收</u>的，发货批次是自己<u>付</u>的。</p>
+    </div>
+    <div class="trap">
+      <h4><span>02</span>consolesecret 两边不能对拷</h4>
+      <p>ERP 的 <span class="m">u_s_site.consolesecret</span> 存 AES-GCM 密文，站点的 <span class="m">u_s_siteinfo.consolesecret</span> 存明文。同一个密钥的两种形态。直接从 ERP 库 SELECT 出来粘到站点库不会报错，只会每次跳转都验签失败，日志上看着像代码 bug。</p>
+    </div>
+    <div class="trap">
+      <h4><span>03</span>一个商品在一个仓里有四行</h4>
+      <p><span class="m">u_m_stock</span> 主键含 <span class="m">qualityflag</span> 和 <span class="m">onhandflag</span>。统计「某商品总库存」时忘了聚合这两列，拿到的只是良品在库那一格。<span class="m">u_m_batchinfo</span> 也一样。</p>
+    </div>
+    <div class="trap">
+      <h4><span>04</span>两个数量列不是一回事</h4>
+      <p><span class="m">physicalqty</span> 是真有的货，<span class="m">lockedqty</span> 是待审核出库单占的。<b>可用量 = physicalqty − lockedqty</b>，要自己减，表里没有这一列。<span class="m">reservedqty</span>（原订单预占）已废弃、恒为 0，别再减它。</p>
+    </div>
+    <div class="trap">
+      <h4><span>05</span>月表落在哪个月，各单据不同</h4>
+      <p>订单按 <span class="m">createtime</span>，发货批次按 <span class="m">shipdate</span>，采购到货按 <span class="m">senddate</span>。一张订单的多个批次可能跨月——查批次不能按订单的月份去找表。</p>
+    </div>
+    <div class="trap">
+      <h4><span>06</span>u_f_docmain 的主键是复合的</h4>
+      <p>是 <span class="m">(doccode, sourcedoctype)</span>，不是单一 <span class="m">doccode</span>。按单号更新时漏掉第二列会打到多行或打不中。</p>
+    </div>
+    <div class="trap">
+      <h4><span>07</span>已废弃但没删的列</h4>
+      <p><span class="m">orderdetail.reservedqty</span>（恒 0）、<span class="m">orderdetail.stock_source</span> 和 <span class="m">shipbatchdetail.stock_source</span>（恒「现货」）、<span class="m">u_s_user.password</span>（恒 NULL）、订单的 <span class="m">buyershop / buyeruser</span>（恒空串）。留着只为不动历史行，读它们没有意义。</p>
+    </div>
+    <div class="trap">
+      <h4><span>08</span>两个 status 不是副本</h4>
+      <p>ERP 的 <span class="m">u_s_site.status</span> 管的是「还发不发跳转令牌」；站点的 <span class="m">u_s_siteinfo.status</span> 管的是「前台开不开」。<span class="m">lastaccesstime</span> 也只表示「有人点了进入管理」，不表示进成功了。</p>
+    </div>
+    <div class="trap">
+      <h4><span>09</span>goodsinfo 和 goodssummary</h4>
+      <p>前者是人写的自由文本，后者是按明细整体重算的一句展示摘要（「可乐等3种」）。名字太像，只能靠这条记住：<b>带 summary 的那个不参与任何计算</b>。</p>
+    </div>
+    <div class="trap">
+      <h4><span>10</span>定制件的专属批次</h4>
+      <p><span class="m">u_m_batchinfo.owner_orderdetailcode</span> 非空时，这批货只能发给那一条订单明细，出库挑批次时别人一律跳过。判定一律用这一列，<span class="m">owner_ordercode</span> 只是展示用。</p>
+    </div>
+    <div class="trap">
+      <h4><span>11</span>大量冗余快照列是故意的</h4>
+      <p><span class="m">goodsname / spec / unit / warename / partnername</span> 这些在明细表里到处重复，是<b>建单当时的快照</b>，不跟主数据联动。改了商品名，历史单据上仍应该显示旧名字。</p>
+    </div>
+    <div class="trap">
+      <h4><span>12</span>数行数别用 table_rows</h4>
+      <p><span class="m">information_schema.tables.table_rows</span> 对 InnoDB 只是估算值，偏差可以很大。核对数据一律用 <span class="m">COUNT(*)</span>。</p>
+    </div>
+  </div>
+
+  <div class="note">
+    <p><b>命名约定速记。</b>前缀 <span class="m">s_</span> = 系统/租户，<span class="m">u_m_</span> = 主数据（master），<span class="m">u_f_</span> = 流水与凭证（flow），<span class="m">u_p_</span> = 采购与生产（purchase / production），<span class="m">u_o_</span> = 订单（order），<span class="m">u_s_</span> = 站点（site）。带 <span class="m">_YYYYMM</span> 后缀的一律是月表，由 <span class="m">MonthlyTableInitializer</span> 自动创建。</p>
+    <p>单号前缀：<span class="m">RK</span> 入库 · <span class="m">CK</span> 出库 · <span class="m">DB</span> 调拨 · <span class="m">SC</span> 工单 · <span class="m">SCPF</span> 配方 · <span class="m">YZ</span> 预占（已废弃：预占机制已取消，生成器里只剩常量和一条单测，无任何生产调用，不会再有新单号） · <span class="m">KH</span> 客户 · <span class="m">GC</span> 商品分类 · <span class="m">DLZ</span> 独立站 · 站点侧 <span class="m">XP</span> 询盘 · <span class="m">DD</span> 订单 · <span class="m">LT</span> 会话。</p>
+  </div>
+</section>
+
+<footer>
+  依据仓库内 <code>sql/01_schema_and_init.sql</code>、<code>sql/station/01_station_schema.sql</code>、<code>sql/migration/*</code> 与 <code>MonthlyTableInitializer.java</code> 整理。月表列的是模板，实际表名带 <code>_YYYYMM</code> 后缀。
+</footer>
+
+</div>
+</body>
+</html>

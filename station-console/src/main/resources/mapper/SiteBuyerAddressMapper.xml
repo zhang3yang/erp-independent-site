@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  买家收货地址簿。
+
+  ⚠ 每一条语句的 where 里都有 buyercode，一条都不能少。
+
+    这张表对外用自增 id（不发业务码，理由见
+    sql/station/migration/2026-09-08-buyer-address.sql 的文件头），id 连号可猜。
+    where 里只写 id 的那一刻，接口就变成了「把数字改一下读别人的收货地址和电话」。
+
+    buyercode 只来自买家会话（BuyerAccountController.requireBuyer），不接受请求参数。
+
+  ⚠ 不 join u_s_order。订单上的收货地是下单当时的快照，两边没有关系，
+    买家事后改地址簿不能影响已经发出去的货。
+
+  ⚠ 注释里不要出现两个连排的减号。MyBatis 用的 XML 解析器会在 XML 注释里的那种序列上
+    报错，而表现是后端起不来（2026-09-07 已经踩过一次：SitePageViewMapper.xml）。
+    scripts/check-mapper-xml.sh 会挡这个。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteBuyerAddressMapper">
+
+  <resultMap id="AddressResult" type="com.ruoyi.station.console.domain.SiteBuyerAddress">
+    <id     property="id"          column="id"/>
+    <result property="shopCode"    column="shop_code"/>
+    <result property="siteCode"    column="sitecode"/>
+    <result property="buyerCode"   column="buyercode"/>
+    <result property="label"       column="label"/>
+    <result property="contactName" column="contactname"/>
+    <result property="phone"       column="phone"/>
+    <result property="addrLine1"   column="addrline1"/>
+    <result property="addrLine2"   column="addrline2"/>
+    <result property="city"        column="city"/>
+    <result property="region"      column="region"/>
+    <result property="postal"      column="postal"/>
+    <result property="country"     column="country"/>
+    <result property="isDefault"   column="isdefault"/>
+    <result property="createTime"  column="createtime"/>
+    <result property="updateTime"  column="updatetime"/>
+  </resultMap>
+
+  <sql id="columns">
+    id, shop_code, sitecode, buyercode, label, contactname, phone,
+    addrline1, addrline2, city, region, postal, country, isdefault, createtime, updatetime
+  </sql>
+
+  <!--
+    地址簿列表。默认的排最前，其余按新建时间倒排（最近填的多半是这次要用的那个）。
+    order by 的两列正好是 idx_buyeraddr_owner 的后两段。
+  -->
+  <select id="selectByBuyer" resultMap="AddressResult">
+    select <include refid="columns"/>
+      from u_s_buyeraddr
+     where buyercode = #{buyerCode}
+     order by isdefault desc, id desc
+  </select>
+
+  <select id="selectOne" resultMap="AddressResult">
+    select <include refid="columns"/>
+      from u_s_buyeraddr
+     where id = #{id}
+       and buyercode = #{buyerCode}
+  </select>
+
+  <select id="countByBuyer" resultType="int">
+    select count(1) from u_s_buyeraddr where buyercode = #{buyerCode}
+  </select>
+
+  <select id="selectLatestId" resultType="java.lang.Long">
+    select id from u_s_buyeraddr where buyercode = #{buyerCode} order by id desc limit 1
+  </select>
+
+  <insert id="insert" parameterType="com.ruoyi.station.console.domain.SiteBuyerAddress"
+          useGeneratedKeys="true" keyProperty="id">
+    insert into u_s_buyeraddr(
+      shop_code, sitecode, buyercode, label, contactname, phone,
+      addrline1, addrline2, city, region, postal, country, isdefault, createtime
+    ) values(
+      #{shopCode}, #{siteCode}, #{buyerCode}, #{label}, #{contactName}, #{phone},
+      #{addrLine1}, #{addrLine2}, #{city}, #{region}, #{postal}, #{country},
+      coalesce(#{isDefault}, 0), sysdate()
+    )
+  </insert>
+
+  <!--
+    改一条。
+
+    ⚠ 这里全是直接赋值，没有 coalesce。和 u_s_buyer.touch 那条不一样是有意的：
+      那边是「客户又提交了一次，这次没填的别把上次填的抹掉」，这边是买家在编辑框里
+      按了保存，他清空第二行地址就是要清掉它。用 coalesce 的话表现成「删不掉」。
+
+    ⚠ 不动 isdefault。那一列只由 clearDefault 和 markDefault 这一对改，
+      混进来的话一次普通编辑就可能把默认标记搬走。
+  -->
+  <update id="update" parameterType="com.ruoyi.station.console.domain.SiteBuyerAddress">
+    update u_s_buyeraddr
+       set label       = #{label},
+           contactname = #{contactName},
+           phone       = #{phone},
+           addrline1   = #{addrLine1},
+           addrline2   = #{addrLine2},
+           city        = #{city},
+           region      = #{region},
+           postal      = #{postal},
+           country     = #{country}
+     where id = #{id}
+       and buyercode = #{buyerCode}
+  </update>
+
+  <delete id="delete">
+    delete from u_s_buyeraddr where id = #{id} and buyercode = #{buyerCode}
+  </delete>
+
+  <!--
+    设默认是「先清零、再置一」两句，必须在同一个事务里（服务层挂了 @Transactional）。
+
+    拆成两句而不是一句 case when：一句的写法要扫他所有的地址行并逐行判断，
+    读起来也不比两句清楚。两句都带 buyercode，各自只碰他自己那几行。
+  -->
+  <update id="clearDefault">
+    update u_s_buyeraddr set isdefault = 0
+     where buyercode = #{buyerCode} and isdefault = 1
+  </update>
+
+  <update id="markDefault">
+    update u_s_buyeraddr set isdefault = 1
+     where id = #{id} and buyercode = #{buyerCode}
+  </update>
+</mapper>

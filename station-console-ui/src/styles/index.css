@@ -1,0 +1,31 @@
+/* 全局样式。页面自己的样式都在各自的 <style scoped> 里，这里只放几个搬过来的页面用到的工具类。 */
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+  background: var(--el-bg-color-page);
+}
+
+/*
+  这几个类名是从 ERP 前端搬过来的页面里直接用的（ERP 那边定义在全局 scss 里）。
+  不搬那一整套样式，只补这几个——搬过来一整个设计系统，两边就得同步演进了。
+*/
+.app-container { padding: 20px; }
+.mb8 { margin-bottom: 8px; }
+.mb16 { margin-bottom: 16px; }
+.mr4 { margin-right: 4px; }
+.text-muted { color: var(--el-text-color-secondary); }
+
+/* 表单项下面那行灰色说明文字 */
+.hint {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}

@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  站点客户档案。
+
+  ⚠ 不 join sdsshop.u_m_buyer，也不 join 任何 ERP 的表——这是本站自己的买家档案，
+    和 ERP 的销售客户没有任何关系（boundary §6c）。两张表名字里都有 buyer，
+    但那是两个库里两张互不相干的表。
+
+  ⚠ 计数（inquirycount / ordercount）是**现算的**，不靠累加维护。
+    累加的问题是它会漂：询盘被删、订单被取消、同一个人换了邮箱又合并回来，
+    每一种都要记得去减，漏一次就永远错下去。见 refreshCounts。
+
+  ⚠ passwordhash 不在 `columns` 里。这张表同时是前台买家的账号表，而管理台的
+    客户列表/详情走的是 `columns`——那份列清单里没有它，物理上取不出来。
+    取它的只有 selectForAuth / selectForAuthByCode 两条（列清单 authColumns），
+    调用方只有 BuyerAuthService。
+    domain 上的 @JsonIgnore 是第二道防线，这里是第一道。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteBuyerMapper">
+
+  <resultMap id="BuyerResult" type="com.ruoyi.station.console.domain.SiteBuyer">
+    <id     property="id"           column="id"/>
+    <result property="shopCode"     column="shop_code"/>
+    <result property="siteCode"     column="sitecode"/>
+    <result property="buyerCode"    column="buyercode"/>
+    <result property="email"        column="email"/>
+    <result property="passwordHash" column="passwordhash"/>
+    <result property="emailVerified" column="emailverified"/>
+    <result property="verifyTime"   column="verifytime"/>
+    <result property="status"       column="status"/>
+    <result property="name"         column="name"/>
+    <result property="company"      column="company"/>
+    <result property="phone"        column="phone"/>
+    <result property="country"      column="country"/>
+    <result property="inquiryCount" column="inquirycount"/>
+    <result property="orderCount"   column="ordercount"/>
+    <result property="lastLoginTime" column="lastlogintime"/>
+    <result property="lastLoginIp"  column="lastloginip"/>
+    <result property="loginCount"   column="logincount"/>
+    <result property="lastActive"   column="lastactive"/>
+    <result property="tag"          column="tag"/>
+    <result property="remark"       column="remark"/>
+    <result property="createTime"   column="createtime"/>
+    <result property="updateTime"   column="updatetime"/>
+  </resultMap>
+
+  <!--
+    管理台用的列。**不含 passwordhash**，见文件头那条。
+    emailverified / status / lastlogintime 是含着的：运营需要看得出
+    「这个客户注册过账号没有、验证了没有、上次什么时候登录」。
+  -->
+  <sql id="columns">
+    id, shop_code, sitecode, buyercode, email, emailverified, verifytime, status,
+    name, company, phone, country, inquirycount, ordercount,
+    lastlogintime, lastloginip, logincount, lastactive, tag, remark, createtime, updatetime
+  </sql>
+
+  <!-- 认证专用，**含 passwordhash**。只有 selectForAuth / selectForAuthByCode 用 -->
+  <sql id="authColumns">
+    id, shop_code, sitecode, buyercode, email, passwordhash, emailverified, verifytime, status,
+    name, company, phone, country, inquirycount, ordercount,
+    lastlogintime, lastloginip, logincount, lastactive, tag, remark, createtime, updatetime
+  </sql>
+
+  <sql id="listWhere">
+    <where>
+      <!-- 一个输入框查四个字段：邮箱、联系人、公司、客户编码 -->
+      <if test="query.email != null and query.email != ''">
+         and (email like concat('%', #{query.email}, '%')
+           or name like concat('%', #{query.email}, '%')
+           or company like concat('%', #{query.email}, '%')
+           or buyercode like concat('%', #{query.email}, '%'))</if>
+      <if test="query.tag != null and query.tag != ''">
+         and tag = #{query.tag}</if>
+      <if test="query.country != null and query.country != ''">
+         and country = #{query.country}</if>
+    </where>
+  </sql>
+
+  <select id="selectList" resultMap="BuyerResult">
+    select <include refid="columns"/>
+      from u_s_buyer
+    <include refid="listWhere"/>
+    <!-- 按最近活跃倒排：运营最关心的是刚来过的人。lastactive 可能为 null（历史数据），
+         用 coalesce 退到建档时间，否则那些人会被排到最后面看不见 -->
+     order by coalesce(lastactive, createtime) desc, id desc
+     limit #{offset}, #{limit}
+  </select>
+
+  <select id="countList" resultType="int">
+    select count(1) from u_s_buyer
+    <include refid="listWhere"/>
+  </select>
+
+  <select id="selectByEmail" resultMap="BuyerResult">
+    select <include refid="columns"/> from u_s_buyer where email = #{email}
+  </select>
+
+  <select id="selectByCode" resultMap="BuyerResult">
+    select <include refid="columns"/> from u_s_buyer where buyercode = #{buyerCode}
+  </select>
+
+  <!-- ===================== 前台买家登录用的三对 ===================== -->
+
+  <select id="selectForAuth" resultMap="BuyerResult">
+    select <include refid="authColumns"/> from u_s_buyer where email = #{email}
+  </select>
+
+  <select id="selectForAuthByCode" resultMap="BuyerResult">
+    select <include refid="authColumns"/> from u_s_buyer where buyercode = #{buyerCode}
+  </select>
+
+  <!--
+    设密码。注册、重置、改密码三条路共用。
+
+    ⚠ 没有「清空密码」这个动作：真要禁掉一个人，改 status = '停用'。
+      把 passwordhash 置 null 会让他的账号退回「有档案没账号」状态，
+      然后任何人都能拿这个邮箱重新注册一遍。
+  -->
+  <update id="updatePassword">
+    update u_s_buyer
+       set passwordhash  = #{passwordHash},
+           emailverified = #{emailVerified},
+           verifytime    = case when #{emailVerified} then coalesce(verifytime, sysdate())
+                                else verifytime end
+     where buyercode = #{buyerCode}
+  </update>
+
+  <update id="markVerified">
+    update u_s_buyer
+       set emailverified = 1,
+           verifytime    = coalesce(verifytime, sysdate())
+     where buyercode = #{buyerCode}
+  </update>
+
+  <!-- ⚠ 不动 lastactive：那一列的语义是「最近一次询盘或下单」，登录不是业务动作 -->
+  <update id="touchLogin">
+    update u_s_buyer
+       set logincount    = logincount + 1,
+           lastlogintime = sysdate(),
+           lastloginip   = #{loginIp}
+     where buyercode = #{buyerCode}
+  </update>
+
+  <insert id="insert" parameterType="com.ruoyi.station.console.domain.SiteBuyer"
+          useGeneratedKeys="true" keyProperty="id">
+    insert into u_s_buyer(
+      shop_code, sitecode, buyercode, email, name, company, phone, country,
+      inquirycount, ordercount, lastactive, createtime
+    ) values(
+      #{shopCode}, #{siteCode}, #{buyerCode}, #{email}, #{name}, #{company}, #{phone},
+      #{country}, coalesce(#{inquiryCount}, 0), coalesce(#{orderCount}, 0), sysdate(), sysdate()
+    )
+  </insert>
+
+  <!--
+    同一个邮箱再来时更新联系方式。
+
+    ⚠ 全部走 coalesce(#{新}, 旧)：这一次没填公司名，不该把上一次填过的抹掉。
+      客户第二次提交时经常只填邮箱和留言——不用 coalesce 的话，
+      表现是「客户回头再问一次，之前记的公司和电话就没了」。
+  -->
+  <update id="touch" parameterType="com.ruoyi.station.console.domain.SiteBuyer">
+    update u_s_buyer
+       set name = coalesce(#{name}, name),
+           company = coalesce(#{company}, company),
+           phone = coalesce(#{phone}, phone),
+           country = coalesce(#{country}, country),
+           lastactive = sysdate()
+     where email = #{email}
+  </update>
+
+  <!-- 管理台唯一的写操作。联系方式不给改：那是客户自己填的，改了就对不上他的来信 -->
+  <update id="updateNote" parameterType="com.ruoyi.station.console.domain.SiteBuyer">
+    update u_s_buyer
+       set tag = #{tag},
+           remark = #{remark}
+     where buyercode = #{buyerCode}
+  </update>
+
+  <!--
+    买家自己在前台账户页改联系方式。
+
+    ⚠ 这里**不用 coalesce**，和上面的 touch 刚好相反，是有意的：
+      touch 是「客户又提交了一次询盘，这次没填的别把上次填的抹掉」；
+      这一条是买家在编辑框里按了保存，他清空公司名就是要清掉它。
+      用 coalesce 的话表现成「删不掉」。
+
+    ⚠ set 里没有 email。邮箱是客户的身份（唯一键、登录名、找回密码的去处），
+      换邮箱等于换一个账号，要走验证流程，不是一个 update 的事。
+      也没有 tag / remark：那两列是运营的内部标签和备注，买家碰不得。
+  -->
+  <update id="updateProfile" parameterType="com.ruoyi.station.console.domain.SiteBuyer">
+    update u_s_buyer
+       set name = #{name},
+           company = #{company},
+           phone = #{phone},
+           country = #{country}
+     where buyercode = #{buyerCode}
+  </update>
+
+  <!--
+    头像。
+
+    ⚠ avatar 这一列**不在上面的 columns / authColumns 里**，取它的只有下面这一条。
+      它是一串几十 KB 的 base64（浏览器裁好缩到 256px 的 JPEG data URL），
+      而那两份清单用在管理台的客户列表（一页 20 行）和 requireBuyer
+      （每个要身份的请求跑一次）上——挂上去等于把那两条路径白白撑重几百 KB。
+
+    ⚠ SiteBuyer 上也没有这个字段（只有这两条 SQL 认识它）。没有字段就不会被谁
+      顺手序列化出去，比「记得别加进列清单」可靠。
+  -->
+  <select id="selectAvatar" resultType="java.lang.String">
+    select avatar from u_s_buyer where buyercode = #{buyerCode}
+  </select>
+
+  <update id="updateAvatar">
+    update u_s_buyer set avatar = #{avatar} where buyercode = #{buyerCode}
+  </update>
+
+  <!--
+    重算计数。
+
+    询盘按**邮箱**数（询盘表上的 buyercode 是后来才回填的，历史询盘可能是空的）；
+    订单按**客户编码**数（下单时就挂上了）。两个口径不同是有意的，不是漏改。
+  -->
+  <update id="refreshCounts">
+    update u_s_buyer
+       set inquirycount = (select count(1) from u_s_inquiry where email = #{email}),
+           ordercount   = (select count(1) from u_s_order where buyercode = #{buyerCode})
+     where buyercode = #{buyerCode}
+  </update>
+</mapper>

@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.InventoryLedgerMapper">
+
+    <resultMap type="InventoryLedger" id="InventoryLedgerResult">
+        <result property="shopCode"      column="shop_code" />
+        <result property="ledgerCode"    column="ledger_code" />
+        <result property="docCode"       column="doc_code" />
+        <result property="docType"       column="doc_type" />
+        <result property="docTypeName"   column="doc_type_name" />
+        <result property="detailCode"    column="detail_code" />
+        <result property="goodsCode"     column="goods_code" />
+        <result property="goodsName"     column="goods_name" />
+        <result property="spec"          column="spec" />
+        <result property="unit"          column="unit" />
+        <result property="wareCode"      column="ware_code" />
+        <result property="wareName"      column="ware_name" />
+        <result property="qualityFlag"   column="quality_flag" />
+        <result property="onhandFlag"    column="onhand_flag" />
+        <result property="beforeQty"     column="before_qty" />
+        <result property="changeQty"     column="change_qty" />
+        <result property="afterQty"      column="after_qty" />
+        <result property="costPrice"     column="cost_price" />
+        <result property="costAmount"    column="cost_amount" />
+        <result property="batchCode"     column="batch_code" />
+        <result property="serialNo"      column="serial_no" />
+        <result property="sourceDocCode" column="source_doc_code" />
+        <result property="sourceDocType" column="source_doc_type" />
+        <result property="operator"      column="operator" />
+        <result property="operateTime"   column="operate_time" />
+        <result property="remark"        column="remark" />
+        <result property="tableSuffix"   column="table_suffix" />
+    </resultMap>
+
+    <sql id="ledgerColumns">
+        shop_code, ledger_code, doc_code, doc_type, doc_type_name, detail_code,
+        goods_code, goods_name, spec, unit, ware_code, ware_name,
+        quality_flag, onhand_flag, before_qty, change_qty, after_qty,
+        cost_price, cost_amount, batch_code, serial_no,
+        source_doc_code, source_doc_type, operator, operate_time, remark
+    </sql>
+
+    <sql id="selectLedgerVo">
+        select <include refid="ledgerColumns" />,
+               '${tableSuffix}' as table_suffix
+          from sdsorder.u_f_ledger_${tableSuffix}
+    </sql>
+
+    <select id="selectLedgerByCode" resultMap="InventoryLedgerResult">
+        <include refid="selectLedgerVo" />
+         where shop_code = #{shopCode}
+           and ledger_code = #{ledgerCode}
+    </select>
+
+    <!--
+      列表过滤条件。跨月查询时每个 union 分支都要拼一遍，抽出来共用。
+    -->
+    <sql id="ledgerFilter">
+         where shop_code = #{query.shopCode}
+        <if test="query.docCode != null and query.docCode != ''">
+           and doc_code = #{query.docCode}
+        </if>
+        <if test="query.docType != null and query.docType != ''">
+           and doc_type = #{query.docType}
+        </if>
+        <if test="query.sourceDocCode != null and query.sourceDocCode != ''">
+           and source_doc_code like concat('%', #{query.sourceDocCode}, '%')
+        </if>
+        <if test="query.sourceDocType != null and query.sourceDocType != ''">
+           and source_doc_type = #{query.sourceDocType}
+        </if>
+        <if test="query.goodsCode != null and query.goodsCode != ''">
+           and goods_code = #{query.goodsCode}
+        </if>
+        <if test="query.wareCode != null and query.wareCode != ''">
+           and ware_code = #{query.wareCode}
+        </if>
+        <if test="query.batchCode != null and query.batchCode != ''">
+           and batch_code = #{query.batchCode}
+        </if>
+        <if test="query.serialNo != null and query.serialNo != ''">
+           and serial_no = #{query.serialNo}
+        </if>
+        <if test="query.operator != null and query.operator != ''">
+           and operator = #{query.operator}
+        </if>
+        <!--
+          月表只能把范围收窄到「月」，落到具体日期还得靠这两个条件。
+          区间跨月时首尾两张月表里必然有不该出现的行，缺了它们就会多返回。
+        -->
+        <if test="query.operateTimeBegin != null">
+           and operate_time &gt;= #{query.operateTimeBegin}
+        </if>
+        <if test="query.operateTimeEnd != null">
+           and operate_time &lt;= #{query.operateTimeEnd}
+        </if>
+    </sql>
+
+    <!--
+      同一张单据内的多条流水要保持「先出后进」的阅读顺序，所以排序键不止时间：
+      change_qty 为负的排在前，再按 before_qty 升序还原扣减顺序。
+    -->
+    <sql id="ledgerOrderBy">
+         order by operate_time desc,
+                  doc_code desc,
+                  case when change_qty &lt; 0 then 0 else 1 end,
+                  case when change_qty &lt; 0 then before_qty end asc,
+                  ledger_code desc
+    </sql>
+
+    <select id="selectLedgerList" resultMap="InventoryLedgerResult">
+        select <include refid="ledgerColumns" />,
+               '${query.tableSuffix}' as table_suffix
+          from sdsorder.u_f_ledger_${query.tableSuffix}
+        <include refid="ledgerFilter" />
+        <include refid="ledgerOrderBy" />
+    </select>
+
+    <!--
+      跨月查询。分支内不加 limit：流水按 operate_time 排序，而 PageHelper 会把整条
+      union 包起来再切页，分支内截断反而可能丢掉靠后月份里时间更新的行。
+    -->
+    <select id="selectLedgerListAcrossMonths" resultMap="InventoryLedgerResult">
+        select * from (
+        <foreach collection="suffixes" item="suffix" separator=" union all ">
+            ( select <include refid="ledgerColumns" />,
+                     '${suffix}' as table_suffix
+                from sdsorder.u_f_ledger_${suffix}
+              <include refid="ledgerFilter" /> )
+        </foreach>
+          ) l
+        <include refid="ledgerOrderBy" />
+    </select>
+
+    <insert id="insertLedger" parameterType="InventoryLedger">
+        insert into sdsorder.u_f_ledger_${tableSuffix}(
+            shop_code, ledger_code, doc_code, doc_type, doc_type_name, detail_code,
+            goods_code, goods_name, spec, unit, ware_code, ware_name,
+            quality_flag, onhand_flag, before_qty, change_qty, after_qty,
+            cost_price, cost_amount, batch_code, serial_no,
+            source_doc_code, source_doc_type, operator, operate_time, remark
+        ) values(
+            #{shopCode}, #{ledgerCode}, #{docCode}, #{docType}, #{docTypeName}, #{detailCode},
+            #{goodsCode}, #{goodsName}, #{spec}, #{unit}, #{wareCode}, #{wareName},
+            #{qualityFlag}, #{onhandFlag}, #{beforeQty}, #{changeQty}, #{afterQty},
+            #{costPrice}, #{costAmount}, #{batchCode}, #{serialNo},
+            #{sourceDocCode}, #{sourceDocType}, #{operator}, #{operateTime}, #{remark}
+        )
+    </insert>
+
+    <insert id="batchInsertLedger">
+        insert into sdsorder.u_f_ledger_${tableSuffix}(
+            shop_code, ledger_code, doc_code, doc_type, doc_type_name, detail_code,
+            goods_code, goods_name, spec, unit, ware_code, ware_name,
+            quality_flag, onhand_flag, before_qty, change_qty, after_qty,
+            cost_price, cost_amount, batch_code, serial_no,
+            source_doc_code, source_doc_type, operator, operate_time, remark
+        ) values
+        <foreach item="item" collection="ledgers" separator=",">
+        (
+            #{item.shopCode}, #{item.ledgerCode}, #{item.docCode}, #{item.docType}, #{item.docTypeName}, #{item.detailCode},
+            #{item.goodsCode}, #{item.goodsName}, #{item.spec}, #{item.unit}, #{item.wareCode}, #{item.wareName},
+            #{item.qualityFlag}, #{item.onhandFlag}, #{item.beforeQty}, #{item.changeQty}, #{item.afterQty},
+            #{item.costPrice}, #{item.costAmount}, #{item.batchCode}, #{item.serialNo},
+            #{item.sourceDocCode}, #{item.sourceDocType}, #{item.operator}, #{item.operateTime}, #{item.remark}
+        )
+        </foreach>
+    </insert>
+
+    <!-- 全部流水月表后缀 -->
+    <select id="selectLedgerTableSuffixes" resultType="string">
+        select substring(table_name, length('u_f_ledger_') + 1)
+          from information_schema.tables
+         where table_schema = 'sdsorder' and table_name like 'u_f_ledger_%'
+    </select>
+
+    <!--
+      某订单的销售出库实际动用过哪些批次。
+      change_qty 是负数（出库），取反还原成出了多少。
+    -->
+    <select id="selectShippedBatches" resultType="com.ruoyi.system.domain.vo.SalesReturnBatchOption">
+        select goods_code as goodsCode, ware_code as warehouseCode, batch_code as batchCode,
+               sum(-change_qty) as qty
+          from sdsorder.u_f_ledger_${tableSuffix}
+         where shop_code = #{shopCode}
+           and doc_type = 'CK'
+           and source_doc_type = 'XSFH'
+           and batch_code is not null and batch_code &lt;&gt; ''
+           and source_doc_code in
+           <foreach item="code" collection="shipCodes" open="(" separator="," close=")">#{code}</foreach>
+         group by goods_code, ware_code, batch_code
+    </select>
+
+    <select id="selectLedgerCount" resultType="int">
+        select count(*) from sdsorder.u_f_ledger_${tableSuffix}
+         where shop_code = #{shopCode}
+        <if test="docCode != null and docCode != ''">
+           and doc_code = #{docCode}
+        </if>
+        <if test="goodsCode != null and goodsCode != ''">
+           and goods_code = #{goodsCode}
+        </if>
+    </select>
+
+</mapper>

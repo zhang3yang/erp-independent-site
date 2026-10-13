@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.ProductionOrderMapper">
+    <resultMap type="ProductionOrder" id="ProductionOrderResult">
+        <result property="id" column="id" />
+        <result property="shopCode" column="shop_code" />
+        <result property="productionCode" column="production_code" />
+        <result property="sourceType" column="source_type" />
+        <result property="sourceOrderCodes" column="source_order_codes" />
+        <result property="orderAllocation" column="order_allocation" />
+        <result property="productCode" column="product_code" />
+        <result property="productName" column="product_name" />
+        <result property="planYQty" column="plan_y_qty" />
+        <result property="actualYQty" column="actual_y_qty" />
+        <result property="planDate" column="plan_date" />
+        <result property="actualDate" column="actual_date" />
+        <result property="status" column="status" />
+        <result property="materialCost" column="material_cost" />
+        <result property="processingCost" column="processing_cost" />
+        <result property="freightCost" column="freight_cost" />
+        <result property="otherCost" column="other_cost" />
+        <result property="totalCost" column="total_cost" />
+        <result property="unitCost" column="unit_cost" />
+        <result property="createUser" column="create_user" />
+        <result property="createTime" column="create_time" />
+        <result property="updateUser" column="update_user" />
+        <result property="updateTime" column="update_time" />
+        <result property="remark" column="remark" />
+    </resultMap>
+    <sql id="selectProductionOrderVo">
+        select id, shop_code, productioncode as production_code,
+               sourcetype as source_type, sourceordercodes as source_order_codes,
+               orderallocation as order_allocation, productcode as product_code,
+               productname as product_name, planyqty as plan_y_qty,
+               actualyqty as actual_y_qty, plandate as plan_date,
+               actualdate as actual_date, status, materialcost as material_cost,
+               processingcost as processing_cost, freightcost as freight_cost,
+               othercost as other_cost, totalcost as total_cost,
+               unitcost as unit_cost, createuser as create_user,
+               createtime as create_time, updateuser as update_user,
+               updatetime as update_time, remark
+          from sdsshop.u_p_production
+    </sql>
+    <!--
+      执行类操作前给工单行加排他锁，锁到事务结束。状态判断在内存里做，不锁的话
+      两个并发的完工请求会同时读到「生产中」，各开一套消耗单和成品入库单。
+    -->
+    <select id="lockProductionOrder" resultType="java.lang.String">
+        select productioncode from sdsshop.u_p_production
+         where shop_code = #{shopCode} and productioncode = #{productionCode}
+         for update
+    </select>
+    <select id="selectProductionOrderById" resultMap="ProductionOrderResult">
+        <include refid="selectProductionOrderVo" />
+         where shop_code = #{shopCode} and id = #{id}
+    </select>
+    <select id="selectProductionOrderByCode" resultMap="ProductionOrderResult">
+        <include refid="selectProductionOrderVo" />
+         where shop_code = #{shopCode} and productioncode = #{productionCode}
+    </select>
+    <select id="selectProductionOrderList" resultMap="ProductionOrderResult">
+        <include refid="selectProductionOrderVo" />
+         where shop_code = #{shopCode}
+        <if test="productionCode != null and productionCode != ''">and productioncode = #{productionCode}</if>
+        <if test="sourceType != null and sourceType != ''">and sourcetype = #{sourceType}</if>
+        <if test="productCode != null and productCode != ''">and productcode = #{productCode}</if>
+        <!--
+          「在产」是个合成状态，库里不存在这个值：还没完工也没关闭的三种状态的合称。
+          待领料是分批领料时的中间态，漏掉它就会把领了一半的工单当成不存在。
+          首页看板那张「在产工单」卡片点进来就带这个值，口径与看板 SQL 保持一致。
+        -->
+        <choose>
+            <when test="status == '在产'">and status in ('待生产', '待领料', '生产中')</when>
+            <when test="status != null and status != ''">and status = #{status}</when>
+        </choose>
+        <!-- createtime 同秒的工单要靠 productioncode 兜底，否则分页顺序不稳定会漏行/重行 -->
+         order by createtime desc, productioncode desc
+    </select>
+    <insert id="insertProductionOrder" parameterType="ProductionOrder" useGeneratedKeys="true" keyProperty="id">
+        insert into sdsshop.u_p_production(
+            shop_code, productioncode, sourcetype, sourceordercodes, orderallocation,
+            productcode, productname, planyqty, actualyqty, plandate, status,
+            materialcost, processingcost, freightcost, othercost, totalcost, unitcost,
+            createuser, createtime, remark
+        ) values (
+            #{shopCode}, #{productionCode}, #{sourceType}, #{sourceOrderCodes}, #{orderAllocation},
+            #{productCode}, #{productName}, #{planYQty}, 0, #{planDate}, '待生产',
+            0, 0, 0, 0, 0, 0, #{createUser}, sysdate(), #{remark}
+        )
+    </insert>
+    <update id="updateProductionOrder" parameterType="ProductionOrder">
+        update sdsshop.u_p_production
+           set sourcetype = #{sourceType},
+               sourceordercodes = #{sourceOrderCodes}, orderallocation = #{orderAllocation},
+               productcode = #{productCode}, productname = #{productName},
+               planyqty = #{planYQty}, plandate = #{planDate}, remark = #{remark},
+               updateuser = #{updateUser}, updatetime = sysdate()
+         where shop_code = #{shopCode} and id = #{id} and status = '待生产'
+    </update>
+    <update id="updateStatus">
+        update sdsshop.u_p_production
+           set status = #{status}, updateuser = #{updateUser}, updatetime = sysdate()
+         where shop_code = #{shopCode} and productioncode = #{productionCode}
+    </update>
+    <!-- 只删待生产工单，状态条件由 Service 校验后再进来，这里再带一次做兜底 -->
+    <delete id="deleteProductionOrder">
+        delete from sdsshop.u_p_production
+         where shop_code = #{shopCode} and productioncode = #{productionCode}
+           and status = '待生产'
+    </delete>
+    <!-- expectStatus 兜底：状态已变（重复提交、并发完工）时更新 0 行，Service 抛错回滚 -->
+    <update id="updateExecution">
+        update sdsshop.u_p_production
+           set status = #{status}, actualyqty = #{actualQty}, actualdate = #{actualDate},
+               materialcost = #{materialCost}, totalcost = #{totalCost}, unitcost = #{unitCost},
+               processingcost = #{processingCost}, freightcost = #{freightCost}, othercost = #{otherCost},
+               updateuser = #{updateUser}, updatetime = sysdate()
+         where shop_code = #{shopCode} and productioncode = #{productionCode}
+           and status = #{expectStatus}
+    </update>
+
+    <!--
+      完工后补录费用用。只动三项费用和由它们重算出来的总成本、单位成本；
+      materialcost 不在这里改——物料成本的唯一来源是生产消耗单据。
+      status / actualyqty / actualdate 同样不动，费用调整不改变工单的执行结果。
+    -->
+    <update id="updateCost">
+        update sdsshop.u_p_production
+           set totalcost = #{totalCost}, unitcost = #{unitCost},
+               processingcost = #{processingCost}, freightcost = #{freightCost}, othercost = #{otherCost},
+               updateuser = #{updateUser}, updatetime = sysdate()
+         where shop_code = #{shopCode} and productioncode = #{productionCode}
+    </update>
+
+    <!--
+      还没走到终态、且产出分配给了某张销售订单的工单数。销售订单撤审时用。
+
+      两个条件取 or 是有意的：
+      - orderallocation 是权威来源（fulfillSourceOrders 读的就是它），但它是 JSON 文本，
+        只能按 "orderCode":"xxx" 这个片段匹配；
+      - sourceordercodes 是逗号分隔的冗余列，查起来直接，但 joinOrderCodes 在拼到
+        500 字符时会截断，分配了很多订单的工单可能查不到自己那张单。
+      任一命中就算有引用，宁可多拦一次，也不能漏。
+    -->
+    <!--
+      某张销售订单关联的<b>全部</b>生产工单，不分状态，按建单时间倒序。
+      订单详情页的「生产工单」页签用它做追溯。
+
+      匹配依据是 orderallocation / sourceordercodes，不是订单明细上的 sourcecode：
+      那个字段是单值的，一条明细换过工单只留最后一张，关闭工单时还会被主动清空，
+      拿它追溯会把历史工单整段丢掉。这两列是建单时写死的，只要工单还在就查得到。
+    -->
+    <select id="selectByOrderCode" resultMap="ProductionOrderResult">
+        <include refid="selectProductionOrderVo" />
+         where shop_code = #{shopCode}
+           and sourcetype = 'order'
+           and (find_in_set(#{orderCode}, sourceordercodes) &gt; 0
+                or orderallocation like concat('%"orderCode":"', #{orderCode}, '"%'))
+         order by createtime desc, productioncode desc
+    </select>
+
+    <select id="countOpenAllocatedToOrder" resultType="int">
+        select count(1)
+          from sdsshop.u_p_production
+         where shop_code = #{shopCode}
+           and sourcetype = 'order'
+           and status not in ('已完工', '已关闭')
+           and (find_in_set(#{orderCode}, sourceordercodes) &gt; 0
+                or orderallocation like concat('%"orderCode":"', #{orderCode}, '"%'))
+    </select>
+</mapper>

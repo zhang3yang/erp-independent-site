@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  管理台操作用户。本站自己的用户体系，和 ERP 的 sys_user 没有任何关系
+  （docs/独立站与ERP的边界.md 要点 5）。
+
+  ⚠ 这份 SQL 里一个 password 都没有。那一列还在表上（建库脚本里标了「已废弃」），
+  但没有任何语句读它或写它——本站没有登录页，不存密码（见 SiteUser 类注释）。
+  以前这里有一句「password 只在两个登录入口的查询里出现」，那两个入口已经不存在了。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteUserMapper">
+
+  <resultMap id="UserResult" type="com.ruoyi.station.console.domain.SiteUser">
+    <result property="id"            column="id"/>
+    <result property="username"      column="username"/>
+    <result property="nickname"      column="nickname"/>
+    <result property="roleCode"      column="rolecode"/>
+    <result property="source"        column="source"/>
+    <result property="erpUser"       column="erpuser"/>
+    <result property="status"        column="status"/>
+    <result property="loginCount"    column="logincount"/>
+    <result property="lastLoginTime" column="lastlogintime"/>
+    <result property="lastLoginIp"   column="lastloginip"/>
+    <result property="createUser"    column="createuser"/>
+    <result property="createTime"    column="createtime"/>
+    <result property="updateTime"    column="updatetime"/>
+  </resultMap>
+
+  <!-- 所有查询都用这一组。以前还有一个含 password 的 authColumns，随两个登录入口一起删了 -->
+  <sql id="safeColumns">
+    id, username, nickname, rolecode, source, erpuser, status,
+    logincount, lastlogintime, lastloginip, createuser, createtime, updatetime
+  </sql>
+
+  <select id="selectByUsername" resultMap="UserResult">
+    select <include refid="safeColumns"/>
+      from u_s_user
+     where username = #{username}
+  </select>
+
+  <select id="selectByErpUser" resultMap="UserResult">
+    select <include refid="safeColumns"/>
+      from u_s_user
+     where erpuser = #{erpUser}
+  </select>
+
+  <select id="selectById" resultMap="UserResult">
+    select <include refid="safeColumns"/>
+      from u_s_user
+     where id = #{id}
+  </select>
+
+  <!--
+    没有分页：一个站的后台用户是个位数。真到了要翻页的规模，那时候加也不迟，
+    现在先不为一个不存在的问题写代码。
+  -->
+  <select id="selectList" resultMap="UserResult">
+    select <include refid="safeColumns"/>
+      from u_s_user
+     <where>
+      <if test="keyword != null and keyword != ''">
+         and (username like concat('%', #{keyword}, '%')
+           or nickname like concat('%', #{keyword}, '%'))</if>
+      <if test="status != null and status != ''">
+         and status = #{status}</if>
+     </where>
+     order by id asc
+  </select>
+
+  <!--
+    erpuser 走 nullIf：uk_user_erpuser 是唯一索引，空串会互相撞。
+    MySQL 的唯一索引允许多个 NULL，所以本地账号那一列必须是 NULL，不能是 ''。
+  -->
+  <insert id="insert" parameterType="com.ruoyi.station.console.domain.SiteUser"
+          useGeneratedKeys="true" keyProperty="id">
+    insert into u_s_user(
+      username, nickname, rolecode, source, erpuser, status, createuser, createtime
+    ) values(
+      #{username}, #{nickname},
+      coalesce(#{roleCode}, 'operator'), coalesce(#{source}, 'local'),
+      nullif(#{erpUser}, ''), coalesce(#{status}, '正常'), #{createUser}, sysdate()
+    )
+  </insert>
+
+  <!--
+    username 不在 set 里：登录名是这个人的身份，改了等于换了个人，而历史操作记录
+    （createuser / handleuser / updateuser 这些列）里存的都是旧名字，改完对不上。
+    要换人就停用旧的、建个新的。
+  -->
+  <update id="update" parameterType="com.ruoyi.station.console.domain.SiteUser">
+    update u_s_user
+       set nickname   = #{nickname},
+           rolecode   = coalesce(#{roleCode}, rolecode),
+           status     = coalesce(#{status}, status),
+           updatetime = sysdate()
+     where id = #{id}
+  </update>
+
+  <delete id="deleteById">
+    delete from u_s_user where id = #{id}
+  </delete>
+
+  <!--
+    还剩几个可用的站长。删人 / 停用 / 降级之前要看它。
+
+    excludeId 是「不算这一个」——判断「把他改掉之后还剩几个」时把他自己排除掉，
+    否则改的就是「包括他在内还剩几个」，永远大于 0，这道闸等于没有。
+  -->
+  <select id="countActiveAdmins" resultType="int">
+    select count(1) from u_s_user
+     where rolecode = #{roleCode}
+       and status = '正常'
+    <if test="excludeId != null">
+       and id != #{excludeId}</if>
+  </select>
+
+  <update id="touchLogin">
+    update u_s_user
+       set logincount    = logincount + 1,
+           lastlogintime = sysdate(),
+           lastloginip   = #{loginIp}
+     where id = #{id}
+  </update>
+</mapper>

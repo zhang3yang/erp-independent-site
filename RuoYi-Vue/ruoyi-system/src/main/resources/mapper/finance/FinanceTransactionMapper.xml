@@ -1,0 +1,363 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.FinanceTransactionMapper">
+
+    <resultMap type="com.ruoyi.system.domain.FinanceTransaction" id="FinanceTransactionResult">
+        <result property="id"               column="id" />
+        <result property="shopCode"         column="shop_code" />
+        <result property="tableSuffix"      column="table_suffix" />
+        <result property="transactionCode"  column="transaction_code" />
+        <result property="accountCode"      column="account_code" />
+        <result property="accountName"      column="account_name" />
+        <result property="transType"        column="trans_type" />
+        <result property="categoryCode"     column="category_code" />
+        <result property="categoryName"     column="category_name" />
+        <result property="amount"           column="amount" />
+        <result property="balance"          column="balance" />
+        <result property="currency"         column="currency" />
+        <result property="partyName"        column="party_name" />
+        <result property="partyText"        column="party_text" />
+        <result property="partyImage"       column="party_image" />
+        <result property="tradeTime"        column="trade_time" />
+        <result property="bizType"          column="biz_type" />
+        <result property="bizCode"          column="biz_code" />
+        <result property="bizSummary"       column="biz_summary" />
+        <result property="status"           column="status" />
+        <result property="rejectReason"     column="reject_reason" />
+        <result property="createUser"       column="create_user" />
+        <result property="createTime"       column="create_time" />
+        <result property="auditUser"        column="audit_user" />
+        <result property="auditTime"        column="audit_time" />
+        <result property="completeUser"     column="complete_user" />
+        <result property="completeTime"     column="complete_time" />
+        <result property="attachment"       column="attachment" />
+        <result property="remark"           column="remark" />
+        <result property="createUserName"   column="create_user_name" />
+        <result property="auditUserName"    column="audit_user_name" />
+        <result property="completeUserName" column="complete_user_name" />
+    </resultMap>
+
+    <sql id="transactionColumns">
+        t.id, t.shop_code, t.transactioncode as transaction_code,
+        t.accountcode as account_code, t.accountname as account_name,
+        t.transtype as trans_type, t.categorycode as category_code,
+        t.categoryname as category_name, t.amount, t.balance, t.currency,
+        t.partyname as party_name, t.partytext as party_text, t.partyimage as party_image,
+        t.tradetime as trade_time, t.biztype as biz_type, t.bizcode as biz_code,
+        t.bizsummary as biz_summary, t.status, t.rejectreason as reject_reason,
+        t.createuser as create_user, t.createtime as create_time,
+        t.audituser as audit_user, t.audittime as audit_time,
+        t.completeuser as complete_user, t.completetime as complete_time,
+        t.attachment, t.remark
+    </sql>
+
+    <!-- 全部资金流水月表后缀，供跨月查询使用 -->
+    <select id="selectTransactionTableSuffixes" resultType="string">
+        select substring(table_name, length('u_f_transaction_') + 1)
+          from information_schema.tables
+         where table_schema = 'sdsorder' and table_name like 'u_f_transaction_%'
+    </select>
+
+    <!--
+      展示用查询。左连 sys_user 把三个经办人的账号换成昵称。
+      table_suffix 原样带回前端，后续的状态流转操作要靠它定位月表。
+    -->
+    <sql id="selectTransactionVo">
+        select <include refid="transactionColumns" />,
+               '${tableSuffix}' as table_suffix,
+               cu.nick_name as create_user_name,
+               au.nick_name as audit_user_name,
+               pu.nick_name as complete_user_name
+          from sdsorder.u_f_transaction_${tableSuffix} t
+          left join sys_user cu on cu.user_name = t.createuser
+          left join sys_user au on au.user_name = t.audituser
+          left join sys_user pu on pu.user_name = t.completeuser
+    </sql>
+
+    <!--
+      列表过滤条件。跨月分页时每个 union 分支都要拼一遍，抽出来共用。
+
+      createtime 和 tradetime 是两个独立条件，调用方给了才生效。
+      服务层<b>不会</b>由 tradetime 反推 createtime——补录时两者可以差好几个月，
+      反推出来的范围会把补录的流水挡在结果之外（详见 FinanceTransactionServiceImpl 的注释）。
+    -->
+    <sql id="transactionFilter">
+         where t.shop_code = #{query.shopCode}
+        <if test="query.transactionCode != null and query.transactionCode != ''">
+           and t.transactioncode like concat('%', #{query.transactionCode}, '%')
+        </if>
+        <if test="query.accountCode != null and query.accountCode != ''">
+           and t.accountcode = #{query.accountCode}
+        </if>
+        <if test="query.transType != null and query.transType != ''">
+           and t.transtype = #{query.transType}
+        </if>
+        <if test="query.categoryCode != null and query.categoryCode != ''">
+           and t.categorycode = #{query.categoryCode}
+        </if>
+        <if test="query.bizType != null and query.bizType != ''">
+           and t.biztype = #{query.bizType}
+        </if>
+        <if test="query.bizCode != null and query.bizCode != ''">
+           and t.bizcode like concat('%', #{query.bizCode}, '%')
+        </if>
+        <if test="query.partyName != null and query.partyName != ''">
+           and t.partyname like concat('%', #{query.partyName}, '%')
+        </if>
+        <if test="query.status != null and query.status != ''">
+           and t.status = #{query.status}
+        </if>
+        <if test="query.createTimeBegin != null">
+           and t.createtime &gt;= #{query.createTimeBegin}
+        </if>
+        <if test="query.createTimeEnd != null">
+           and t.createtime &lt;= #{query.createTimeEnd}
+        </if>
+        <if test="query.tradeTimeBegin != null">
+           and t.tradetime &gt;= #{query.tradeTimeBegin}
+        </if>
+        <if test="query.tradeTimeEnd != null">
+           and t.tradetime &lt;= #{query.tradeTimeEnd}
+        </if>
+    </sql>
+
+    <!--
+      跨月分页。要扫的月表 union all 成一张派生表，排序和分页都交给数据库，
+      不再把全部月份的流水读进内存排序后手工切页。
+
+      id 是每张月表各自自增的，跨月时 (时间, id) 并不构成全序：并列行的先后不确定，
+      翻页时同一条可能出现两次、另一条被跳过。加上 table_suffix 补成确定性全序。
+
+      排序键的顺序是 时间 → table_suffix → id，刻意跟改造前保持一致：原来是按月份倒序
+      逐月 append 再做稳定排序，并列行的实际先后就是「月份倒序、月内 id 倒序」。
+      写成 id 在前会让同一时间戳的行换位置，页面上看得出来。
+      (分支内 table_suffix 是常量，不影响分支内截断的正确性。)
+
+      两层 limit：
+        · 分支内 limit #{cap}（= offset + limit）——全局的前 cap 条一定落在
+          「各月各自的前 cap 条」里，先截断能让每张月表少回传大量用不上的行；
+        · 外层 limit #{offset}, #{limit} 取最终这一页。
+      limit &lt;= 0 表示不分页（导出、下拉这类要全量的场景），两层 limit 都不拼。
+
+      sys_user 的三次左连放在外层：放进分支里会对每张月表的全部候选行都连一遍，
+      而真正需要昵称的只有最后这一页。
+    -->
+    <select id="selectTransactionPage" resultMap="FinanceTransactionResult">
+        select tt.*,
+               cu.nick_name as create_user_name,
+               au.nick_name as audit_user_name,
+               pu.nick_name as complete_user_name
+          from (
+        <foreach collection="suffixes" item="suffix" separator=" union all ">
+            ( select <include refid="transactionColumns" />,
+                     '${suffix}' as table_suffix
+                from sdsorder.u_f_transaction_${suffix} t
+              <include refid="transactionFilter" />
+               order by coalesce(t.tradetime, t.createtime) desc, t.id desc
+              <if test="limit > 0"> limit #{cap} </if> )
+        </foreach>
+          ) tt
+          left join sys_user cu on cu.user_name = tt.create_user
+          left join sys_user au on au.user_name = tt.audit_user
+          left join sys_user pu on pu.user_name = tt.complete_user
+         order by coalesce(tt.trade_time, tt.create_time) desc, tt.table_suffix desc, tt.id desc
+        <if test="limit > 0"> limit #{offset}, #{limit}</if>
+    </select>
+
+    <select id="countTransactions" resultType="long">
+        select coalesce(sum(c), 0)
+          from (
+        <foreach collection="suffixes" item="suffix" separator=" union all ">
+            select count(1) as c
+              from sdsorder.u_f_transaction_${suffix} t
+            <include refid="transactionFilter" />
+        </foreach>
+          ) x
+    </select>
+
+    <select id="selectTransactionByCode" resultMap="FinanceTransactionResult">
+        <include refid="selectTransactionVo" />
+         where t.shop_code = #{shopCode}
+           and t.transactioncode = #{transactionCode}
+    </select>
+
+    <!-- 加锁读取，不带 sys_user 左连：连出来的 sys_user 行会被一并锁住 -->
+    <select id="selectTransactionByCodeForUpdate" resultMap="FinanceTransactionResult">
+        select <include refid="transactionColumns" />,
+               '${tableSuffix}' as table_suffix
+          from sdsorder.u_f_transaction_${tableSuffix} t
+         where t.shop_code = #{shopCode}
+           and t.transactioncode = #{transactionCode}
+         for update
+    </select>
+
+    <insert id="insertTransaction" useGeneratedKeys="true" keyProperty="t.id">
+        insert into sdsorder.u_f_transaction_${tableSuffix}(
+            shop_code, transactioncode, accountcode, accountname, transtype,
+            categorycode, categoryname, amount, currency, partyname, partytext, partyimage,
+            tradetime, biztype, bizcode, bizsummary, status, createuser, createtime,
+            attachment, remark
+        ) values(
+            #{t.shopCode}, #{t.transactionCode}, #{t.accountCode}, #{t.accountName}, #{t.transType},
+            #{t.categoryCode}, #{t.categoryName}, #{t.amount}, #{t.currency}, #{t.partyName}, #{t.partyText}, #{t.partyImage},
+            #{t.tradeTime}, #{t.bizType}, #{t.bizCode}, #{t.bizSummary}, #{t.status}, #{t.createUser}, sysdate(),
+            #{t.attachment}, #{t.remark}
+        )
+    </insert>
+
+    <!--
+      草稿态的内容修改。status、balance、审核人、完成人都不在这里，
+      它们只能走 updateTransactionStatus，避免前端提交的表单值覆盖流转结果。
+      createtime 也不动：它决定这条流水落在哪张月表，改了就会和所在表对不上。
+    -->
+    <update id="updateTransaction">
+        update sdsorder.u_f_transaction_${tableSuffix}
+           set accountcode = #{t.accountCode},
+               accountname = #{t.accountName},
+               transtype = #{t.transType},
+               categorycode = #{t.categoryCode},
+               categoryname = #{t.categoryName},
+               amount = #{t.amount},
+               partyname = #{t.partyName},
+               partytext = #{t.partyText},
+               partyimage = #{t.partyImage},
+               tradetime = #{t.tradeTime},
+               biztype = #{t.bizType},
+               bizcode = #{t.bizCode},
+               bizsummary = #{t.bizSummary},
+               attachment = #{t.attachment},
+               remark = #{t.remark}
+         where shop_code = #{t.shopCode}
+           and transactioncode = #{t.transactionCode}
+           and status = '草稿'
+    </update>
+
+    <!--
+      状态流转。where 带 expectedStatus，两个人同时操作同一笔流水时只有一个能改成功，
+      另一个影响行数为 0，服务层据此报错。
+      各字段用 coalesce 保留原值，一条语句服务于提交/审核/驳回/认领/执行完成五种流转。
+    -->
+    <update id="updateTransactionStatus">
+        update sdsorder.u_f_transaction_${tableSuffix}
+           set status = #{t.status},
+               accountcode = coalesce(#{t.accountCode}, accountcode),
+               accountname = coalesce(#{t.accountName}, accountname),
+               tradetime = coalesce(#{t.tradeTime}, tradetime),
+               attachment = coalesce(#{t.attachment}, attachment),
+               bizcode = coalesce(#{t.bizCode}, bizcode),
+               bizsummary = coalesce(#{t.bizSummary}, bizsummary),
+               balance = coalesce(#{t.balance}, balance),
+               currency = coalesce(#{t.currency}, currency),
+               rejectreason = #{t.rejectReason},
+               audituser = coalesce(#{t.auditUser}, audituser),
+               audittime = coalesce(#{t.auditTime}, audittime),
+               completeuser = coalesce(#{t.completeUser}, completeuser),
+               completetime = coalesce(#{t.completeTime}, completetime)
+         where shop_code = #{t.shopCode}
+           and transactioncode = #{t.transactionCode}
+           and status = #{expectedStatus}
+    </update>
+
+    <delete id="deleteTransactionByCode">
+        delete from sdsorder.u_f_transaction_${tableSuffix}
+         where shop_code = #{shopCode}
+           and transactioncode = #{transactionCode}
+           and status in ('草稿', '已驳回')
+    </delete>
+
+    <select id="countByAccount" resultType="int">
+        select count(1) from sdsorder.u_f_transaction_${tableSuffix}
+         where shop_code = #{shopCode}
+           and accountcode = #{accountCode}
+    </select>
+
+    <select id="countByCategory" resultType="int">
+        select count(1) from sdsorder.u_f_transaction_${tableSuffix}
+         where shop_code = #{shopCode}
+           and categorycode = #{categoryCode}
+    </select>
+
+    <!--
+      某业务单据已完成的收付款合计，取绝对值（支出金额存的是负数）。
+      供说明书 6.4 的付款进度、回款进度查询使用。
+    -->
+    <select id="sumCompletedAmountByBizCode" resultType="java.math.BigDecimal">
+        select coalesce(sum(abs(amount)), 0)
+          from sdsorder.u_f_transaction_${tableSuffix}
+         where shop_code = #{shopCode}
+           and biztype = #{bizType}
+           and bizcode = #{bizCode}
+           and status = '已完成'
+    </select>
+
+    <!--
+      每张业务单据最后一笔正向收付款的时间，退款时效窗口的起算点。
+      tradetime 是钱实际动的时间，理论上已完成的流水一定有；completetime 只是兜底。
+    -->
+    <!--
+      别名<b>一律用全小写</b>：resultType=map 时 key 取的是列标签，
+      驼峰别名会被 mapUnderscoreToCamelCase 之类的设置改掉大小写，取不到值还不报错。
+      全小写没有大小写歧义，取值时也按小写取。
+    -->
+    <select id="selectLastSettledTimeByBizType" resultType="map">
+        select bizcode as bizcode,
+               max(coalesce(tradetime, completetime, createtime)) as lasttime
+          from sdsorder.u_f_transaction_${tableSuffix}
+         where shop_code = #{shopCode}
+           and biztype = #{bizType}
+           and transtype = #{transType}
+           and status = '已完成'
+           and bizcode is not null
+         group by bizcode
+    </select>
+
+    <!--
+      单张业务单据下的全部流水，含还没走完的草稿/待审核/已审核。
+      订单与采购单详情上的「收付款流水」用它，让业务员看得见「钱在流程的哪一步」，
+      而不是只看到一个已回写的合计数。
+    -->
+    <select id="selectByBizCode" resultMap="FinanceTransactionResult">
+        <include refid="selectTransactionVo" />
+         where t.shop_code = #{shopCode}
+           and t.biztype = #{bizType}
+           and t.bizcode = #{bizCode}
+         order by coalesce(t.tradetime, t.createtime) desc, t.id desc
+    </select>
+
+    <!--
+      待认领的客户回款：销售 + 收入 + 待审核，币种等于订单币种。
+      销售订单详情的「认领打款」弹窗用它。不看 bizcode 是否为空——改造前财务预填了单号、
+      卡在待审核的老数据也要能从订单里认领走，预填的单号带回去给业务员参考。
+    -->
+    <select id="selectUnclaimedReceipts" resultMap="FinanceTransactionResult">
+        <include refid="selectTransactionVo" />
+         where t.shop_code = #{shopCode}
+           and t.biztype = '销售'
+           and t.transtype = '收入'
+           and t.status = '待审核'
+           and t.currency = #{currency}
+         order by coalesce(t.tradetime, t.createtime) desc, t.id desc
+    </select>
+
+    <!--
+      解除与订单的绑定并改状态。updateTransactionStatus 各字段用 coalesce 保留原值，
+      清不掉 bizcode，所以单独一条。撤回认领和驳回已认领的回款共用，同样带 expectedStatus 防并发。
+      bizsummary 不置空而是换成调用方给的占位文案：列表和详情上一眼看出「这笔钱还没认到单上」。
+    -->
+    <update id="clearClaimBinding">
+        update sdsorder.u_f_transaction_${tableSuffix}
+           set status = #{t.status},
+               bizcode = null,
+               bizsummary = #{t.bizSummary},
+               completeuser = null,
+               rejectreason = #{t.rejectReason},
+               audituser = coalesce(#{t.auditUser}, audituser),
+               audittime = coalesce(#{t.auditTime}, audittime)
+         where shop_code = #{t.shopCode}
+           and transactioncode = #{t.transactionCode}
+           and status = #{expectedStatus}
+    </update>
+
+</mapper>

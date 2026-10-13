@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.ExchangeRateMapper">
+
+    <resultMap id="ExchangeRateResult" type="ExchangeRate">
+        <id     property="id"            column="id" />
+        <result property="shopCode"      column="shop_code" />
+        <result property="currency"      column="currency" />
+        <result property="rate"          column="rate" />
+        <result property="effectiveDate" column="effective_date" />
+        <result property="remark"        column="remark" />
+        <result property="createUser"    column="create_user" />
+        <result property="createTime"    column="create_time" />
+        <result property="updateTime"    column="update_time" />
+    </resultMap>
+
+    <sql id="selectRateVo">
+        select id, shop_code, currency, rate, effective_date, remark, create_user, create_time, update_time
+          from sdsshop.u_m_exchange_rate
+    </sql>
+
+    <!-- 同币种按生效日期倒序：最上面那条就是现在在用的 -->
+    <select id="selectRateList" resultMap="ExchangeRateResult">
+        <include refid="selectRateVo" />
+         where shop_code = #{shopCode}
+        <if test="currency != null and currency != ''">
+           and currency = #{currency}
+        </if>
+         order by currency, effective_date desc
+    </select>
+
+    <select id="selectRateById" resultMap="ExchangeRateResult">
+        <include refid="selectRateVo" />
+         where shop_code = #{shopCode} and id = #{id}
+    </select>
+
+    <insert id="insertRate" parameterType="ExchangeRate" useGeneratedKeys="true" keyProperty="id">
+        insert into sdsshop.u_m_exchange_rate
+            (shop_code, currency, rate, effective_date, remark, create_user, create_time, update_time)
+        values
+            (#{shopCode}, #{currency}, #{rate}, #{effectiveDate}, #{remark}, #{createUser}, sysdate(), sysdate())
+    </insert>
+
+    <update id="updateRate" parameterType="ExchangeRate">
+        update sdsshop.u_m_exchange_rate
+           set currency = #{currency},
+               rate = #{rate},
+               effective_date = #{effectiveDate},
+               remark = #{remark},
+               update_time = sysdate()
+         where shop_code = #{shopCode} and id = #{id}
+    </update>
+
+    <delete id="deleteRateById">
+        delete from sdsshop.u_m_exchange_rate where shop_code = #{shopCode} and id = #{id}
+    </delete>
+
+</mapper>

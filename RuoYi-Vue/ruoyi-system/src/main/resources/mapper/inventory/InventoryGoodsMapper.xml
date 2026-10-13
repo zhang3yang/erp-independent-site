@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.InventoryGoodsMapper">
+
+    <resultMap type="InventoryGoods" id="InventoryGoodsResult">
+        <result property="shopCode"          column="shop_code" />
+        <result property="goodsCode"         column="goodscode" />
+        <result property="goodsName"         column="goodsname" />
+        <result property="category"          column="category" />
+        <result property="spec"              column="spec" />
+        <result property="unit"              column="unit" />
+        <result property="goodsType"         column="goodstype" />
+        <result property="batchStrategy"     column="batchstrategy" />
+        <result property="requireExpireFlag" column="requireexpireflag" />
+        <result property="costCalculation"   column="costcalculation" />
+        <result property="standardPrice"     column="standardprice" />
+        <result property="minStockQty"       column="minstockqty" />
+        <result property="maxStockQty"       column="maxstockqty" />
+        <result property="imgUrl"            column="imgurl" />
+        <result property="thumbUrl"          column="thumburl" />
+        <result property="mainImgs"          column="mainimgs" />
+        <result property="barcode"           column="barcode" />
+        <result property="confirmItems"      column="confirmitems" />
+        <result property="activeFlag"        column="activeflag" />
+        <result property="usedFlag"          column="usedflag" />
+        <result property="remark"            column="remark" />
+        <result property="createUser"        column="createuser" />
+        <result property="createTime"        column="createtime" />
+        <result property="updateUser"        column="updateuser" />
+        <result property="updateTime"        column="updatetime" />
+    </resultMap>
+
+    <sql id="selectGoodsVo">
+        select shop_code, goodscode, goodsname, category, spec, unit, goodstype,
+               batchstrategy, requireexpireflag, costcalculation, standardprice,
+               minstockqty, maxstockqty, imgurl, thumburl, mainimgs, barcode,
+               confirmitems, activeflag, usedflag, remark, createuser, createtime,
+               updateuser, updatetime
+          from sdsshop.u_m_waregoods
+    </sql>
+
+    <select id="selectGoodsByCode" resultMap="InventoryGoodsResult">
+        <include refid="selectGoodsVo" />
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+    </select>
+
+    <select id="selectGoodsList" resultMap="InventoryGoodsResult">
+        <include refid="selectGoodsVo" />
+         where shop_code = #{shopCode}
+        <if test="goodsCode != null and goodsCode != ''">
+           and goodscode = #{goodsCode}
+        </if>
+        <if test="goodsName != null and goodsName != ''">
+           and goodsname like concat('%', #{goodsName}, '%')
+        </if>
+        <!-- 分类是树，按父分类查时 Service 会把下级分类名一并展开进 categoryNames -->
+        <choose>
+            <when test="categoryNames != null and categoryNames.size() > 0">
+           and trim(category) in
+                <foreach collection="categoryNames" item="name" open="(" separator="," close=")">
+                    #{name}
+                </foreach>
+            </when>
+            <when test="category != null and category != ''">
+           and category = #{category}
+            </when>
+        </choose>
+        <if test="goodsType != null and goodsType != ''">
+           and goodstype = #{goodsType}
+        </if>
+        <if test="activeFlag != null">
+           and activeflag = #{activeFlag}
+        </if>
+        <!-- createtime 同秒的商品（批量导入最常见）要靠 goodscode 兜底，否则分页顺序不稳定 -->
+         order by createtime desc, goodscode desc
+    </select>
+
+    <!-- 商品分类树的数据源：按「分类 + 型号」聚合，两端都去空格，空值统一成空串，
+         避免 NULL 和 '' 产生两个含义相同的节点 -->
+    <select id="selectGoodsCategoryStat" resultType="com.ruoyi.system.domain.vo.GoodsCategoryNode">
+        select coalesce(nullif(trim(category), ''), '') as category,
+               coalesce(nullif(trim(spec), ''), '')     as spec,
+               count(1)                                 as goodsCount
+          from sdsshop.u_m_waregoods
+         where shop_code = #{shopCode}
+        <if test="activeFlag != null">
+           and activeflag = #{activeFlag}
+        </if>
+         group by coalesce(nullif(trim(category), ''), ''),
+                  coalesce(nullif(trim(spec), ''), '')
+         order by 1, 2
+    </select>
+
+    <select id="selectGoodsByCategoryNode" resultMap="InventoryGoodsResult">
+        <include refid="selectGoodsVo" />
+         where shop_code = #{shopCode}
+        <if test="category != null">
+            <choose>
+                <when test="category == '__NONE__'">
+           and (category is null or trim(category) = '')
+                </when>
+                <!-- 分类是树，点父分类时 Service 会把下级分类名一并展开进 categoryNames -->
+                <when test="categoryNames != null and categoryNames.size() > 0">
+           and trim(category) in
+                    <foreach collection="categoryNames" item="name" open="(" separator="," close=")">
+                        #{name}
+                    </foreach>
+                </when>
+                <otherwise>
+           and trim(category) = #{category}
+                </otherwise>
+            </choose>
+        </if>
+        <if test="spec != null">
+            <choose>
+                <when test="spec == '__NONE__'">
+           and (spec is null or trim(spec) = '')
+                </when>
+                <otherwise>
+           and trim(spec) = #{spec}
+                </otherwise>
+            </choose>
+        </if>
+        <if test="goodsCode != null and goodsCode != ''">
+           and goodscode like concat('%', #{goodsCode}, '%')
+        </if>
+        <if test="goodsName != null and goodsName != ''">
+           and goodsname like concat('%', #{goodsName}, '%')
+        </if>
+        <!-- 选商品弹窗的搜索框：一个输入框同时匹配编码和名称 -->
+        <if test="keyword != null and keyword != ''">
+           and (goodscode like concat('%', #{keyword}, '%')
+             or goodsname like concat('%', #{keyword}, '%'))
+        </if>
+        <if test="activeFlag != null">
+           and activeflag = #{activeFlag}
+        </if>
+         order by goodscode
+    </select>
+
+    <insert id="insertGoods" parameterType="InventoryGoods">
+        insert into sdsshop.u_m_waregoods(
+            shop_code, goodscode, goodsname, category, spec, unit, goodstype,
+            batchstrategy, requireexpireflag, costcalculation, standardprice,
+            minstockqty, maxstockqty, imgurl, thumburl, mainimgs, barcode,
+            confirmitems, activeflag, remark, createuser, createtime
+        ) values(
+            #{shopCode}, #{goodsCode}, #{goodsName}, #{category}, #{spec}, #{unit}, #{goodsType},
+            #{batchStrategy}, #{requireExpireFlag}, #{costCalculation}, #{standardPrice},
+            #{minStockQty}, #{maxStockQty}, #{imgUrl}, #{thumbUrl}, #{mainImgs}, #{barcode},
+            #{confirmItems}, #{activeFlag}, #{remark}, #{createUser}, sysdate()
+        )
+    </insert>
+
+    <update id="updateGoods" parameterType="InventoryGoods">
+        update sdsshop.u_m_waregoods
+           set goodsname = #{goodsName},
+               category = #{category},
+               spec = #{spec},
+               unit = #{unit},
+               goodstype = #{goodsType},
+               batchstrategy = #{batchStrategy},
+               requireexpireflag = #{requireExpireFlag},
+               costcalculation = #{costCalculation},
+               standardprice = #{standardPrice},
+               minstockqty = #{minStockQty},
+               maxstockqty = #{maxStockQty},
+               imgurl = #{imgUrl},
+               thumburl = #{thumbUrl},
+               mainimgs = #{mainImgs},
+               barcode = #{barcode},
+               confirmitems = #{confirmItems},
+               activeflag = #{activeFlag},
+               remark = #{remark},
+               updateuser = #{updateUser},
+               updatetime = sysdate()
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+    </update>
+
+    <delete id="deleteGoodsByCode">
+        delete from sdsshop.u_m_waregoods
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+    </delete>
+
+    <delete id="deleteGoodsByCodes">
+        delete from sdsshop.u_m_waregoods
+         where shop_code = #{shopCode}
+           and goodscode in
+        <foreach item="goodsCode" collection="goodsCodes" open="(" separator="," close=")">
+            #{goodsCode}
+        </foreach>
+    </delete>
+
+    <!-- 单据引用到商品时置位。已经是 1 的不再重复更新，避免无谓的行锁。 -->
+    <update id="markGoodsUsed">
+        update sdsshop.u_m_waregoods
+           set usedflag = 1
+         where shop_code = #{shopCode}
+           and usedflag = 0
+           and goodscode in
+        <foreach item="goodsCode" collection="goodsCodes" open="(" separator="," close=")">
+            #{goodsCode}
+        </foreach>
+    </update>
+
+    <select id="checkGoodsCodeUnique" resultType="int">
+        select count(1) from sdsshop.u_m_waregoods
+         where shop_code = #{shopCode}
+           and goodscode = #{goodsCode}
+    </select>
+
+</mapper>

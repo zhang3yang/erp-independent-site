@@ -1,0 +1,13 @@
+target/
+*.log
+
+# 本地覆盖配置。client-secret 是整套方案里唯一真正的秘密，
+# 绝不能提交进仓库——生产用环境变量注入。
+application-local.yml
+application-local.yaml
+application-local.properties
+.env
+
+.idea/
+*.iml
+.vscode/

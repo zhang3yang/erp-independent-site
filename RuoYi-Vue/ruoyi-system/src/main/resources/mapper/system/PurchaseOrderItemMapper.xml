@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.PurchaseOrderItemMapper">
+
+    <resultMap type="PurchaseOrderItem" id="PurchaseOrderItemResult">
+        <result property="id"            column="id" />
+        <result property="shopCode"      column="shop_code" />
+        <result property="purchaseCode"  column="purchase_code" />
+        <result property="detailCode"    column="detail_code" />
+        <result property="lineNo"        column="line_no" />
+        <result property="goodsCode"     column="goods_code" />
+        <result property="goodsName"     column="goods_name" />
+        <result property="spec"          column="spec" />
+        <result property="unit"          column="unit" />
+        <result property="qty"           column="qty" />
+        <result property="unitPrice"     column="unit_price" />
+        <result property="amount"        column="amount" />
+        <result property="taxRate"       column="tax_rate" />
+        <result property="taxAmount"     column="tax_amount" />
+        <result property="warehouseCode" column="warehouse_code" />
+        <result property="warehouseName" column="warehouse_name" />
+        <result property="receivedQty"   column="received_qty" />
+        <result property="batchCode"     column="batch_code" />
+        <result property="serialNumbersText" column="serial_numbers" />
+        <result property="remark"        column="remark" />
+    </resultMap>
+
+    <sql id="selectPurchaseOrderItemVo">
+        select id, shop_code, purchasecode as purchase_code, detailcode as detail_code,
+               lineno as line_no, goodscode as goods_code, goodsname as goods_name,
+               spec, unit, qty, price as unit_price, amount,
+               coalesce(taxrate, 0) as tax_rate, coalesce(taxamount, 0) as tax_amount,
+               warehousecode as warehouse_code, warehousename as warehouse_name,
+               receivedqty as received_qty, batchcode as batch_code,
+               serialnumbers as serial_numbers, remark
+          from sdsshop.u_p_purchasedetail
+    </sql>
+
+    <select id="selectPurchaseOrderItemById" resultMap="PurchaseOrderItemResult">
+        <include refid="selectPurchaseOrderItemVo" />
+         where shop_code = #{shopCode}
+           and id = #{id}
+    </select>
+
+    <select id="selectItemsByPurchaseCode" resultMap="PurchaseOrderItemResult">
+        <include refid="selectPurchaseOrderItemVo" />
+         where shop_code = #{shopCode}
+           and purchasecode = #{purchaseCode}
+         order by lineno
+    </select>
+
+    <select id="selectItemsByPurchaseCodes" resultMap="PurchaseOrderItemResult">
+        <include refid="selectPurchaseOrderItemVo" />
+         where shop_code = #{shopCode}
+           and purchasecode in
+           <foreach collection="purchaseCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+         order by purchasecode, lineno
+    </select>
+
+    <select id="selectItemsByPurchaseCodeForUpdate" resultMap="PurchaseOrderItemResult">
+        <include refid="selectPurchaseOrderItemVo" />
+         where shop_code = #{shopCode}
+           and purchasecode = #{purchaseCode}
+         order by lineno, id
+         for update
+    </select>
+
+    <select id="selectItemByGoodsCode" resultMap="PurchaseOrderItemResult">
+        <include refid="selectPurchaseOrderItemVo" />
+         where shop_code = #{shopCode}
+           and purchasecode = #{purchaseCode}
+           and goodscode = #{goodsCode}
+    </select>
+    <select id="selectItemByDetailCode" resultMap="PurchaseOrderItemResult">
+        <include refid="selectPurchaseOrderItemVo" />
+         where shop_code = #{shopCode} and purchasecode = #{purchaseCode} and detailcode = #{detailCode}
+    </select>
+
+    <insert id="insertPurchaseOrderItem" parameterType="PurchaseOrderItem" useGeneratedKeys="true" keyProperty="id">
+        insert into sdsshop.u_p_purchasedetail(
+            shop_code, purchasecode, detailcode, lineno, goodscode, goodsname, spec, unit,
+            qty, price, amount, taxrate, taxamount,
+            warehousecode, warehousename, receivedqty, remainingqty,
+            batchcode, serialnumbers, remark
+        ) values(
+            #{shopCode}, #{purchaseCode}, #{detailCode}, #{lineNo}, #{goodsCode}, #{goodsName}, #{spec}, #{unit},
+            #{qty}, #{unitPrice}, #{amount}, coalesce(#{taxRate}, 0), coalesce(#{taxAmount}, 0),
+            #{warehouseCode}, #{warehouseName}, coalesce(#{receivedQty}, 0),
+            #{qty} - coalesce(#{receivedQty}, 0), #{batchCode}, #{serialNumbersText}, #{remark}
+        )
+    </insert>
+
+    <insert id="batchInsertPurchaseOrderItem">
+        insert into sdsshop.u_p_purchasedetail(
+            shop_code, purchasecode, detailcode, lineno, goodscode, goodsname, spec, unit,
+            qty, price, amount, taxrate, taxamount,
+            warehousecode, warehousename, receivedqty, remainingqty,
+            batchcode, serialnumbers, remark
+        ) values
+        <foreach item="item" collection="items" separator=",">
+        (
+            #{item.shopCode}, #{item.purchaseCode}, #{item.detailCode}, #{item.lineNo}, #{item.goodsCode},
+            #{item.goodsName}, #{item.spec}, #{item.unit}, #{item.qty}, #{item.unitPrice},
+            #{item.amount}, coalesce(#{item.taxRate}, 0), coalesce(#{item.taxAmount}, 0),
+            #{item.warehouseCode}, #{item.warehouseName}, coalesce(#{item.receivedQty}, 0),
+            #{item.qty} - coalesce(#{item.receivedQty}, 0), #{item.batchCode}, #{item.serialNumbersText}, #{item.remark}
+        )
+        </foreach>
+    </insert>
+
+    <update id="updatePurchaseOrderItem" parameterType="PurchaseOrderItem">
+        update sdsshop.u_p_purchasedetail
+           set goodscode = #{goodsCode},
+               goodsname = #{goodsName},
+               spec = #{spec},
+               unit = #{unit},
+               qty = #{qty},
+               price = #{unitPrice},
+               amount = #{amount},
+               taxrate = coalesce(#{taxRate}, 0),
+               taxamount = coalesce(#{taxAmount}, 0),
+               warehousecode = #{warehouseCode},
+               warehousename = #{warehouseName},
+               remainingqty = #{qty} - coalesce(receivedqty, 0),
+               batchcode = #{batchCode},
+               serialnumbers = #{serialNumbersText},
+               remark = #{remark}
+         where id = #{id}
+           and shop_code = #{shopCode}
+    </update>
+
+    <!-- 带超收拦截的版本。调用方靠返回 0 行判定超收，最后那个条件不能删；
+         已停用的「采购订单直接入库」旧通道依赖它做保护。 -->
+    <update id="increaseReceivedQty">
+        update sdsshop.u_p_purchasedetail
+           set receivedqty = coalesce(receivedqty, 0) + #{incrementQty},
+               remainingqty = qty - (coalesce(receivedqty, 0) + #{incrementQty})
+         where shop_code = #{shopCode}
+           and id = #{id}
+           and #{incrementQty} &gt; 0
+           and coalesce(receivedqty, 0) + #{incrementQty} &lt;= qty
+    </update>
+
+    <!-- 不拦超收的版本，只给采购发货入库这条链路用。
+         决议 A1b：入库员点到多少入多少，合同量也不卡。
+         超收后 remainingqty 为负是刻意保留的，前端显示成「超收 N」。 -->
+    <update id="increaseReceivedQtyUnchecked">
+        update sdsshop.u_p_purchasedetail
+           set receivedqty = coalesce(receivedqty, 0) + #{incrementQty},
+               remainingqty = qty - (coalesce(receivedqty, 0) + #{incrementQty})
+         where shop_code = #{shopCode}
+           and id = #{id}
+           and #{incrementQty} &gt; 0
+    </update>
+
+    <delete id="deletePurchaseOrderItemById">
+        delete from sdsshop.u_p_purchasedetail
+         where shop_code = #{shopCode}
+           and id = #{id}
+    </delete>
+
+    <delete id="deleteItemsByPurchaseCode">
+        delete from sdsshop.u_p_purchasedetail
+         where shop_code = #{shopCode}
+           and purchasecode = #{purchaseCode}
+    </delete>
+
+</mapper>

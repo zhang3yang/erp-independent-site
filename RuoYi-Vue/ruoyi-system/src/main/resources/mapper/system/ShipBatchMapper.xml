@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.ShipBatchMapper">
+
+  <resultMap id="BatchResult" type="ShipBatch">
+    <result property="id" column="id"/><result property="shopCode" column="shop_code"/>
+    <result property="shipCode" column="shipcode"/><result property="orderCode" column="ordercode"/>
+    <result property="shipDate" column="shipdate"/><result property="actualShipTime" column="actualshiptime"/>
+    <result property="warehouseCode" column="warehousecode"/><result property="warehouseName" column="warehousename"/>
+    <result property="carrier" column="carrier"/><result property="logisticsNo" column="logisticsno"/>
+    <result property="freightAmount" column="freightamount"/><result property="freightPaid" column="freightpaid"/>
+    <result property="freightPayStatus" column="freightpaystatus"/>
+    <result property="payUser" column="payuser"/><result property="payTime" column="paytime"/>
+    <result property="status" column="status"/>
+    <result property="createUser" column="createuser"/><result property="createTime" column="createtime"/>
+    <result property="confirmUser" column="confirmuser"/><result property="confirmTime" column="confirmtime"/>
+    <result property="shipUser" column="shipuser"/><result property="shipTime" column="shiptime"/>
+    <result property="pickPhotos" column="pickphotos"/>
+    <result property="pickUser" column="pickuser"/><result property="pickTime" column="picktime"/>
+    <result property="logisticsUser" column="logisticsuser"/><result property="logisticsTime" column="logisticstime"/>
+    <result property="rejectUser" column="rejectuser"/><result property="rejectTime" column="rejecttime"/>
+    <result property="rejectReason" column="rejectreason"/>
+    <result property="updateTime" column="updatetime"/><result property="remark" column="remark"/>
+    <result property="createUserName" column="create_user_name"/>
+    <result property="totalQty" column="total_qty"/>
+  </resultMap>
+
+  <select id="selectShipBatchTableSuffixes" resultType="string">
+    select substring(table_name, length('u_f_shipbatch_') + 1)
+      from information_schema.tables
+     where table_schema = 'sdsorder' and table_name like 'u_f_shipbatch_2%'
+  </select>
+
+  <sql id="columns">
+    id, shop_code, shipcode, ordercode, shipdate, actualshiptime, warehousecode, warehousename,
+    carrier, logisticsno, freightamount, freightpaid, freightpaystatus, payuser, paytime,
+    status, createuser, createtime, confirmuser, confirmtime, shipuser, shiptime,
+    pickphotos, pickuser, picktime, logisticsuser, logisticstime,
+    rejectuser, rejecttime, rejectreason, updatetime, remark
+  </sql>
+
+  <sql id="aliasedColumns">
+    b.id, b.shop_code, b.shipcode, b.ordercode, b.shipdate, b.actualshiptime,
+    b.warehousecode, b.warehousename, b.carrier, b.logisticsno,
+    b.freightamount, b.freightpaid, b.freightpaystatus, b.payuser, b.paytime,
+    b.status, b.createuser, b.createtime, b.confirmuser, b.confirmtime,
+    b.shipuser, b.shiptime,
+    b.pickphotos, b.pickuser, b.picktime, b.logisticsuser, b.logisticstime,
+    b.rejectuser, b.rejecttime, b.rejectreason,
+    b.updatetime, b.remark
+  </sql>
+
+  <select id="selectList" resultMap="BatchResult">
+    select <include refid="aliasedColumns"/>, cu.nick_name as create_user_name,
+           (select coalesce(sum(d.qty), 0) from sdsorder.u_f_shipbatchdetail_${tableSuffix} d
+             where d.shop_code = b.shop_code and d.shipcode = b.shipcode) as total_qty
+      from sdsorder.u_f_shipbatch_${tableSuffix} b
+      left join sys_user cu on cu.user_name = b.createuser
+     where b.shop_code = #{query.shopCode}
+    <if test="query.shipCode != null and query.shipCode != ''"> and b.shipcode like concat('%', #{query.shipCode}, '%')</if>
+    <if test="query.orderCode != null and query.orderCode != ''"> and b.ordercode = #{query.orderCode}</if>
+    <if test="query.status != null and query.status != ''"> and b.status = #{query.status}</if>
+    <!-- 仓库发货管理只看提交过来的批次：「待确认」还在业务员手里改，
+         「已取消」也只可能在提交之前作废，两者仓库都不该看见。
+         中间那两格（备货完成 / 已录入快递单号）球在业务员脚下，但仓库要看得见进度，
+         所以照样列出来——只是那两格上仓库没有可点的按钮。 -->
+    <if test="query.warehouseView != null and query.warehouseView"> and b.status in ('已提交仓库', '已打印备货单', '备货完成', '已录入快递单号', '已打印快递单号', '已完成')</if>
+    <!--
+      横向权限：没有 order:shipbatch:all 的人只看得到自己建的批次。
+      ownerScope 不是数据库列，是服务层专用的查询载体，一律由 selectBatchList 说了算。
+      ⚠ 仓库发货那个页面走的是同一条 selectList。**仓库角色不要求勾 order:shipbatch:all**——
+        持有 order:shipbatch:warehouse 即可看全部批次（ShipBatchServiceImpl 的
+        VIEW_ALL_PERMISSIONS 含这一项）。这句原来写的是「必须勾 order:shipbatch:all」，
+        那是拆分前的旧口径，2026-09-18 按代码订正（见 docs/订单只看自己的单（业务员权限）.md §5.1）。
+    -->
+    <if test="query.ownerScope != null"> and b.createuser = #{query.ownerScope}</if>
+    <if test="query.warehouseCode != null and query.warehouseCode != ''"> and b.warehousecode = #{query.warehouseCode}</if>
+    <if test="query.logisticsNo != null and query.logisticsNo != ''"> and b.logisticsno = #{query.logisticsNo}</if>
+     order by b.shipdate desc, b.createtime desc
+  </select>
+
+  <select id="selectByCode" resultMap="BatchResult">
+    select <include refid="aliasedColumns"/>, cu.nick_name as create_user_name,
+           (select coalesce(sum(d.qty), 0) from sdsorder.u_f_shipbatchdetail_${tableSuffix} d
+             where d.shop_code = b.shop_code and d.shipcode = b.shipcode) as total_qty
+      from sdsorder.u_f_shipbatch_${tableSuffix} b
+      left join sys_user cu on cu.user_name = b.createuser
+     where b.shop_code = #{shopCode} and b.shipcode = #{shipCode}
+  </select>
+
+  <!-- 加锁查询不带 join：把 sys_user 的行一并锁住没有必要，也容易拖出死锁。 -->
+  <select id="selectByCodeForUpdate" resultMap="BatchResult">
+    select <include refid="columns"/>
+      from sdsorder.u_f_shipbatch_${tableSuffix}
+     where shop_code = #{shopCode} and shipcode = #{shipCode}
+     for update
+  </select>
+
+  <!-- 确认人/发货人及对应时间一律建单置空，只能由状态迁移动作回填。 -->
+  <insert id="insert" useGeneratedKeys="true" keyProperty="batch.id">
+    insert into sdsorder.u_f_shipbatch_${tableSuffix}
+      (shop_code, shipcode, ordercode, shipdate, actualshiptime, warehousecode, warehousename,
+       carrier, logisticsno, freightamount, freightpaid, freightpaystatus,
+       status, createuser, createtime, remark)
+    values
+      (#{batch.shopCode}, #{batch.shipCode}, #{batch.orderCode}, #{batch.shipDate}, null,
+       #{batch.warehouseCode}, #{batch.warehouseName}, #{batch.carrier}, #{batch.logisticsNo},
+       coalesce(#{batch.freightAmount}, 0), 0, '未支付',
+       #{batch.status}, #{batch.createUser}, sysdate(), #{batch.remark})
+  </insert>
+
+  <!-- 发货日期改了也不搬月表：跨表迁移主子记录的风险远大于收益，
+       要落到别的月份就取消重建。与采购发货单的处理一致。 -->
+  <update id="updatePending">
+    update sdsorder.u_f_shipbatch_${tableSuffix}
+       set warehousecode = #{batch.warehouseCode},
+           warehousename = #{batch.warehouseName},
+           carrier = #{batch.carrier},
+           logisticsno = #{batch.logisticsNo},
+           freightamount = coalesce(#{batch.freightAmount}, 0),
+           remark = #{batch.remark},
+           updatetime = sysdate()
+     where shop_code = #{batch.shopCode} and shipcode = #{batch.shipCode}
+       and status = '待确认'
+  </update>
+
+  <!-- 一条语句覆盖提交仓库/打印备货单/打印快递单号/完成/取消五种<b>往前推</b>的迁移：
+       经手人写进对应状态的列，其余列保持原值。两个打印动作没有对应的经手人列，
+       只落 updatetime（谁打的在 sys_oper_log 里）。
+       备货完成与录入快递单号要连同照片、物流信息一起落，各自走下面的专用语句。
+       驳回是往回撤、要把经手人抹掉，走 rejectToPending。 -->
+  <update id="updateStatus">
+    update sdsorder.u_f_shipbatch_${tableSuffix}
+       set status = #{status},
+    <choose>
+      <when test="status == '已提交仓库'">
+           confirmuser = #{operator}, confirmtime = #{operateTime},
+      </when>
+      <!-- 发货人落在「已完成」而不是中间某一格：那一刻才是货真的离开仓库。
+           旧流程写在「已发货」上，而那一格货还在仓库里等承运商，口径是错的。 -->
+      <when test="status == '已完成'">
+           shipuser = #{operator}, shiptime = #{operateTime}, actualshiptime = #{operateTime},
+      </when>
+    </choose>
+           updatetime = sysdate()
+     where shop_code = #{shopCode} and shipcode = #{shipCode}
+    <if test="expectedStatus != null and expectedStatus != ''"> and status = #{expectedStatus}</if>
+  </update>
+
+  <!--
+    备货完成：已打印备货单 → 备货完成，同时落备货照片与经手人。带期望值 CAS。
+
+    照片和状态必须一条语句落：分成两条的话，照片写进去而状态迁移被 CAS 挡掉时，
+    这张批次上就挂着一组没人认领的照片。
+  -->
+  <update id="completePicking">
+    update sdsorder.u_f_shipbatch_${tableSuffix}
+       set status = '备货完成',
+           pickphotos = #{photos},
+           pickuser = #{operator}, picktime = #{operateTime},
+           updatetime = sysdate()
+     where shop_code = #{shopCode} and shipcode = #{shipCode} and status = '已打印备货单'
+  </update>
+
+  <!--
+    补传/替换备货照片，不改状态。
+
+    状态条件卡在「已打印备货单 / 备货完成」两格：前者是还没点备货完成、照片先传着，
+    后者是传漏了回来补。再往后业务员已经按着这组照片录了快递单号，照片就是凭证，
+    不该还能动。
+  -->
+  <update id="updatePickPhotos">
+    update sdsorder.u_f_shipbatch_${tableSuffix}
+       set pickphotos = #{photos},
+           updatetime = sysdate()
+     where shop_code = #{shopCode} and shipcode = #{shipCode}
+       and status in ('已打印备货单', '备货完成')
+  </update>
+
+  <!--
+    录入快递单号：备货完成 → 已录入快递单号，同时落承运商、快递单号与经手人。带期望值 CAS。
+
+    这里用 coalesce：上门提货的订单两项都可能是 null，不兜住会把建批次时填的值冲掉。
+  -->
+  <update id="enterLogistics">
+    update sdsorder.u_f_shipbatch_${tableSuffix}
+       set status = '已录入快递单号',
+           logisticsno = coalesce(#{logisticsNo}, logisticsno),
+           carrier = coalesce(#{carrier}, carrier),
+           logisticsuser = #{operator}, logisticstime = #{operateTime},
+           updatetime = sysdate()
+     where shop_code = #{shopCode} and shipcode = #{shipCode} and status = '备货完成'
+  </update>
+
+  <!--
+    驳回：已提交仓库 / 已打印备货单 / 备货完成 / 已录入快递单号 / 已打印快递单号 → 待确认。
+
+    确认人、发货人、实际发货时间、备货人、录单人一并抹掉：这几组字段记的是
+    「这些事发生过」，批次退回草稿之后它们就不成立了，留着会让详情页显示一张
+    「待确认但已经备过货」的单子。重走流程时各自的语句会按新的经手人重新写上。
+
+    <b>备货照片也一并清掉</b>，这一点和承运商/物流单号相反。驳回的典型场面就是货备错了
+    要拆箱重拣，那组照片拍的正是要被推翻的那一次备货；留着它，重新走到「备货完成」时
+    「至少一张照片」的校验会被旧照片顶过去，业务员看到的还是错的货。
+    而面单多半还贴在箱子上、照用不误，所以 carrier / logisticsno <b>不清</b>；
+    真要换，批次回到「待确认」后在订单侧的修改弹窗里能改。
+  -->
+  <update id="rejectToPending">
+    update sdsorder.u_f_shipbatch_${tableSuffix}
+       set status = '待确认',
+           confirmuser = null, confirmtime = null,
+           shipuser = null, shiptime = null, actualshiptime = null,
+           pickphotos = null, pickuser = null, picktime = null,
+           logisticsuser = null, logisticstime = null,
+           rejectuser = #{operator}, rejecttime = #{operateTime}, rejectreason = #{reason},
+           updatetime = sysdate()
+     where shop_code = #{shopCode} and shipcode = #{shipCode} and status = #{expectedStatus}
+  </update>
+
+  <delete id="deletePending">
+    delete from sdsorder.u_f_shipbatch_${tableSuffix}
+     where shop_code = #{shopCode} and shipcode = #{shipCode} and status = '待确认'
+  </delete>
+</mapper>

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.InventoryWarningRuleMapper">
+    <resultMap id="WarningRuleResult" type="InventoryWarningRule">
+        <id property="ruleId" column="rule_id" />
+        <result property="shopCode" column="shop_code" />
+        <result property="goodsCode" column="goods_code" />
+        <result property="goodsName" column="goods_name" />
+        <result property="wareCode" column="ware_code" />
+        <result property="wareName" column="ware_name" />
+        <result property="thresholdQty" column="threshold_qty" />
+        <result property="enabled" column="enabled" />
+        <result property="remark" column="remark" />
+        <result property="createBy" column="create_by" />
+        <result property="createTime" column="create_time" />
+        <result property="updateBy" column="update_by" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="selectRuleVo">
+        select r.rule_id, r.shop_code, r.goods_code, g.goodsname as goods_name,
+               r.ware_code, w.warename as ware_name, r.threshold_qty, r.enabled,
+               r.remark, r.create_by, r.create_time, r.update_by, r.update_time
+          from sdsshop.u_m_warning_rule r
+          left join sdsshop.u_m_waregoods g
+            on g.shop_code = r.shop_code and g.goodscode = r.goods_code
+          left join sdsshop.u_m_warehouse w
+            on w.shop_code = r.shop_code and w.warecode = r.ware_code
+    </sql>
+
+    <select id="selectRuleList" resultMap="WarningRuleResult">
+        <include refid="selectRuleVo" />
+         where r.shop_code = #{shopCode}
+        <if test="goodsCode != null and goodsCode != ''">
+           and r.goods_code = #{goodsCode}
+        </if>
+        <if test="goodsName != null and goodsName != ''">
+           and g.goodsname like concat('%', #{goodsName}, '%')
+        </if>
+        <if test="wareCode != null and wareCode != ''">
+           and r.ware_code = #{wareCode}
+        </if>
+        <if test="enabled != null">
+           and r.enabled = #{enabled}
+        </if>
+         order by r.update_time desc, r.rule_id desc
+    </select>
+
+    <select id="selectRuleById" resultMap="WarningRuleResult">
+        <include refid="selectRuleVo" />
+         where r.shop_code = #{shopCode} and r.rule_id = #{ruleId}
+    </select>
+
+    <select id="countRuleByDimension" resultType="int">
+        select count(1)
+          from sdsshop.u_m_warning_rule
+         where shop_code = #{shopCode}
+           and goods_code = #{goodsCode}
+           and ware_code = #{wareCode}
+        <if test="excludeRuleId != null">
+           and rule_id != #{excludeRuleId}
+        </if>
+    </select>
+
+    <insert id="insertRule" parameterType="InventoryWarningRule" useGeneratedKeys="true" keyProperty="ruleId">
+        insert into sdsshop.u_m_warning_rule
+            (shop_code, goods_code, ware_code, threshold_qty, enabled, remark, create_by, create_time)
+        values
+            (#{shopCode}, #{goodsCode}, #{wareCode}, #{thresholdQty}, #{enabled}, #{remark}, #{createBy}, sysdate())
+    </insert>
+
+    <update id="updateRule" parameterType="InventoryWarningRule">
+        update sdsshop.u_m_warning_rule
+           set goods_code = #{goodsCode}, ware_code = #{wareCode},
+               threshold_qty = #{thresholdQty}, enabled = #{enabled}, remark = #{remark},
+               update_by = #{updateBy}, update_time = sysdate()
+         where shop_code = #{shopCode} and rule_id = #{ruleId}
+    </update>
+
+    <delete id="deleteRuleByIds">
+        delete from sdsshop.u_m_warning_rule
+         where shop_code = #{shopCode} and rule_id in
+        <foreach collection="ruleIds" item="ruleId" open="(" separator="," close=")">
+            #{ruleId}
+        </foreach>
+    </delete>
+</mapper>

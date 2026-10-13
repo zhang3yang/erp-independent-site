@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.ProductionBomMapper">
+    <resultMap type="ProductionBom" id="ProductionBomResult">
+        <result property="id" column="id" /><result property="shopCode" column="shop_code" />
+        <result property="bomCode" column="bom_code" /><result property="productCode" column="product_code" />
+        <result property="productName" column="product_name" /><result property="spec" column="spec" />
+        <result property="unit" column="unit" /><result property="status" column="status" />
+        <result property="createUser" column="create_user" /><result property="createTime" column="create_time" />
+        <result property="updateUser" column="update_user" /><result property="updateTime" column="update_time" />
+        <result property="remark" column="remark" /><result property="itemCount" column="item_count" />
+    </resultMap>
+    <!-- 列表要显示「几项物料」，子查询统计一次，省得前端为每行再拉一次明细 -->
+    <sql id="columns">select b.id, b.shop_code, b.bomcode as bom_code, b.productcode as product_code,
+        b.productname as product_name, b.spec, b.unit, b.status,
+        b.createuser as create_user, b.createtime as create_time,
+        b.updateuser as update_user, b.updatetime as update_time, b.remark,
+        (select count(*) from sdsshop.u_p_bomdetail d
+          where d.shop_code = b.shop_code and d.bomcode = b.bomcode) as item_count
+        from sdsshop.u_p_bom b</sql>
+    <select id="selectBomList" parameterType="ProductionBom" resultMap="ProductionBomResult">
+        <include refid="columns" />
+         where b.shop_code = #{shopCode}
+        <if test="productCode != null and productCode != ''">and b.productcode like concat('%', #{productCode}, '%')</if>
+        <if test="productName != null and productName != ''">and b.productname like concat('%', #{productName}, '%')</if>
+        <if test="status != null and status != ''">and b.status = #{status}</if>
+         order by b.updatetime desc, b.id desc
+    </select>
+    <select id="selectBomByCode" resultMap="ProductionBomResult">
+        <include refid="columns" />
+         where b.shop_code = #{shopCode} and b.bomcode = #{bomCode}
+    </select>
+    <!-- 只取编码，不走 columns（那里带着物料项数的子查询，这里用不上） -->
+    <select id="selectProductCodes" resultType="java.lang.String">
+        select productcode from sdsshop.u_p_bom where shop_code = #{shopCode} order by productcode
+    </select>
+    <select id="selectBomByProduct" resultMap="ProductionBomResult">
+        <include refid="columns" />
+         where b.shop_code = #{shopCode} and b.productcode = #{productCode}
+    </select>
+    <insert id="insertBom" parameterType="ProductionBom" useGeneratedKeys="true" keyProperty="id">
+        insert into sdsshop.u_p_bom(
+            shop_code, bomcode, productcode, productname, spec, unit, status, createuser, createtime, remark
+        ) values (
+            #{shopCode}, #{bomCode}, #{productCode}, #{productName}, #{spec}, #{unit}, #{status}, #{createUser}, sysdate(), #{remark}
+        )
+    </insert>
+    <!-- 成品不允许改：换成品等于换一套配方，让用户新建，避免改出一个和历史工单对不上的配方 -->
+    <update id="updateBom" parameterType="ProductionBom">
+        update sdsshop.u_p_bom
+           set productname = #{productName}, spec = #{spec}, unit = #{unit}, status = #{status},
+               remark = #{remark}, updateuser = #{updateUser}, updatetime = sysdate()
+         where shop_code = #{shopCode} and bomcode = #{bomCode}
+    </update>
+    <delete id="deleteBom">
+        delete from sdsshop.u_p_bom where shop_code = #{shopCode} and bomcode = #{bomCode}
+    </delete>
+</mapper>

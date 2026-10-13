@@ -1,0 +1,375 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  站点商品。
+
+  ==================== 和 ERP 那版比，少了什么 ====================
+
+  ERP 那版每条查询都有这一句：
+
+      left join sdsshop.u_m_waregoods g
+        on g.shop_code = sg.shop_code and g.goodscode = sg.goodscode
+
+  三处。它是一条跨库互通，而且库搬到本机之后**连语法上都不成立**——跨库限定名
+  只在同一个 MySQL 实例里有效（docs/独立站与ERP的边界.md §5.2、§5.4）。
+
+  所以 goodsname / spec / imgurl / mainimgs 现在直接从 sg 上取，它们是本表的列。
+  unit 也不再 coalesce(sg.unit, g.unit)，没有档案可回退了。
+
+  ==================== 还少了什么 ====================
+
+  shop_code / sitecode 不在任何 where 里。一个部署一个站，那两列不是筛选维度（§5.3）。
+  写入时它们的值由 SiteContext 填，保证和历史数据一致——主键里有它们，值飘了就会
+  出现同一个商品两行。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteGoodsMapper">
+
+  <resultMap id="GoodsResult" type="com.ruoyi.station.console.domain.SiteGoods">
+    <result property="shopCode"      column="shop_code"/>
+    <result property="siteCode"      column="sitecode"/>
+    <result property="goodsCode"     column="goodscode"/>
+    <result property="goodsName"     column="goodsname"/>
+    <result property="spec"          column="spec"/>
+    <result property="imgUrl"        column="imgurl"/>
+    <result property="mainImgs"      column="mainimgs"/>
+    <result property="siteCategory"  column="sitecategory"/>
+    <result property="price"         column="price"/>
+    <result property="moq"           column="moq"/>
+    <result property="unit"          column="unit"/>
+    <result property="featured"      column="featured"/>
+    <result property="publishStatus" column="publishstatus"/>
+    <result property="sortNum"       column="sortnum"/>
+    <result property="specsJson"     column="specsjson"/>
+    <!--
+      规格维度（2026-09-25-goods-options.sql）。⚠ 这一列和下面 ownColumns / insert / update 里的
+      三处在 2026-09-28 的合并 56d20cbb 里被冲掉过一次：管理台编辑商品读不回维度、只能退成平铺，
+      保存后前台的两排选择也跟着没了。这四处要一起在，少一处就是静默丢数据
+    -->
+    <result property="optionsJson"   column="optionsjson"/>
+    <result property="siteImgs"      column="siteimgs"/>
+    <result property="siteVideos"    column="sitevideos"/>
+    <result property="model3d"       column="model3d"/>
+    <result property="model3dMarks"  column="model3d_marks"/>
+    <result property="model3dStates" column="model3d_states"/>
+    <result property="mainVideo"     column="mainvideo"/>
+    <!-- 瞬态：selectPublicOne join 出的请求语言规格译文，供 SiteOpenService 逐键回退 -->
+    <result property="langSpecsJson"  column="langspecsjson"/>
+    <result property="remark"        column="remark"/>
+    <result property="createUser"    column="createuser"/>
+    <result property="createTime"    column="createtime"/>
+    <result property="updateUser"    column="updateuser"/>
+    <result property="updateTime"    column="updatetime"/>
+    <!-- 不是本表的列：按语言回退从 u_s_sitegoods_lang 取到的文案 -->
+    <result property="title"         column="title"/>
+    <result property="subtitle"      column="subtitle"/>
+    <result property="description"   column="description"/>
+    <result property="keywords"      column="keywords"/>
+  </resultMap>
+
+  <resultMap id="LangResult" type="com.ruoyi.station.console.domain.SiteGoodsLang">
+    <result property="shopCode"    column="shop_code"/>
+    <result property="siteCode"    column="sitecode"/>
+    <result property="goodsCode"   column="goodscode"/>
+    <result property="lang"        column="lang"/>
+    <result property="title"       column="title"/>
+    <result property="subtitle"    column="subtitle"/>
+    <result property="description" column="description"/>
+    <result property="keywords"    column="keywords"/>
+    <result property="specsJson"   column="specsjson"/>
+  </resultMap>
+
+  <!-- 本表自己的列。列表和详情共用，免得加一列要改四处 -->
+  <sql id="ownColumns">
+    sg.shop_code, sg.sitecode, sg.goodscode, sg.goodsname, sg.spec, sg.imgurl, sg.mainimgs,
+    sg.sitecategory, sg.price, sg.moq, sg.unit, sg.featured, sg.publishstatus, sg.sortnum,
+    sg.specsjson, sg.optionsjson, sg.siteimgs, sg.sitevideos, sg.model3d, sg.model3d_marks, sg.model3d_states, sg.mainvideo
+  </sql>
+
+  <!--
+    文案按「当前语言 l → 站点默认语言 d → 本表的 goodsname」回退，所以 join 了两次语言表。
+    两次 join 的代价可以忽略：语言表的主键就是那四列，走的是主键等值查找。
+  -->
+  <sql id="langJoins">
+      from u_s_sitegoods sg
+      left join u_s_sitegoods_lang l
+        on l.shop_code = sg.shop_code and l.sitecode = sg.sitecode
+       and l.goodscode = sg.goodscode and l.lang = #{lang}
+      left join u_s_sitegoods_lang d
+        on d.shop_code = sg.shop_code and d.sitecode = sg.sitecode
+       and d.goodscode = sg.goodscode and d.lang = #{defaultLang}
+  </sql>
+
+  <!--
+    对外接口只认「已上架」。这一条是这个模块的安全底线：草稿和已下架的商品
+    连标题都不能漏出去。写成 sql 片段是为了让列表和计数用的是同一份条件，
+    两处各写一遍迟早会漂。
+  -->
+  <!--
+    本站的 sitecode。**每一条语句都必须带上它，读和写都要。**
+
+    为什么不是「一个部署一个站所以不用过滤」：那个前提要等迁移完成
+    （boundary §10.4⑦，mysqldump 按站 restore 到各自服务器）才成立。在那之前，
+    后端连的是 ERP 那台还没拆的共享库，里面装着多个站的数据。实测过：
+    /openapi/site/products 返回的 5 条里 4 条属于另一个站，接口 200、毫无征兆。
+    写操作更糟——两个站共用一个商品编码时（12010304 就是），
+    `where goodscode = ?` 的 update / delete 会连带动到邻站那一行。
+
+    为什么用子查询而不是加一个方法参数：调用方**没法忘记**。加参数的话，
+    以后任何一个新写的 mapper 方法都可能漏掉，而漏掉不报错、只是悄悄跨站。
+
+    为什么只过滤 sitecode、不过滤 shop_code：§5.3 明确 shop_code 降级为遗留列
+    「新代码不得读它、不得按它过滤」，只保留 sitecode 的意义。索引也跟着改成
+    以 sitecode 领头了，见 sql/station/migration/2026-09-04-sitegoods-scope-by-sitecode.sql。
+
+    u_s_siteinfo 恒为一行（主键 id 恒为 1），所以 limit 1 拿到的就是本站。
+    档案没建时子查询是 NULL，条件恒不成立 → 一条都查不出来。方向是对的：
+    宁可「什么都没有」，不能「放出别人的东西」。
+  -->
+  <sql id="thisSite">(select sitecode from u_s_siteinfo limit 1)</sql>
+
+  <sql id="publicWhere">
+     where sg.sitecode = <include refid="thisSite"/>
+       and sg.publishstatus = '已上架'
+    <!--
+      分类筛选：**精确命中，或者命中它下面的整个子树**。
+
+      `sitecategory` 是一列自由文本，两级层次靠分隔符表达（前台
+      `app/lib/categories.ts`：`Compression Garments/Leg Sleeves`）。以前这里只有
+      `= #{category}`，于是「大组」根本筛不出东西——侧栏里带子项的组标题只能当折叠
+      开关用，买家没有任何办法一次看完「Compression Garments」下面的全部商品。
+
+      为什么不用 `like concat(#{category}, '/%')`：
+        · 分隔符有四种（`/ ／ > ＞`，和 categories.ts 的 SEP 一致），要写四条 like；
+        · 分类名里的 `%` 和 `_` 是 like 的通配符，得先转义，转义又要连 `\` 一起处理——
+          三层 replace 嵌在 XML 里没人看得懂，漏一层就是「多筛出几个分类」这种
+          不报错、只是结果不对的 bug。
+      substring 比较没有通配符语义，不用转义，四种分隔符一个 in 就列完了。
+
+      ⚠ char_length 不是 length：length 数的是字节，中文分类名（'加压疗法/腿部系统'）
+        下会把切分点算错，前缀比较永远不成立。
+
+      分隔符前允许有空格（商家爱写「加压疗法 / 腿部系统」），所以是把剩下那一截
+      trim 完再看头一个字符。前台 lib/categories.ts 的 isUnder 用的是同一个判据。
+    -->
+    <if test="category != null and category != ''">
+       and (sg.sitecategory = #{category}
+            or (substring(sg.sitecategory, 1, char_length(#{category})) = #{category}
+                and substring(trim(substring(sg.sitecategory, char_length(#{category}) + 1)), 1, 1)
+                    in ('/', '／', '&gt;', '＞')))</if>
+    <!-- MySQL 的 where 里用不了 select 的别名，只能把 coalesce 再写一遍 -->
+    <if test="keyword != null and keyword != ''">
+       and (coalesce(l.title, d.title, sg.goodsname) like concat('%', #{keyword}, '%')
+         or coalesce(l.subtitle, d.subtitle) like concat('%', #{keyword}, '%')
+         or sg.goodscode like concat('%', #{keyword}, '%'))</if>
+  </sql>
+
+  <select id="selectPublicList" resultMap="GoodsResult">
+    select <include refid="ownColumns"/>,
+           coalesce(l.title, d.title, sg.goodsname) title,
+           coalesce(l.subtitle, d.subtitle) subtitle,
+           coalesce(l.keywords, d.keywords) keywords
+    <include refid="langJoins"/>
+    <include refid="publicWhere"/>
+     order by sg.featured desc, sg.sortnum asc, sg.createtime desc, sg.goodscode asc
+     limit #{offset}, #{limit}
+  </select>
+
+  <select id="countPublicList" resultType="int">
+    select count(1)
+    <include refid="langJoins"/>
+    <include refid="publicWhere"/>
+  </select>
+
+  <!-- 详情比列表多一个 description。这个字段是 mediumtext，列表里带上它会让一页返回几百 KB -->
+  <select id="selectPublicOne" resultMap="GoodsResult">
+    select <include refid="ownColumns"/>,
+           coalesce(l.title, d.title, sg.goodsname) title,
+           coalesce(l.subtitle, d.subtitle) subtitle,
+           coalesce(l.description, d.description) description,
+           coalesce(l.keywords, d.keywords) keywords,
+           l.specsjson langspecsjson
+    <include refid="langJoins"/>
+     where sg.sitecode = <include refid="thisSite"/>
+       and sg.goodscode = #{goodsCode}
+       and sg.publishstatus = '已上架'
+     limit 1
+  </select>
+
+  <select id="selectPublicCategories" resultType="String">
+    select distinct sitecategory
+      from u_s_sitegoods
+     where sitecode = <include refid="thisSite"/>
+       and publishstatus = '已上架'
+       and sitecategory is not null
+       and sitecategory != ''
+     order by sitecategory
+  </select>
+
+  <!-- ==================== 以下是后台管理用的 ====================
+       和上面对外的语句刻意分开写：对外的那几条永远带 publishstatus = '已上架'，
+       后台这几条永远不带。混在一起用参数控制，早晚会有人传错值把草稿捅到公网上。 -->
+
+  <!-- 列表只带一种语言的标题（站点默认语言），够看就行；全部语言在编辑弹窗里查 -->
+  <select id="selectAdminList" resultMap="GoodsResult">
+    select <include refid="ownColumns"/>,
+           sg.remark, sg.createuser, sg.createtime, sg.updateuser, sg.updatetime,
+           l.title, l.subtitle
+      from u_s_sitegoods sg
+      left join u_s_sitegoods_lang l
+        on l.shop_code = sg.shop_code and l.sitecode = sg.sitecode
+       and l.goodscode = sg.goodscode and l.lang = #{lang}
+     <where>
+         and sg.sitecode = <include refid="thisSite"/>
+      <if test="publishStatus != null and publishStatus != ''">
+         and sg.publishstatus = #{publishStatus}</if>
+      <if test="category != null and category != ''">
+         and sg.sitecategory = #{category}</if>
+      <if test="keyword != null and keyword != ''">
+         and (sg.goodscode like concat('%', #{keyword}, '%')
+           or sg.goodsname like concat('%', #{keyword}, '%')
+           or l.title like concat('%', #{keyword}, '%'))</if>
+     </where>
+     order by sg.sortnum asc, sg.createtime desc, sg.goodscode asc
+  </select>
+
+  <select id="selectAdminOne" resultMap="GoodsResult">
+    select <include refid="ownColumns"/>,
+           sg.remark, sg.createuser, sg.createtime, sg.updateuser, sg.updatetime
+      from u_s_sitegoods sg
+     where sg.sitecode = <include refid="thisSite"/>
+       and sg.goodscode = #{goodsCode}
+  </select>
+
+  <!--
+    存在性判断。给浏览量埋点验「前端报上来的商品编码是不是真的」用，
+    理由见 SiteGoodsMapper 里这个方法的注释。
+
+    ⚠ 不带 publishstatus：下架商品在下架前的浏览记录仍然是真实数据。
+    ⚠ limit 1 + count 的写法是为了让它在命中第一行之后就停，不数完整张表。
+  -->
+  <select id="countByCode" resultType="int">
+    select count(*)
+      from (select 1
+              from u_s_sitegoods sg
+             where sg.sitecode = <include refid="thisSite"/>
+               and sg.goodscode = #{goodsCode}
+             limit 1) hit
+  </select>
+
+  <insert id="insert" parameterType="com.ruoyi.station.console.domain.SiteGoods">
+    insert into u_s_sitegoods(
+      shop_code, sitecode, goodscode, goodsname, spec, imgurl, mainimgs,
+      sitecategory, price, moq, unit, featured,
+      publishstatus, sortnum, specsjson, optionsjson, siteimgs, sitevideos, model3d, model3d_marks, model3d_states, mainvideo, remark, createuser, createtime
+    ) values(
+      #{shopCode}, #{siteCode}, #{goodsCode}, #{goodsName}, #{spec}, #{imgUrl}, #{mainImgs},
+      #{siteCategory}, coalesce(#{price}, 0), #{moq}, #{unit},
+      coalesce(#{featured}, 0), coalesce(#{publishStatus}, '草稿'), coalesce(#{sortNum}, 0),
+      #{specsJson}, #{optionsJson}, #{siteImgs}, #{siteVideos}, #{model3d}, #{model3dMarks}, #{model3dStates}, #{mainVideo}, #{remark}, #{createUser}, sysdate()
+    )
+  </insert>
+
+  <update id="update" parameterType="com.ruoyi.station.console.domain.SiteGoods">
+    update u_s_sitegoods
+       set goodsname = #{goodsName},
+           spec = #{spec},
+           imgurl = #{imgUrl},
+           mainimgs = #{mainImgs},
+           sitecategory = #{siteCategory},
+           price = coalesce(#{price}, price),
+           moq = #{moq},
+           unit = #{unit},
+           featured = coalesce(#{featured}, featured),
+           publishstatus = coalesce(#{publishStatus}, publishstatus),
+           sortnum = coalesce(#{sortNum}, sortnum),
+           specsjson = #{specsJson},
+           optionsjson = #{optionsJson},
+           siteimgs = #{siteImgs},
+           sitevideos = #{siteVideos},
+           model3d = #{model3d},
+           model3d_marks = #{model3dMarks},
+           model3d_states = #{model3dStates},
+           mainvideo = #{mainVideo},
+           remark = #{remark},
+           updateuser = #{updateUser},
+           updatetime = sysdate()
+     where sitecode = <include refid="thisSite"/>
+       and goodscode = #{goodsCode}
+  </update>
+
+  <!--
+    ⚠ 下面三条写操作的 sitecode 条件不是「顺手加的严谨」，是防数据损坏。
+    两个站共用一个商品编码时（现场就有：12010304 在 DLZ2049651302 和
+    DLZ2049653802 各一行），少了它，`where goodscode in (...)` 会一次命中两行——
+    在本站点「批量下架」或「删除」，邻站的同编码商品跟着下架 / 被删掉。
+  -->
+  <update id="updateStatus">
+    update u_s_sitegoods
+       set publishstatus = #{publishStatus}, updateuser = #{updateUser}, updatetime = sysdate()
+     where sitecode = <include refid="thisSite"/>
+       and goodscode in
+       <foreach collection="goodsCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+  </update>
+
+  <delete id="deleteByCodes">
+    delete from u_s_sitegoods
+     where sitecode = <include refid="thisSite"/>
+       and goodscode in
+       <foreach collection="goodsCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+  </delete>
+
+  <select id="selectLangs" resultMap="LangResult">
+    select shop_code, sitecode, goodscode, lang, title, subtitle, description, keywords, specsjson
+      from u_s_sitegoods_lang
+     where sitecode = <include refid="thisSite"/>
+       and goodscode = #{goodsCode}
+     order by lang
+  </select>
+
+  <!-- 主键是（商家+站点+商品+语言），撞了就更新。省得前端还要先查一遍再决定新增还是修改 -->
+  <insert id="upsertLang" parameterType="com.ruoyi.station.console.domain.SiteGoodsLang">
+    insert into u_s_sitegoods_lang(
+      shop_code, sitecode, goodscode, lang, title, subtitle, description, keywords, specsjson, createtime
+    ) values(
+      #{shopCode}, #{siteCode}, #{goodsCode}, #{lang}, #{title}, #{subtitle}, #{description},
+      #{keywords}, #{specsJson}, sysdate()
+    )
+    on duplicate key update
+      title = values(title), subtitle = values(subtitle),
+      description = values(description), keywords = values(keywords),
+      specsjson = values(specsjson)
+  </insert>
+
+  <delete id="deleteLangsByGoods">
+    delete from u_s_sitegoods_lang
+     where sitecode = <include refid="thisSite"/>
+       and goodscode in
+       <foreach collection="goodsCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+  </delete>
+
+  <!-- ==================== 改结算币种时的批量换算 ====================
+       接口上那段注释解释了为什么只动 price > 0、为什么在 SQL 里乘。 -->
+
+  <!--
+    ⚠ round(..., 4) 里的 4 是 price 列的小数位（decimal(18,4)）。
+
+    不写 round 的话 MySQL 会把 `decimal(18,4) * decimal(24,10)` 的结果按自己的规则
+    截到 decimal(18,4) —— 用的是**截断**不是四舍五入。一个 £19.99 按 1.2634 换算得
+    25.2553…，落库成 25.2553 还是 25.2554 差在第四位，单看无所谓；
+    但它同时决定了下面 linetotal 的基数，1000 件就差出 1 分钱，
+    而买家拿计算器一对就发现单价乘数量对不上行小计。
+
+    ⚠ 这里不能顺手把 updatetime 排除掉：换算确实改了这一行的售价，
+      它就该是一次「更新」。updateuser 记的是改币种那个人，也是对的——
+      虽然他改的是站点设置，但这批数字确实是他那一下改掉的。
+  -->
+  <update id="convertPrice">
+    update u_s_sitegoods
+       set price = round(price * #{rate}, 4),
+           updateuser = #{updateUser},
+           updatetime = sysdate()
+     where sitecode = <include refid="thisSite"/>
+       and price > 0
+  </update>
+</mapper>

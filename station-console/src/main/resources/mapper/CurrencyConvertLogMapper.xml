@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  结算币种换算流水。
+
+  只写不改：一次换算落一行，之后没有任何东西碰它。所以这个文件里没有 update、
+  没有 delete——删掉一行就是把那次换算用的汇率弄丢了，而那是唯一的还原依据。
+
+  照例不写库限定名，照例不 join ERP 的任何东西。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.CurrencyConvertLogMapper">
+
+  <resultMap id="LogResult" type="com.ruoyi.station.console.domain.CurrencyConvertLog">
+    <id     property="id"         column="id"/>
+    <result property="siteCode"   column="sitecode"/>
+    <result property="fromCode"   column="fromcode"/>
+    <result property="toCode"     column="tocode"/>
+    <result property="rate"       column="rate"/>
+    <result property="goodsRows"  column="goodsrows"/>
+    <result property="comboRows"  column="comborows"/>
+    <result property="itemRows"   column="itemrows"/>
+    <result property="orderRows"  column="orderrows"/>
+    <result property="mismatch"   column="mismatch"/>
+    <result property="operator"   column="operator"/>
+    <result property="createTime" column="createtime"/>
+  </resultMap>
+
+  <insert id="insert" parameterType="com.ruoyi.station.console.domain.CurrencyConvertLog"
+          useGeneratedKeys="true" keyProperty="id">
+    insert into u_s_currency_convert_log(
+      sitecode, fromcode, tocode, rate,
+      goodsrows, comborows, itemrows, orderrows, mismatch, operator, createtime
+    ) values(
+      #{siteCode}, #{fromCode}, #{toCode}, #{rate},
+      coalesce(#{goodsRows}, 0), coalesce(#{comboRows}, 0), coalesce(#{itemRows}, 0),
+      coalesce(#{orderRows}, 0), coalesce(#{mismatch}, 0), #{operator}, sysdate()
+    )
+  </insert>
+
+  <!--
+    ⚠ 带 sitecode 条件。这张表和别的表不一样，它在「一个部署一个站」之前就可能
+      被共享库里的多个站写过——所以读的时候不能省。
+  -->
+  <select id="selectRecent" resultMap="LogResult">
+    select id, sitecode, fromcode, tocode, rate,
+           goodsrows, comborows, itemrows, orderrows, mismatch, operator, createtime
+      from u_s_currency_convert_log
+     where sitecode = (select sitecode from u_s_siteinfo limit 1)
+     order by id desc
+     limit #{limit}
+  </select>
+</mapper>

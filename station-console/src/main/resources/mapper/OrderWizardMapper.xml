@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!-- 引导式下单的向导定义，一个站最多一行。站点编码取 u_s_siteinfo 那唯一一行，见 SiteInfoMapper 的类注释 -->
+<mapper namespace="com.ruoyi.station.console.mapper.OrderWizardMapper">
+
+  <resultMap id="WizardResult" type="com.ruoyi.station.console.domain.OrderWizard">
+    <id     property="siteCode"   column="sitecode"/>
+    <result property="enabled"    column="enabled"/>
+    <result property="schemaJson" column="schemajson"/>
+    <result property="updateUser" column="updateuser"/>
+    <result property="updateTime" column="updatetime"/>
+  </resultMap>
+
+  <select id="selectOne" resultMap="WizardResult">
+    select sitecode, enabled, schemajson, updateuser,
+           date_format(updatetime, '%Y-%m-%d %H:%i:%s') updatetime
+      from u_s_orderwizard
+     where sitecode = (select sitecode from u_s_siteinfo limit 1)
+  </select>
+
+  <insert id="upsert" parameterType="com.ruoyi.station.console.domain.OrderWizard">
+    insert into u_s_orderwizard(sitecode, enabled, schemajson, updateuser, updatetime)
+    select sitecode, coalesce(#{enabled}, 0), #{schemaJson}, #{updateUser}, sysdate()
+      from u_s_siteinfo limit 1
+    on duplicate key update
+      enabled    = values(enabled),
+      schemajson = values(schemajson),
+      updateuser = values(updateuser),
+      updatetime = values(updatetime)
+  </insert>
+</mapper>

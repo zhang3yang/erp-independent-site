@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.InventoryWarningRecordMapper">
+    <resultMap id="WarningRecordResult" type="InventoryWarningRecord">
+        <id property="recordId" column="record_id" />
+        <result property="shopCode" column="shop_code" />
+        <result property="goodsCode" column="goods_code" />
+        <result property="goodsName" column="goods_name" />
+        <result property="spec" column="spec" />
+        <result property="unit" column="unit" />
+        <result property="wareCode" column="ware_code" />
+        <result property="wareName" column="ware_name" />
+        <result property="warningType" column="warning_type" />
+        <result property="availableQty" column="available_qty" />
+        <result property="thresholdQty" column="threshold_qty" />
+        <result property="status" column="status" />
+        <result property="triggerTime" column="trigger_time" />
+        <result property="lastCheckedTime" column="last_checked_time" />
+        <result property="acknowledgedBy" column="acknowledged_by" />
+        <result property="acknowledgedTime" column="acknowledged_time" />
+        <result property="handleRemark" column="handle_remark" />
+        <result property="recoveredTime" column="recovered_time" />
+        <result property="closedBy" column="closed_by" />
+        <result property="closedTime" column="closed_time" />
+        <result property="activeKey" column="active_key" />
+        <result property="createTime" column="create_time" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <resultMap id="WarningCandidateResult" type="InventoryWarningCandidate">
+        <result property="shopCode" column="shop_code" />
+        <result property="goodsCode" column="goods_code" />
+        <result property="goodsName" column="goods_name" />
+        <result property="spec" column="spec" />
+        <result property="unit" column="unit" />
+        <result property="wareCode" column="ware_code" />
+        <result property="wareName" column="ware_name" />
+        <result property="availableQty" column="available_qty" />
+        <result property="thresholdQty" column="threshold_qty" />
+    </resultMap>
+
+    <select id="selectRecordList" resultMap="WarningRecordResult">
+        select * from sdsshop.u_m_warning_record
+         where shop_code = #{shopCode}
+        <if test="goodsCode != null and goodsCode != ''">
+           and goods_code = #{goodsCode}
+        </if>
+        <if test="goodsName != null and goodsName != ''">
+           and goods_name like concat('%', #{goodsName}, '%')
+        </if>
+        <if test="wareCode != null and wareCode != ''">
+           and ware_code = #{wareCode}
+        </if>
+        <if test="status != null and status != ''">
+           and status = #{status}
+        </if>
+         order by trigger_time desc, record_id desc
+    </select>
+
+    <select id="selectRecordById" resultMap="WarningRecordResult">
+        select * from sdsshop.u_m_warning_record
+         where shop_code = #{shopCode} and record_id = #{recordId}
+    </select>
+
+    <select id="selectWarningCandidates" resultMap="WarningCandidateResult">
+        select s.shop_code, s.goodscode as goods_code, g.goodsname as goods_name,
+               g.spec, g.unit, s.warecode as ware_code, w.warename as ware_name,
+               sum(s.physicalqty - coalesce(s.lockedqty, 0) - coalesce(s.reservedqty, 0)) as available_qty,
+               coalesce(r.threshold_qty,
+                        case when g.minstockqty &gt; 0 then g.minstockqty else null end) as threshold_qty
+          from sdsshop.u_m_stock s
+          join sdsshop.u_m_waregoods g
+            on g.shop_code = s.shop_code and g.goodscode = s.goodscode and g.activeflag = 1
+          join sdsshop.u_m_warehouse w
+            on w.shop_code = s.shop_code and w.warecode = s.warecode and w.activeflag = 1
+          left join sdsshop.u_m_warning_rule r
+            on r.shop_code = s.shop_code and r.goods_code = s.goodscode
+           and r.ware_code = s.warecode and r.enabled = 1
+         where s.shop_code = #{shopCode}
+           and s.qualityflag = 1 and s.onhandflag = 1
+         group by s.shop_code, s.goodscode, g.goodsname, g.spec, g.unit,
+                  s.warecode, w.warename, r.threshold_qty, g.minstockqty
+        having threshold_qty is not null
+    </select>
+
+    <select id="selectEnabledShopCodes" resultType="String">
+        select shop_code from s_m_shop where status = 1 order by shop_code
+    </select>
+
+    <insert id="insertRecord" parameterType="InventoryWarningRecord" useGeneratedKeys="true" keyProperty="recordId">
+        insert ignore into sdsshop.u_m_warning_record
+            (shop_code, goods_code, goods_name, spec, unit, ware_code, ware_name,
+             warning_type, available_qty, threshold_qty, status, trigger_time,
+             last_checked_time, active_key, create_time, update_time)
+        values
+            (#{shopCode}, #{goodsCode}, #{goodsName}, #{spec}, #{unit}, #{wareCode}, #{wareName},
+             'LOW_STOCK', #{availableQty}, #{thresholdQty}, 'ACTIVE', sysdate(),
+             sysdate(), #{activeKey}, sysdate(), sysdate())
+    </insert>
+
+    <update id="updateActiveRecord">
+        update sdsshop.u_m_warning_record
+           set available_qty = #{availableQty}, threshold_qty = #{thresholdQty},
+               last_checked_time = sysdate(), update_time = sysdate()
+         where active_key = #{activeKey} and status in ('ACTIVE', 'ACKNOWLEDGED')
+    </update>
+
+    <update id="recoverNormalRecords">
+        update sdsshop.u_m_warning_record rec
+        join (
+            select s.shop_code, s.goodscode, s.warecode,
+                   sum(s.physicalqty - coalesce(s.lockedqty, 0) - coalesce(s.reservedqty, 0)) as available_qty,
+                   coalesce(r.threshold_qty,
+                            case when g.minstockqty &gt; 0 then g.minstockqty else null end) as threshold_qty
+              from sdsshop.u_m_stock s
+              join sdsshop.u_m_waregoods g
+                on g.shop_code = s.shop_code and g.goodscode = s.goodscode and g.activeflag = 1
+              join sdsshop.u_m_warehouse w
+                on w.shop_code = s.shop_code and w.warecode = s.warecode and w.activeflag = 1
+              left join sdsshop.u_m_warning_rule r
+                on r.shop_code = s.shop_code and r.goods_code = s.goodscode
+               and r.ware_code = s.warecode and r.enabled = 1
+             where s.shop_code = #{shopCode}
+               and s.qualityflag = 1 and s.onhandflag = 1
+             group by s.shop_code, s.goodscode, s.warecode, r.threshold_qty, g.minstockqty
+            having threshold_qty is null or available_qty &gt; threshold_qty
+        ) current_stock
+          on current_stock.shop_code = rec.shop_code
+         and current_stock.goodscode = rec.goods_code
+         and current_stock.warecode = rec.ware_code
+           set rec.status = 'RECOVERED', rec.available_qty = current_stock.available_qty,
+               rec.threshold_qty = coalesce(current_stock.threshold_qty, rec.threshold_qty), rec.recovered_time = sysdate(),
+               rec.last_checked_time = sysdate(), rec.active_key = null, rec.update_time = sysdate()
+         where rec.shop_code = #{shopCode} and rec.status in ('ACTIVE', 'ACKNOWLEDGED')
+    </update>
+
+    <update id="acknowledgeRecord">
+        update sdsshop.u_m_warning_record
+           set status = 'ACKNOWLEDGED', acknowledged_by = coalesce(acknowledged_by, #{operator}),
+               acknowledged_time = coalesce(acknowledged_time, sysdate()),
+               handle_remark = #{remark}, update_time = sysdate()
+         where shop_code = #{shopCode} and record_id = #{recordId} and status in ('ACTIVE', 'ACKNOWLEDGED')
+    </update>
+
+    <update id="closeRecord">
+        update sdsshop.u_m_warning_record
+           set status = 'CLOSED', closed_by = #{operator}, closed_time = sysdate(),
+               handle_remark = #{remark}, active_key = null, update_time = sysdate()
+         where shop_code = #{shopCode} and record_id = #{recordId} and status in ('ACTIVE', 'ACKNOWLEDGED')
+    </update>
+
+    <select id="countActiveRecords" resultType="int">
+        select count(1) from sdsshop.u_m_warning_record
+         where status in ('ACTIVE', 'ACKNOWLEDGED')
+        <if test="shopCode != null and shopCode != ''">
+           and shop_code = #{shopCode}
+        </if>
+    </select>
+</mapper>

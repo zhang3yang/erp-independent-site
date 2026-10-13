@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  站点订单。
+
+  ⚠ 三条必须守住的：
+
+  1. **不写库限定名。** 写 `from u_s_order`，不写 `from sdsstation.u_s_order`。
+     站点后端只连一个库，不写库名就物理上不可能指到别的库去（boundary §5.3）。
+     本机上 ERP 和站点共用一个 MySQL 实例，所以写了库名**本地照样能跑**，
+     上线才报 Unknown database——这条规矩靠本地测试是测不出来的。
+
+  2. **不 join sdsorder / sdsshop 的任何东西。** 站点订单和 ERP 订单没有隶属关系
+     （要点 4）。一期的同步是人工在 ERP 里录一张。
+
+  3. **shop_code / sitecode 不进任何 where。** 一个部署一个站，那两列不是筛选维度
+     （§5.3），值由 SiteContext 在写入时填。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteOrderMapper">
+
+  <resultMap id="OrderResult" type="com.ruoyi.station.console.domain.SiteOrder">
+    <id     property="id"           column="id"/>
+    <result property="shopCode"     column="shop_code"/>
+    <result property="siteCode"     column="sitecode"/>
+    <result property="orderCode"    column="ordercode"/>
+    <result property="status"       column="status"/>
+    <result property="source"       column="source"/>
+    <result property="lang"         column="lang"/>
+    <result property="currency"     column="currency"/>
+    <result property="subtotal"     column="subtotal"/>
+    <result property="inquireOnly"  column="inquireonly"/>
+    <result property="contactName"  column="contactname"/>
+    <result property="email"        column="email"/>
+    <result property="company"      column="company"/>
+    <result property="phone"        column="phone"/>
+    <result property="addrLine1"    column="addrline1"/>
+    <result property="addrLine2"    column="addrline2"/>
+    <result property="city"         column="city"/>
+    <result property="region"       column="region"/>
+    <result property="postal"       column="postal"/>
+    <result property="country"      column="country"/>
+    <result property="shippingPref" column="shippingpref"/>
+    <result property="paymentPref"  column="paymentpref"/>
+    <result property="buyerNote"    column="buyernote"/>
+    <result property="wizardJson"   column="wizardjson"/>
+    <result property="confirmTime"  column="confirmtime"/>
+    <result property="shipTime"     column="shiptime"/>
+    <result property="finishTime"   column="finishtime"/>
+    <result property="buyerCode"    column="buyercode"/>
+    <result property="clientIp"     column="clientip"/>
+    <result property="handleUser"   column="handleuser"/>
+    <result property="handleTime"   column="handletime"/>
+    <result property="remark"       column="remark"/>
+    <result property="createTime"   column="createtime"/>
+    <result property="updateTime"   column="updatetime"/>
+  </resultMap>
+
+  <sql id="columns">
+    id, shop_code, sitecode, ordercode, status, source, lang, currency, subtotal, inquireonly,
+    contactname, email, company, phone,
+    addrline1, addrline2, city, region, postal, country,
+    shippingpref, paymentpref, buyernote,
+    confirmtime, shiptime, finishtime,
+    buyercode, clientip, handleuser, handletime, remark, createtime, updatetime
+  </sql>
+
+  <sql id="listWhere">
+    <where>
+      <if test="query.status != null and query.status != ''">
+         and status = #{query.status}</if>
+      <if test="query.source != null and query.source != ''">
+         and source = #{query.source}</if>
+      <if test="query.buyerCode != null and query.buyerCode != ''">
+         and buyercode = #{query.buyerCode}</if>
+      <!--
+        一个输入框查四个字段：单号、联系人、公司、邮箱。
+        运营手里通常只有其中一个——客户来信问进度时给的是单号或者他自己的邮箱。
+      -->
+      <if test="query.contactName != null and query.contactName != ''">
+         and (ordercode like concat('%', #{query.contactName}, '%')
+           or contactname like concat('%', #{query.contactName}, '%')
+           or company like concat('%', #{query.contactName}, '%')
+           or email like concat('%', #{query.contactName}, '%'))</if>
+    </where>
+  </sql>
+
+  <!-- 分页手写 offset/limit，没有 PageHelper。理由见 SiteInquiryMapper.xml 里那段 -->
+  <select id="selectList" resultMap="OrderResult">
+    select <include refid="columns"/>
+      from u_s_order
+    <include refid="listWhere"/>
+     order by createtime desc, id desc
+     limit #{offset}, #{limit}
+  </select>
+
+  <select id="countList" resultType="int">
+    select count(1) from u_s_order
+    <include refid="listWhere"/>
+  </select>
+
+  <!-- 详情多带一列 wizardjson（引导式下单的选配快照）。mediumtext，所以只在这里读、列表不带 -->
+  <select id="selectByCode" resultMap="OrderResult">
+    select <include refid="columns"/>, wizardjson
+      from u_s_order
+     where ordercode = #{orderCode}
+  </select>
+
+  <insert id="insert" parameterType="com.ruoyi.station.console.domain.SiteOrder"
+          useGeneratedKeys="true" keyProperty="id">
+    insert into u_s_order(
+      shop_code, sitecode, ordercode, status, source, lang, currency, subtotal, inquireonly,
+      contactname, email, company, phone,
+      addrline1, addrline2, city, region, postal, country,
+      shippingpref, paymentpref, buyernote, wizardjson, buyercode, clientip, createtime
+    ) values(
+      #{shopCode}, #{siteCode}, #{orderCode},
+      coalesce(#{status}, '待确认'), coalesce(#{source}, 'site'), #{lang},
+      coalesce(#{currency}, 'USD'), coalesce(#{subtotal}, 0), coalesce(#{inquireOnly}, 0),
+      #{contactName}, #{email}, #{company}, #{phone},
+      #{addrLine1}, #{addrLine2}, #{city}, #{region}, #{postal}, #{country},
+      #{shippingPref}, #{paymentPref}, #{buyerNote}, #{wizardJson}, #{buyerCode}, #{clientIp}, sysdate()
+    )
+  </insert>
+
+  <!--
+    推进状态 + 打对应的时间戳。
+
+    ⚠ 三个时间戳都走 `coalesce(旧值, 新值)`，也就是**只写一次**。
+      同一个状态被点两次（网络重试、两个人同时点），第二次不该把时间改晚——
+      那会让「什么时候发货的」变成「最后一次有人点发货是什么时候」。
+
+    ⚠ 状态本身不做流转校验，由 Service 层判（isCancelled 那些）。
+      SQL 里判会让「为什么没改成功」变成一个返回 0 行的谜。
+  -->
+  <update id="updateStatus" parameterType="com.ruoyi.station.console.domain.SiteOrder">
+    update u_s_order
+       set status = #{status},
+           confirmtime = <choose>
+             <when test="status == '已确认' or status == '已发货' or status == '已完成'">
+               coalesce(confirmtime, sysdate())</when>
+             <otherwise>confirmtime</otherwise>
+           </choose>,
+           shiptime = <choose>
+             <when test="status == '已发货' or status == '已完成'">
+               coalesce(shiptime, sysdate())</when>
+             <otherwise>shiptime</otherwise>
+           </choose>,
+           finishtime = <choose>
+             <when test="status == '已完成'">coalesce(finishtime, sysdate())</when>
+             <otherwise>finishtime</otherwise>
+           </choose>,
+           handleuser = #{handleUser},
+           handletime = sysdate()
+     where ordercode = #{orderCode}
+  </update>
+
+  <update id="updateRemark" parameterType="com.ruoyi.station.console.domain.SiteOrder">
+    update u_s_order
+       set remark = #{remark},
+           handleuser = #{handleUser},
+           handletime = sysdate()
+     where ordercode = #{orderCode}
+  </update>
+
+  <!--
+    客户档案是后于订单出现的（客户第一次下单时才建档），所以建档之后要把
+    这个邮箱的历史订单都挂上去。只补没挂过的，已经有 buyercode 的不动。
+  -->
+  <update id="bindBuyerByEmail">
+    update u_s_order
+       set buyercode = #{buyerCode}
+     where email = #{email}
+       and (buyercode is null or buyercode = '')
+  </update>
+
+  <select id="countByBuyer" resultType="int">
+    select count(1) from u_s_order where buyercode = #{buyerCode}
+  </select>
+
+  <!-- ==================== 改结算币种时的批量换算 ====================
+       为什么改一张已下的单不违背「订单是快照」，见 SiteOrderItemMapper.xml 里那段。 -->
+
+  <!--
+    换算前先数一遍：有多少张单的 subtotal 本来就和它的行对不上。
+
+    下面 convertSubtotal 把 subtotal **重算**成 sum(linetotal)，而不是拿旧 subtotal
+    乘汇率。重算才能保证换完之后「行加起来 = 小计」——按汇率各乘各的，
+    两边的四舍五入会在第 4 位上分家，买家拿计算器一对就发现对不上。
+
+    但重算有个副作用：库里原本就不自洽的单（历史上手工改过、或早期版本算法不同）
+    会被顺手改成一致。那是在修一个既有问题，方向没错，可它发生在一次
+    「我只是改了个币种」的操作里，静默做掉就成了一次没人察觉的数据变更。
+    所以先数出来、记进换算流水（u_s_currency_convert_log.mismatch），
+    运营在结果提示里看得到「顺带修正了 N 张」。
+
+    ⚠ coalesce 不能省：一张单如果一行都没有（理论上不该存在，但公开接口见过脏数据），
+      sum 返回 NULL，`subtotal <> NULL` 恒为 UNKNOWN，这张单永远数不出来也永远不被修。
+  -->
+  <select id="countSubtotalMismatch" resultType="int">
+    select count(1)
+      from u_s_order o
+     where o.sitecode = (select sitecode from u_s_siteinfo limit 1)
+       and o.subtotal &lt;&gt; coalesce(
+             (select sum(i.linetotal) from u_s_orderitem i where i.ordercode = o.ordercode), 0)
+  </select>
+
+  <!--
+    订单币种 + 小计。必须在订单行那两条之后跑——它读的是换算完的 linetotal。
+
+    ⚠ subtotal 的定义是「**有标价那部分**的小计，不含面议商品」。
+      这里直接 sum 全部行不是偷懒：面议行的 linetotal 恒为 0
+      （SiteOrderService#repriceLines 显式写成 0），加上去不影响结果。
+      inquireonly 那一列仍然单独记着有几行面议，不在这里动。
+
+    子查询查的是 u_s_orderitem、更新的是 u_s_order，不是同一张表，
+    不会撞上 MySQL 那条「不能在 UPDATE 的子查询里引用目标表」（错误 1093）。
+  -->
+  <update id="convertSubtotal">
+    update u_s_order o
+       set o.currency = #{toCode},
+           o.subtotal = coalesce(
+             (select sum(i.linetotal) from u_s_orderitem i where i.ordercode = o.ordercode), 0)
+     where o.sitecode = (select sitecode from u_s_siteinfo limit 1)
+  </update>
+</mapper>

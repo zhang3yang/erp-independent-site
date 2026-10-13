@@ -1,0 +1,288 @@
+# 项目相关配置
+ruoyi:
+  # 名称
+  name: RuoYi
+  # 版本
+  version: 3.9.2
+  # 版权年份
+  copyrightYear: 2026
+  # 文件路径 示例（ Windows配置D:/ruoyi/uploadPath，Linux配置 /home/ruoyi/uploadPath）
+  profile: C:/wczl-erp/uploadPath
+  # 获取ip地址开关
+  addressEnabled: false
+  # 验证码类型 math 数字计算 char 字符验证
+  captchaType: math
+  # 平台超级管理员用户 ID，默认保留 1；114 为 wczladmin 账号
+  super-admin-user-codes:
+    - us1
+    - us36
+  oss:
+    # ┌──────────────────────────────────────────────────────────────────────┐
+    # │ 这一段是【ERP 自己】的对象存储：头像、商品图、商家 Logo、通用上传。      │
+    # │ 固定用平台的阿里云，和独立站维护平台的文件资源完全隔离。                │
+    # └──────────────────────────────────────────────────────────────────────┘
+    #
+    # 独立站维护平台的图片/视频**不走这里**，走每个商家在「文件资源 → 存储设置」里
+    # 自己填的密钥（存 s_m_shop_storage 表），商家想用阿里云、华为云还是腾讯云自己定。
+    # 代码里两条路的分界：
+    #   OssStorageService.uploadImage/uploadFile → 读这一段配置  → ERP 用
+    #   OssStorageService.uploadTo(provider,cfg) → 读商家表配置  → 维护平台用
+    #
+    # 所以这里只配阿里云一家。华为云、腾讯云的 SDK 和实现类仍然在，
+    # 那是给商家在维护平台里选用的，不是给平台自己切换的——
+    # 真要把 ERP 也换个厂商，把 provider 改掉并补上对应的子节点即可
+    # （只改 provider 不补配置的话 isEnabled() 会变 false，上传回退到本地磁盘，不会误传到别处）。
+    enabled: true
+    provider: aliyun
+    # 商家在「文件资源 → 存储设置」里自填的密钥，落库前用这把主密钥做 AES-GCM 加密。
+    #
+    # 下面这个默认值**只是为了本地开发能跑起来**，它在代码仓库里，等于是把所有商家的密钥
+    # 用一把公开的锁锁上。生产环境必须用环境变量 OSS_CONFIG_SECRET 覆盖它——
+    # 用的是默认值时，后端启动日志里会有一条 WARN 提醒。
+    #
+    # ⚠ 换了这个值，所有商家已存的密钥都解不开，必须让他们重新填一次。
+    #   所以生产环境要在**第一个商家配置存储之前**就把环境变量设好，之后不要再动。
+    config-secret: "CHANGE_ME_BEFORE_RUNNING"
+    aliyun:
+      endpoint: http://oss-cn-beijing.aliyuncs.com
+      access-key-id: "CHANGE_ME_BEFORE_RUNNING"
+      access-key-secret: "CHANGE_ME_BEFORE_RUNNING"
+      bucket: wczlerp
+      # 使用默认公网域名时留空；使用 CDN/自定义域名时填写完整地址
+      #
+      # ⚠ 这一行是 **ERP 自己文件**（商品主数据、ERP 里传的附件）的落脚点，
+      #   保持 file.erp.vclinker.com 不动 —— 本次和以后都不用改。
+      #
+      #   独立站要用自己的存储（康辰的 file.kangchen.com，以及以后每个客户各自的），
+      #   走的是**商家存储**那套：ShopStorage 一个商家一套 endpoint / bucket / 密钥 /
+      #   publicUrl，上传时 OssStorageService.uploadTo() 用的是商家自己那份 config，
+      #   跟这里的全局配置无关。所以是**并存**，不是替换，不要改这一行去凑。
+      #
+      #   （toUrl() 是在上传那一刻把完整绝对地址拼好返回、由调用方整串入库的，
+      #    见 OssStorageService#toUrl。改全局值只影响新文件，老记录不会跟着变——
+      #    但按并存来做就不存在这个问题，老记录本来就该留在 file.erp。）
+      #
+      #   file.erp.vclinker.com 的 OSS 绑定永远不要撤，撤了历史图片全挂。
+      #   详见 docs/独立站部署手册（Windows）.md 附录 D.1。
+      public-url: https://file.erp.vclinker.com
+  # 跳到独立站管理台的**协议参数**。只有这两项，而且都和「跳到哪个站」无关。
+  #
+  # 流程（docs/独立站与ERP的边界.md §4）：ERP 在「独立站管理」里点「进入管理」→
+  # 后端用那个站登记的 consolesecret 签一张自包含令牌 → 前端用**隐藏表单 POST**
+  # 提交到 https://console.<该站主域名><sso-path> → 站点后端验签、在自己域下种会话。
+  #
+  # ⚠ 这里原来还有 base-url / client-id / client-secret 三项，全删了（§4.5）：
+  #   · base-url：管理台地址现在一站一份，从站点档案的 consoleDomain 派生。
+  #     留一个全局兜底反而会让 A 站的人跳到 B 站。
+  #   · client-id / client-secret：那是旧协议里「管理台拿票回调 ERP 换身份」用的凭据。
+  #     那条回调本身就是一条两边后端的互通，整条删了——现在 ERP 只签令牌，不提供兑换端点。
+  #
+  # 对应的类只剩两个字段，见 StationConsoleProperties。
+  station-console:
+    # 令牌有效期（秒），夹在 [10, 120]。⚠ 不要为了「用户点慢了」调大它：
+    # 新协议的令牌**本身就是凭据**，有效期直接等于重放窗口。
+    # 站点侧还会再夹一道（station.jump.max-age-seconds），这边配大了那边也不认。
+    token-ttl: 60
+    # 站点侧接收令牌的路径，拼在 https://console.<主域名> 后面当表单 action。
+    # 站点那个端点只接受 POST。
+    sso-path: /sso
+
+  # 跨域白名单。**只管 ERP 自己的接口**（带 Bearer token 的那些）。
+  #
+  # ⚠ 这里原来说 /openapi/site/** 不受约束、对任意来源开放。那组独立站前台的匿名取数接口
+  #   已经不在 ERP 上了（搬到 station-console 的 OpenApiController），
+  #   ERP 现在一个匿名跨域接口都没有，这个白名单管全部路径。
+  #
+  # 逗号分隔，支持 * 通配。localhost / 127.0.0.1 已经内置，不用写。
+  # 生产上至少要有 ERP 前端自己的域名，漏了它 ERP 前端会撞 CORS。
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://console.erp.vclinker.com}
+
+  # ⚠ 这里原来有一段 station-inquiry（独立站询盘的邮件通知发件配置）。
+  #
+  # 询盘整个搬到站点自己的后端了（§10.1），通知也在那边发——收件人在站点库
+  # u_s_siteinfo.notifyemail 上，发件配置在 station-console 的 application.yml。
+  # ERP 这边不再有任何代码读 ruoyi.station-inquiry.*，留着只会让人以为还要配。
+
+# 手机验证码登录。开发环境只打印验证码，生产环境替换 provider 和密钥配置。
+sms:
+  enabled: true
+  provider: aliyun
+  code-expire-seconds: 300
+  resend-seconds: 60
+  max-verify-failures: 5
+  aliyun:
+    region-id: cn-hangzhou
+    access-key-id: "CHANGE_ME_BEFORE_RUNNING"
+    access-key-secret: "CHANGE_ME_BEFORE_RUNNING"
+    template-code: SMS_112145005
+    out-id: ${ALIYUN_SMS_OUT_ID:}
+    signs:
+      gas: 油品位
+      sds: 三点水
+      ldy: 衣贵洁
+      default: 微创众联
+
+# 开发环境配置
+server:
+  # 服务器的HTTP端口，默认为8080
+  port: 8080
+  servlet:
+    # 应用的访问路径
+    context-path: /
+  tomcat:
+    # tomcat的URI编码
+    uri-encoding: UTF-8
+    # 连接数满后的排队数，默认为100
+    accept-count: 1000
+    threads:
+      # tomcat最大线程数，默认为200
+      max: 800
+      # Tomcat启动初始化的线程数，默认值10
+      min-spare: 100
+
+# 日志配置
+logging:
+  level:
+    com.ruoyi: debug
+    org.springframework: warn
+
+# 用户配置
+user:
+  password:
+    "CHANGE_ME_BEFORE_RUNNING"
+    maxRetryCount: 5
+    # 密码锁定时间（默认10分钟）
+    lockTime: 10
+
+# Spring配置
+spring:
+  # 资源信息
+  messages:
+    # 国际化资源文件路径
+    basename: i18n/messages
+
+  # ⚠ 这里原来有一段 spring.mail 的说明（配置放在 optional 的 application-mail.yml 里）。
+  #
+  # ERP 这边唯一的发信方是独立站的询盘通知，它整个搬到站点后端去了（§10.1），
+  # 所以 ERP 现在不发任何邮件——mail 依赖、application-mail.yml 那套都不再需要。
+  # 独立站那边的发件配置见 station-console/src/main/resources/application.yml。
+  #
+  # 以后 ERP 自己真要发信（对账单、审批提醒之类），照当时的需求重新加，
+  # 不要照搬这一套——它当初的形状是为「没配就静默跳过」这个降级要求设计的。
+  profiles:
+    active: druid
+  # 本地开发的个人覆盖文件。可选、不进版本库（见 .gitignore）。
+  #
+  # 「只在这台机器上成立」的值放这里——本地的管理台地址、联调用的密钥——
+  # 而不是去改下面那些配置项的默认值。改默认值的那种改动最容易跟着上线。
+  #
+  # 导入进来的文件优先级**高于**本文件；文件不存在时静默跳过，
+  # 所以生产上没有它一切照旧，不用为它加任何部署步骤。
+  config:
+    import:
+      # 从 ruoyi-admin 目录启动（IDE 里跑 RuoYiApplication 的默认工作目录）
+      - optional:file:./application-local.yml
+      # 从 RuoYi-Vue 目录启动（mvn -pl ruoyi-admin spring-boot:run）
+      - optional:file:./ruoyi-admin/application-local.yml
+      # 从仓库根目录启动
+      - optional:file:./RuoYi-Vue/ruoyi-admin/application-local.yml
+      # ⚠ 这里原来还导入三份 application-mail.yml（独立站询盘通知的发件配置）。
+      #   询盘搬到站点后端了，ERP 不再发信，这三条一起删。
+      # 工作目录被设成 target/ 之类的子目录时
+      - optional:file:../application-local.yml
+  # 文件上传
+  servlet:
+    multipart:
+      # 单个文件大小。独立站文件资源要传视频，10MB 放不下一段几十秒的 1080p，
+      # 这里放到 200MB；再大的素材应该让商家直接传到自己的对象存储控制台。
+      max-file-size: 200MB
+      # 总上传大小。留出余量给同时传多个文件的情况
+      max-request-size: 220MB
+  jackson:
+    time-zone: GMT+8
+    date-format: yyyy-MM-dd HH:mm:ss
+  # 服务模块
+  devtools:
+    restart:
+      # 热部署开关
+      enabled: true
+  data:
+    # redis 配置
+    redis:
+      # 地址
+      host: 127.0.0.1
+      # 端口，默认为6379
+      port: 6379
+      # 数据库索引
+      database: 0
+      # 密码
+      password: "CHANGE_ME_BEFORE_RUNNING"
+      # 连接超时时间
+      timeout: 10s
+      lettuce:
+        pool:
+          # 连接池中的最小空闲连接
+          min-idle: 0
+          # 连接池中的最大空闲连接
+          max-idle: 8
+          # 连接池的最大数据库连接数
+          max-active: 8
+          # #连接池最大阻塞等待时间（使用负值表示没有限制）
+          max-wait: -1ms
+
+# token配置
+token:
+  # 令牌自定义标识
+  header: Authorization
+  # 令牌密钥
+  secret: "CHANGE_ME_BEFORE_RUNNING"
+  # 令牌有效期（分钟）。1440 = 24小时，期间只要有请求就自动续期，连续 24 小时无操作才需重新登录
+  expireTime: 1440
+  # 续期间隔（分钟）。距上次续期超过该时长的请求才会重写 Redis，避免每个请求都写一次
+  refreshTime: 5
+
+# MyBatis配置
+mybatis:
+  # 搜索指定包别名
+  typeAliasesPackage: com.ruoyi.**.domain
+  # 配置mapper的扫描，找到所有的mapper.xml映射文件
+  mapperLocations: classpath*:mapper/**/*Mapper.xml
+  # 加载全局的配置文件
+  configLocation: classpath:mybatis/mybatis-config.xml
+
+# PageHelper分页插件
+pagehelper:
+  helperDialect: mysql
+  supportMethodsArguments: true
+  params: count=countSql
+
+# Springdoc配置
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    tags-sorter: alpha
+  group-configs:
+    - group: 'default'
+      display-name: '测试模块'
+      paths-to-match: '/**'
+      packages-to-scan: com.ruoyi.web.controller.tool
+
+# 防盗链配置
+referer:
+  # 防盗链开关
+  enabled: false
+  # 允许的域名列表
+  allowed-domains: localhost,127.0.0.1,ruoyi.vip,www.ruoyi.vip
+
+# 防止XSS攻击
+xss:
+  # 过滤开关
+  enabled: true
+  # 排除链接（多个用逗号分隔）
+  excludes: /system/notice
+  # 匹配链接
+  urlPatterns: /system/*,/monitor/*,/tool/*

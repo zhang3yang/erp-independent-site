@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  文件资源的文件夹。
+
+  ⚠ 每条语句都带 `mediatype`：图片和视频是两棵独立的树。少了它，
+    视频页签上会冒出图片的文件夹，而且删除、判重名全会串到另一棵树上去。
+
+  和别的 mapper 一样不带 `where shop_code = #{shopCode}`：一台机器一个站，
+  库里的文件夹就是这个站的全部文件夹，那一列是搬迁留下的遗留列。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteFolderMapper">
+
+  <resultMap id="FolderResult" type="com.ruoyi.station.console.domain.SiteFolder">
+    <result property="folderId"   column="folderid"/>
+    <result property="shopCode"   column="shop_code"/>
+    <result property="siteCode"   column="sitecode"/>
+    <result property="mediaType"  column="mediatype"/>
+    <result property="parentId"   column="parentid"/>
+    <result property="folderName" column="foldername"/>
+    <result property="sort"       column="sort"/>
+    <result property="createtime" column="createtime"/>
+    <result property="updatetime" column="updatetime"/>
+    <result property="createBy"   column="create_by"/>
+    <result property="updateBy"   column="update_by"/>
+  </resultMap>
+
+  <!-- 只有 folderId 和 fileCount 两个字段有值的投影，不是完整实体 -->
+  <resultMap id="FolderCountResult" type="com.ruoyi.station.console.domain.SiteFolder">
+    <result property="folderId"  column="folderid"/>
+    <result property="fileCount" column="cnt"/>
+  </resultMap>
+
+  <sql id="columns">
+    folderid, shop_code, sitecode, mediatype, parentid, foldername, sort,
+    createtime, updatetime, create_by, update_by
+  </sql>
+
+  <!--
+    ⚠ 排序里 parentid 要放在最前面，而且 NULL 要排在前。
+      Service 拼树时是「一遍扫过去，父行必定已经建好」的写法，顶层（parentid 为 NULL）
+      必须先出现。MySQL 的 ORDER BY 默认 NULL 最小，正合适。
+  -->
+  <select id="selectByType" resultMap="FolderResult">
+    select <include refid="columns"/>
+      from u_s_sitefolder
+     where mediatype = #{mediaType}
+     order by parentid, sort, foldername
+  </select>
+
+  <select id="selectById" resultMap="FolderResult">
+    select <include refid="columns"/>
+      from u_s_sitefolder
+     where folderid = #{folderId}
+  </select>
+
+  <!--
+    同级重名判断。⚠ parentId 为 null 时必须用 `is null` 而不是 `= null`——
+    后者永远不成立，顶层文件夹就能建出一堆同名的。
+  -->
+  <select id="countByName" resultType="int">
+    select count(*)
+      from u_s_sitefolder
+     where mediatype = #{mediaType}
+       and foldername = #{folderName}
+    <choose>
+      <when test="parentId != null and parentId != ''">
+       and parentid = #{parentId}
+      </when>
+      <otherwise>
+       and parentid is null
+      </otherwise>
+    </choose>
+    <if test="excludeId != null and excludeId != ''">
+       and folderid != #{excludeId}
+    </if>
+  </select>
+
+  <select id="countChildren" resultType="int">
+    select count(*) from u_s_sitefolder where parentid = #{folderId}
+  </select>
+
+  <insert id="insert">
+    insert into u_s_sitefolder
+      (folderid, shop_code, sitecode, mediatype, parentid, foldername, sort, create_by)
+    values
+      (#{folderId}, #{shopCode}, #{siteCode}, #{mediaType}, #{parentId}, #{folderName},
+       #{sort}, #{createBy})
+  </insert>
+
+  <!-- 只让改名字、挪位置和排序。mediatype 不给改：换一棵树等于把里面的文件也换类型 -->
+  <update id="update">
+    update u_s_sitefolder
+    <set>
+      <if test="folderName != null and folderName != ''">foldername = #{folderName},</if>
+      <if test="sort != null">sort = #{sort},</if>
+      <if test="parentId != null">parentid = #{parentId},</if>
+      <if test="updateBy != null">update_by = #{updateBy},</if>
+    </set>
+     where folderid = #{folderId}
+  </update>
+
+  <update id="moveToRoot">
+    update u_s_sitefolder
+       set parentid = null, update_by = #{updateBy}
+     where folderid = #{folderId}
+  </update>
+
+  <delete id="deleteById">
+    delete from u_s_sitefolder where folderid = #{folderId}
+  </delete>
+
+  <!--
+    每个文件夹里直接装了多少文件。图片、视频、模型三张表结构不同，靠 mediatype 选一张。
+    只统计 folderid 非空的行——根目录那些不属于任何文件夹，不需要计数。
+  -->
+  <select id="countFiles" resultMap="FolderCountResult">
+    <choose>
+      <when test="mediaType == 'video'">
+        select folderid, count(*) as cnt from u_s_sitevideo
+      </when>
+      <when test="mediaType == 'model'">
+        select folderid, count(*) as cnt from u_s_sitemodel
+      </when>
+      <otherwise>
+        select folderid, count(*) as cnt from u_s_siteimage
+      </otherwise>
+    </choose>
+     where folderid is not null
+     group by folderid
+  </select>
+
+</mapper>

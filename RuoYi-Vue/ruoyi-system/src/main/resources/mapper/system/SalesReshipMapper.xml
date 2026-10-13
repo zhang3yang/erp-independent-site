@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.SalesReshipMapper">
+
+  <resultMap id="ReshipResult" type="SalesReship">
+    <result property="id" column="id"/><result property="shopCode" column="shop_code"/>
+    <result property="reshipCode" column="reshipcode"/>
+    <result property="originalOrderCode" column="originalordercode"/>
+    <result property="originalOrderSuffix" column="originalordersuffix"/>
+    <result property="platOrderId" column="platorderid"/>
+    <result property="platCode" column="platcode"/><result property="platName" column="platname"/>
+    <result property="shopStoreCode" column="shopstorecode"/><result property="shopStoreName" column="shopstorename"/>
+    <result property="receivePerson" column="receiveperson"/><result property="receiveAddress" column="receiveaddress"/>
+    <result property="receiveTelephone" column="receivetelephone"/><result property="receiveZipCode" column="receivezipcode"/>
+    <result property="warehouseCode" column="warehousecode"/><result property="warehouseName" column="warehousename"/>
+    <result property="carrier" column="carrier"/><result property="logisticsNo" column="logisticsno"/>
+    <result property="status" column="status"/><result property="outboundDocCode" column="outbounddoccode"/>
+    <result property="createUser" column="createuser"/><result property="createUserName" column="create_user_name"/>
+    <result property="createTime" column="createtime"/><result property="shipUser" column="shipuser"/>
+    <result property="shipTime" column="shiptime"/><result property="updateTime" column="updatetime"/>
+    <result property="remark" column="remark"/><result property="totalQty" column="total_qty"/>
+  </resultMap>
+
+  <sql id="columns">
+    id, shop_code, reshipcode, originalordercode, originalordersuffix, platorderid,
+    platcode, platname, shopstorecode, shopstorename,
+    receiveperson, receiveaddress, receivetelephone, receivezipcode,
+    warehousecode, warehousename, carrier, logisticsno, status, outbounddoccode,
+    createuser, createtime, shipuser, shiptime, updatetime, remark
+  </sql>
+
+  <select id="selectList" resultMap="ReshipResult">
+    select r.*, cu.nick_name as create_user_name,
+           (select coalesce(sum(d.qty), 0) from sdsorder.u_o_sales_reship_detail d
+             where d.shop_code = r.shop_code and d.reshipcode = r.reshipcode) as total_qty
+      from sdsorder.u_o_sales_reship r
+      left join sys_user cu on cu.user_name = r.createuser
+     where r.shop_code = #{shopCode}
+    <if test="reshipCode != null and reshipCode != ''"> and r.reshipcode like concat('%', #{reshipCode}, '%')</if>
+    <if test="originalOrderCode != null and originalOrderCode != ''"> and r.originalordercode like concat('%', #{originalOrderCode}, '%')</if>
+    <!-- 横向权限：没有 order:salesreship:all 的人只看得到自己建的补发单 -->
+    <if test="ownerScope != null"> and r.createuser = #{ownerScope}</if>
+    <if test="status != null and status != ''"> and r.status = #{status}</if>
+    <if test="receivePerson != null and receivePerson != ''"> and r.receiveperson like concat('%', #{receivePerson}, '%')</if>
+     order by r.createtime desc, r.reshipcode desc
+  </select>
+
+  <select id="selectByCode" resultMap="ReshipResult">
+    select r.*, cu.nick_name as create_user_name,
+           (select coalesce(sum(d.qty), 0) from sdsorder.u_o_sales_reship_detail d
+             where d.shop_code = r.shop_code and d.reshipcode = r.reshipcode) as total_qty
+      from sdsorder.u_o_sales_reship r
+      left join sys_user cu on cu.user_name = r.createuser
+     where r.shop_code = #{shopCode} and r.reshipcode = #{reshipCode}
+  </select>
+
+  <select id="selectByCodeForUpdate" resultMap="ReshipResult">
+    select <include refid="columns"/>
+      from sdsorder.u_o_sales_reship
+     where shop_code = #{shopCode} and reshipcode = #{reshipCode}
+     for update
+  </select>
+
+  <select id="selectByOriginalOrder" resultMap="ReshipResult">
+    select <include refid="columns"/>
+      from sdsorder.u_o_sales_reship
+     where shop_code = #{shopCode} and originalordercode = #{originalOrderCode}
+  </select>
+
+  <select id="selectOriginalOrderCodes" resultType="string">
+    select originalordercode from sdsorder.u_o_sales_reship where shop_code = #{shopCode}
+  </select>
+
+  <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+    insert into sdsorder.u_o_sales_reship
+      (shop_code, reshipcode, originalordercode, originalordersuffix, platorderid,
+       platcode, platname, shopstorecode, shopstorename,
+       receiveperson, receiveaddress, receivetelephone, receivezipcode,
+       warehousecode, warehousename, carrier, logisticsno, status,
+       createuser, createtime, remark)
+    values
+      (#{shopCode}, #{reshipCode}, #{originalOrderCode}, #{originalOrderSuffix}, #{platOrderId},
+       #{platCode}, #{platName}, #{shopStoreCode}, #{shopStoreName},
+       #{receivePerson}, #{receiveAddress}, #{receiveTelephone}, #{receiveZipCode},
+       #{warehouseCode}, #{warehouseName}, #{carrier}, #{logisticsNo}, #{status},
+       #{createUser}, sysdate(), #{remark})
+  </insert>
+
+  <update id="updateShipped">
+    update sdsorder.u_o_sales_reship
+       set status = '已发货', carrier = #{carrier}, logisticsno = #{logisticsNo},
+           outbounddoccode = #{outboundDocCode}, shipuser = #{shipUser}, shiptime = sysdate(),
+           updatetime = sysdate()
+     where shop_code = #{shopCode} and reshipcode = #{reshipCode} and status = '待发货'
+  </update>
+
+  <!--
+    只删得掉待发货的单。已发货的补发单背后有一张已审核的出库单和库存流水，
+    删了账就断了；状态条件写在 where 里，并发下也不会把刚发出去的单删掉。
+  -->
+  <delete id="deletePending">
+    delete from sdsorder.u_o_sales_reship
+     where shop_code = #{shopCode} and reshipcode = #{reshipCode} and status = '待发货'
+  </delete>
+</mapper>

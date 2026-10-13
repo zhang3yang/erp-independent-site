@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.BuyerMapper">
+
+  <resultMap id="BuyerResult" type="com.ruoyi.system.domain.Buyer">
+    <result property="shopCode"      column="shop_code"/>
+    <result property="buyerCode"     column="buyercode"/>
+    <result property="imageUrl"      column="imageurl"/>
+    <result property="shopImage"     column="shopimage"/>
+    <result property="buyerShop"     column="buyershop"/>
+    <result property="buyerUser"     column="buyeruser"/>
+    <result property="buyerType"     column="buyertype"/>
+    <result property="buyerSimple"   column="buyersimple"/>
+    <result property="buyerFull"     column="buyerfull"/>
+    <result property="staffCode"     column="staffcode"/>
+    <result property="staffName"     column="staffname"/>
+    <result property="contactPerson" column="contactperson"/>
+    <result property="mobile"        column="mobile"/>
+    <result property="telephone"     column="telephone"/>
+    <result property="address"       column="address"/>
+    <result property="starRating"    column="starrating"/>
+    <result property="partnerCode"   column="partnercode"/>
+    <result property="sysUserCode"   column="sysusercode"/>
+    <result property="activeFlag"    column="activeflag"/>
+    <result property="remark"        column="remark"/>
+    <result property="createUser"    column="createuser"/>
+    <result property="createTime"    column="createtime"/>
+    <result property="updateUser"    column="updateuser"/>
+    <result property="updateTime"    column="updatetime"/>
+    <!-- 非数据库列，只有 selectList 会带出来 -->
+    <result property="buyer2Count"   column="buyer2_count"/>
+  </resultMap>
+
+  <sql id="columns">
+    shop_code, buyercode, imageurl, shopimage, buyershop, buyeruser, buyertype,
+    buyersimple, buyerfull, staffcode, staffname, contactperson, mobile, telephone,
+    address, starrating, partnercode, sysusercode, activeflag, remark,
+    createuser, createtime, updateuser, updatetime
+  </sql>
+
+  <!-- 二级客户数走相关子查询，与 OrderPlatformMapper 的 store_count 同一套写法：
+       u_m_buyer2 上有 (shop_code, buyercode) 索引，一页十几行的代价可以忽略。
+       历史订单数不能这么干——那个要跨所有订单月表，只在详情页单独算。 -->
+  <select id="selectList" resultMap="BuyerResult">
+    select <include refid="columns"/>,
+           (select count(1) from sdsshop.u_m_buyer2 b2
+             where b2.shop_code = b.shop_code and b2.buyercode = b.buyercode) buyer2_count
+      from sdsshop.u_m_buyer b
+     where shop_code = #{query.shopCode}
+    <if test="query.buyerCode != null and query.buyerCode != ''">
+      and buyercode like concat('%', #{query.buyerCode}, '%')</if>
+    <!-- 简称和全称合并成一个「客户名称」输入框：业务员记得住哪个就搜哪个 -->
+    <if test="query.buyerSimple != null and query.buyerSimple != ''">
+      and (buyersimple like concat('%', #{query.buyerSimple}, '%')
+        or buyerfull like concat('%', #{query.buyerSimple}, '%'))</if>
+    <if test="query.mobile != null and query.mobile != ''">
+      and mobile like concat('%', #{query.mobile}, '%')</if>
+    <if test="query.contactPerson != null and query.contactPerson != ''">
+      and contactperson like concat('%', #{query.contactPerson}, '%')</if>
+    <if test="query.staffCode != null and query.staffCode != ''">
+      and staffcode = #{query.staffCode}</if>
+    <if test="query.buyerType != null and query.buyerType != ''">
+      and buyertype = #{query.buyerType}</if>
+    <if test="query.starRating != null">
+      and starrating = #{query.starRating}</if>
+    <if test="query.activeFlag != null">
+      and activeflag = #{query.activeFlag}</if>
+     order by activeflag desc, createtime desc, buyercode desc
+  </select>
+
+  <select id="selectByCode" resultMap="BuyerResult">
+    select <include refid="columns"/>
+      from sdsshop.u_m_buyer
+     where shop_code = #{shopCode} and buyercode = #{buyerCode}
+  </select>
+
+  <!-- mobile 为空直接返回空集：没填手机号不算占用，否则两个都没填的客户会互相认成重复 -->
+  <select id="selectByMobile" resultMap="BuyerResult">
+    select <include refid="columns"/>
+      from sdsshop.u_m_buyer
+     where shop_code = #{shopCode}
+       and mobile = #{mobile}
+       and #{mobile} is not null
+     limit 1
+  </select>
+
+  <!-- 订单页选择器：只出启用客户，字段裁剪到够展示即可，不返回备注地址这些大字段 -->
+  <select id="selectSelectorList" resultMap="BuyerResult">
+    select shop_code, buyercode, imageurl, shopimage, buyersimple, buyerfull,
+           contactperson, mobile, buyeruser, buyertype, starrating, activeflag
+      from sdsshop.u_m_buyer
+     where shop_code = #{shopCode}
+       and activeflag = 1
+    <if test="keyword != null and keyword != ''">
+      and (buyercode like concat('%', #{keyword}, '%')
+        or buyersimple like concat('%', #{keyword}, '%')
+        or buyerfull like concat('%', #{keyword}, '%')
+        or contactperson like concat('%', #{keyword}, '%')
+        or mobile like concat('%', #{keyword}, '%'))</if>
+     order by createtime desc, buyercode desc
+     limit #{limit}
+  </select>
+
+  <insert id="insert" parameterType="com.ruoyi.system.domain.Buyer">
+    insert into sdsshop.u_m_buyer(
+      shop_code, buyercode, imageurl, shopimage, buyershop, buyeruser, buyertype,
+      buyersimple, buyerfull, staffcode, staffname, contactperson, mobile, telephone,
+      address, starrating, partnercode, sysusercode, activeflag, remark,
+      createuser, createtime
+    ) values(
+      <!-- buyershop/buyeruser 同订单主表：20260903_station_erp_split.sql 第 3 节把它们收成了
+           NOT NULL DEFAULT ''（boundary 要点 6）。列出现在 insert 里，DEFAULT 就不生效，
+           而这里 buyerShop 是被服务层显式置 null 的，必须在 SQL 侧折成空串。 -->
+      #{shopCode}, #{buyerCode}, #{imageUrl}, #{shopImage},
+      coalesce(#{buyerShop}, ''), coalesce(#{buyerUser}, ''),
+      coalesce(#{buyerType}, '1'), #{buyerSimple}, #{buyerFull}, #{staffCode}, #{staffName},
+      #{contactPerson}, #{mobile}, #{telephone}, #{address}, coalesce(#{starRating}, 0),
+      #{partnerCode}, #{sysUserCode}, coalesce(#{activeFlag}, 1), #{remark},
+      #{createUser}, sysdate()
+    )
+  </insert>
+
+  <!-- buyercode / shop_code / sysusercode 不在可改列里：
+       前两个是主键，第三个是二期客户账号的绑定关系，都不该由客户资料页改。 -->
+  <update id="update" parameterType="com.ruoyi.system.domain.Buyer">
+    update sdsshop.u_m_buyer
+       set imageurl = #{imageUrl},
+           shopimage = #{shopImage},
+           buyeruser = coalesce(#{buyerUser}, ''),   <!-- NOT NULL 列，前端清空时传的是 null -->
+           buyertype = coalesce(#{buyerType}, buyertype),
+           buyersimple = #{buyerSimple},
+           buyerfull = #{buyerFull},
+           staffcode = #{staffCode},
+           staffname = #{staffName},
+           contactperson = #{contactPerson},
+           mobile = #{mobile},
+           telephone = #{telephone},
+           address = #{address},
+           starrating = coalesce(#{starRating}, starrating),
+           partnercode = #{partnerCode},
+           activeflag = coalesce(#{activeFlag}, activeflag),
+           remark = #{remark},
+           updateuser = #{updateUser},
+           updatetime = sysdate()
+     where shop_code = #{shopCode} and buyercode = #{buyerCode}
+  </update>
+
+  <delete id="deleteByCodes">
+    delete from sdsshop.u_m_buyer
+     where shop_code = #{shopCode}
+       and buyercode in
+    <foreach item="code" collection="buyerCodes" open="(" separator="," close=")">
+      #{code}
+    </foreach>
+  </delete>
+
+  <!-- tableSuffix 拼进表名，调用方必须先过 MonthTableSuffix.require 校验 -->
+  <select id="countOrdersInMonth" resultType="int">
+    select count(1) from sdsorder.u_o_order_${tableSuffix}
+     where shop_code = #{shopCode} and buyercode = #{buyerCode}
+  </select>
+
+</mapper>

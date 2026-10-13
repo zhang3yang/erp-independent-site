@@ -1,0 +1,412 @@
+# 独立站后端。
+#
+# 一台机器 = 一个站。这个服务装着这个站的全部：前台开放接口、管理台接口、
+# 本站的用户体系、本站的库。它**不认识 ERP**——ERP 整个停掉，除了「从 ERP 点进入管理」
+# 这一个动作用不了，其余功能照常（docs/独立站与ERP的边界.md §13 第 1 条）。
+#
+# ⚠ 全文没有一个指向 ERP 的地址。加之前先读 pom.xml 顶部那段。
+
+server:
+  port: 8081
+  servlet:
+    session:
+      # 8 小时。以前是 2 小时，因为那时候身份来自 ERP 的票、掉线了回 ERP 重点一次就行。
+      # ⚠ 这里原来写的是「现在管理台有自己的登录页，掉线要重新输密码」——**没有这回事**：
+      #   管理台没有登录页（SessionController 只剩 POST /api/auth/logout），
+      #   唯一入口是从 ERP 点「进入管理」。8 小时这个值保持不变，理由改成
+      #   「运营一天要连着用、频繁重新从 ERP 跳进来太烦」。2026-09-18 订正。
+      timeout: 8h
+      # ⚠ 只用 Cookie 传会话，绝不能带上 url。
+      #
+      # 默认（cookie + url）下，Tomcat 在还不确定客户端收不收 Cookie 的那一次响应里，
+      # 会把 session id 重写进重定向地址——于是 /sso 之后的 Location 长这样：
+      #     Location: https://console.example.com/;CONSOLE_SESSION=6266859...
+      # 会话 id 就这么进了浏览器历史、Referer 和 Nginx access log。
+      tracking-modes: cookie
+      cookie:
+        name: CONSOLE_SESSION
+        http-only: true
+        path: /
+        # ⚠ same-site 必须是 lax，不能改成 strict。
+        #
+        # 从 ERP 进管理台的第一跳是**跨站 POST 表单提交**（boundary §4.2 第②步），
+        # 之后 302 到管理台首页。strict 的 Cookie 不会被带到那一跳上——
+        # 表现是「从 ERP 点进来立刻被弹回登录页」，而且本地手动刷新一切正常，非常难查。
+        #
+        # 跨站 POST 的**响应**里 Set-Cookie 是允许的（Lax 限制的是「跨站请求带不带 Cookie」，
+        # 不是「跨站响应能不能种 Cookie」）；第⑤步 302 之后是同站顶级 GET 导航，Lax 放行。
+        same-site: lax
+        # 生产必须 true（只走 HTTPS）。本地 http 调试时用环境变量关掉，
+        # 别为了本地方便把默认值改成 false——那种改动最容易跟着上线。
+        secure: ${CONSOLE_COOKIE_SECURE:true}
+
+spring:
+  application:
+    name: station-console
+
+  # ==================== 数据源 ====================
+  #
+  # ⚠ 只配这一个库，指着**本机**。
+  #
+  # boundary §5.1：两边的数据库在网络上互不可达。这台机器的 3306 只监听 127.0.0.1，
+  # 安全组里不开 3306。填一个远程地址进来，就是把那条边界从「防火墙拦着」
+  # 降级成「大家都别写跨库 SQL」的约定——约定守不住。
+  datasource:
+    url: "CHANGE_ME_BEFORE_RUNNING"
+    username: "CHANGE_ME_BEFORE_RUNNING"
+    password: "CHANGE_ME_BEFORE_RUNNING"
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # 一个站的量级，10 个连接绰绰有余。给大了只是让 MySQL 那边多占内存
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 5000
+
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 220MB
+      # 阈值 0 = 一律先落到临时目录，不在内存里攒。
+      # 上传是流着写到磁盘的，几个人同时传 200MB 也不会把堆吃光。
+      file-size-threshold: 0
+
+  # 本地开发的个人覆盖文件。可选、不进版本库（见 .gitignore）。
+  config:
+    import:
+      # IDE 里跑 StationConsoleApplication 的默认工作目录
+      - optional:file:./application-local.yml
+      # 从仓库根目录启动
+      - optional:file:./station-console/application-local.yml
+      # 询盘邮件的 SMTP 账号密码。单独一个文件、不进版本库，理由见下面 spring.mail 那段。
+      # 生产上放在 jar 同一个目录（运维手册阶段 8）
+      - optional:file:./application-mail.yml
+      - optional:file:./station-console/application-mail.yml
+
+  # 会话存 Redis：服务重启不踢人，将来多开一个实例也不用改代码。
+  # 跳转令牌的 jti 防重放也用它。
+  session:
+    timeout: 8h
+    # ⚠ 前缀是 `spring.session.data.redis`，不是 `spring.session.redis`。
+    #
+    # 这里原来写的是后者（Boot 3 的写法）。它不报错、不警告，只是**不生效**——
+    # 会话照样进 Redis，但 key 落在默认命名空间 `spring:session:sessions:*` 上，
+    # 而不是下面这个。查的时候是这样发现的：
+    #
+    #     redis-cli keys '*' | grep session
+    #       → spring:session:sessions:c6b13ebe-…   ← 不是 station:console:session:*
+    #
+    # 为什么必须是自己的命名空间：这台机器上 **Redis 和 ERP 是共用的**
+    # （db 0 里现在就有 ERP 的 sys_config / login_tokens / inventory:* 几十个 key）。
+    # 用默认命名空间的话，哪天 ERP 那边也上 spring-session，两个应用的会话就撞在
+    # 同一批 key 上——表现是互相把对方的人踢下线，而且极难联想到原因。
+    #
+    # Boot 4 把 session 的 starter 按存储后端拆开了，属性前缀跟着挪到了
+    # `spring.session.data.redis`（见 spring-boot-session-data-redis-4.0.6.jar 里
+    # SessionDataRedisAutoConfiguration 的 @ConfigurationProperties）。
+    data:
+      redis:
+        namespace: station:console:session
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      database: ${REDIS_DATABASE:0}
+      password: "CHANGE_ME_BEFORE_RUNNING"
+      timeout: 10s
+
+  # ⚠ 询盘邮件的 spring.mail 配置**不在这里**，在 application-mail.yml 里
+  #   （上面 spring.config.import 可选导入，模板见 application-mail.yml.example）。
+  #
+  # 原来这里是这么写的：
+  #
+  #     mail:
+  #       host: ${MAIL_HOST:}
+  #       port: ${MAIL_PORT:465}
+  #       ...
+  #
+  # 那样写有一个**静默的坑**，而且它让 InquiryNotifier 那条「没配 SMTP 就正常降级」
+  # 的路径永远走不到：
+  #
+  #   Spring Boot 的 MailSenderAutoConfiguration 条件是
+  #   `@ConditionalOnProperty(prefix="spring.mail", name="host")`——它判的是
+  #   「属性**存在**且不等于 false」。而 `${MAIL_HOST:}` 在环境变量没设时给出的是
+  #   **空串，不是缺失**：属性存在，条件成立，于是 Boot 建出一个 host="" 的
+  #   JavaMailSender。结果 InquiryNotifier 里 `mailSender == null` 那一支永远不成立，
+  #   启动日志上是一条 ERROR「配了 SMTP 但没有发件人」——听着像配漏了一项，
+  #   其实是压根没打算配邮件。
+  #
+  # 这和这个文件下面 notify-from 那条注释说的是同一个陷阱：占位符的默认值只在属性
+  # **缺失**时生效。属性一旦写出来就存在了，写不出「不存在」这个状态。
+  #
+  # 所以整块挪进一个可选导入的文件：不配那个文件 → 属性真的缺失 → Boot 不建 bean →
+  # 日志是 INFO「未配置 SMTP，收到询盘只入库不发信」，这才是那句注释描述的行为。
+  # 这也是 ERP 侧原来的做法（那边是 ruoyi-admin/application-mail.yml），运维手册
+  # docs/独立站部署手册（Windows）.md 的遗留问题清单里「未配 SMTP」那条说的就是
+  # 「丢一个文件进去」这个做法。
+
+mybatis:
+  mapper-locations: classpath*:mapper/*.xml
+  type-aliases-package: com.ruoyi.station.console.domain
+  configuration:
+    # 库里是 snake_case、Java 里是 camelCase。开着它，resultMap 里只需要写
+    # 对不上的那几个（sitecode → siteCode 这种连下划线都没有的）
+    map-underscore-to-camel-case: true
+
+# ==================== 本站自己的配置 ====================
+station:
+  # 文件存本地磁盘，由 file.<主域名> 直接对外（boundary §10.3.8）。
+  #
+  # 为什么不是对象存储：ERP 那套是「一个平台服务 N 个商家，每个商家自填密钥」，
+  # 所以要有 s_m_shop_storage 那张表和三个厂商的 SDK。这里一台机器一个站，
+  # 图片就在这台机器的磁盘上，nginx 直接发——少三个 SDK、少一套密钥管理。
+  #
+  # 要换成对象存储时，u_s_storage 那张表已经在了（结构照抄 s_m_shop_storage），
+  # 补一个实现即可，不用改表。
+  upload:
+    # nginx 里 file.<主域名> 的 root 指向这里
+    dir: ${STATION_UPLOAD_DIR:/data/station/upload}
+    # 拼进 imageurl / videourl 的前缀。⚠ 必须和 nginx 里 file 子域的配置对得上，
+    # 否则库里存的地址指向一个 404——而且存的是**完整 URL**，改起来要动历史数据。
+    #
+    # ⚠ 默认留空，不给假域名兜底：留空时上传会直接失败并说清原因（见 SiteFileService），
+    #   而填一个 https://file.example.com 这种占位值的后果是「上传成功了，
+    #   但每张图都是死链」——那种错要等到有人打开页面才发现。
+    #
+    # 本地开发填 http://127.0.0.1:8081/files ——station-console 自己把上传目录
+    # 挂在 /files/** 上了（见 WebMvcConfig.addResourceHandlers），不用装 nginx。
+    base-url: ${STATION_FILE_BASE_URL:}
+    # 允许的扩展名。白名单不是黑名单——黑名单永远漏
+    #
+    # ⚠ svg 拿掉了，别加回来。SVG 是一份可以内嵌 <script> 的 XML 文档，而这些文件
+    #   由 file.<主域名> 以原始 Content-Type 直接发出去——浏览器打开一个 .svg
+    #   就会执行里面的脚本。它是这份白名单里唯一一个能执行脚本的格式。
+    #   详细理由和「真要支持矢量图该怎么做」写在 StationProperties.Upload.imageExt 上。
+    image-ext: jpg,jpeg,png,gif,webp,bmp
+    video-ext: mp4,webm,mov,m4v
+    # 3D 模型只收 glb。gltf 是多文件格式（外链 .bin 和贴图），单文件传上去必裂，
+    # 理由写在 StationProperties.Upload.modelExt 上
+    model-ext: glb
+
+  # ==================== 询盘限流 ====================
+  #
+  # POST /openapi/site/inquiry 是整个服务唯一对公网开放的写接口：匿名、无会话、无验证码。
+  # 在此之前它只有一个蜜罐字段挡着，而蜜罐挡的是通用垃圾脚本，不挡任何一个
+  # 专门冲着这个站来的人——一个 while 循环就能把询盘表灌满，顺带把通知邮箱轰爆
+  # （InquiryNotifier 是单线程串行发信，队列只会越堆越长）。
+  #
+  # ⚠ 这是**补回来的**，不是新加的：ERP 那版接口上有 @RateLimiter(count=5, limitType=IP)，
+  #   接口迁到这个工程时那个注解没跟过来（RuoYi 的限流切面在 ruoyi-framework 里，
+  #   这个工程不依赖 ERP 的任何一个包）。而 nginx 和前台代理里那几段「必须转发真实 IP，
+  #   否则会退化成全站限流」的注释一直留着——它们指的就是这个当时已经不存在的限流。
+  #
+  # ⚠ 限流按 IP 算，所以**反代必须转发 X-Forwarded-For**。漏了它所有访客都是 127.0.0.1，
+  #   每分钟 5 条/IP 会退化成全站每分钟 5 条，第 6 个客户就提交不了询盘了。
+  #
+  # 计数存 Redis（和会话、跳转令牌 jti 同一个实例）。⚠ Redis 挂了是**放行**不是拦住：
+  # 丢一条真询盘 = 丢一个客户，多进来几条垃圾询盘只是多几行数据。
+  inquiry:
+    # 每 IP 每分钟。照 ERP 那版的值。真人填一张询价单要几十秒，5 条对正常访客绰绰有余
+    rate-per-minute: ${INQUIRY_RATE_PER_MINUTE:5}
+    # 每 IP 每天。光有分钟窗口挡不住慢速灌水：卡着 5 条/分钟不间断就是 7200 条/天
+    rate-per-day: ${INQUIRY_RATE_PER_DAY:50}
+
+  # ==================== 匿名查单的限流 ====================
+  #
+  # POST /openapi/site/order/lookup：游客凭「单号 + 下单邮箱」查回自己那张单。
+  #
+  # ⚠ 这一组和上面 inquiry 那一组的取舍是**相反**的，别照着它调。
+  #   询盘限流保的是「别让人灌爆收件箱」，所以额度给得宽、Redis 挂了放行——
+  #   丢一条真询盘等于丢一个客户。
+  #   这一组保的是「别让人读到别人的订单」：单号是 DD + 流水、可枚举，
+  #   唯一挡着的就是必须同时报对下单邮箱。所以额度小一个量级，
+  #   而且 Redis 挂了**拒绝**（实现见 OrderLookupRateLimiter，那里写了理由）。
+  #
+  # ⚠ 三项都设成 0 = 把订单详情开给任何人撞单号。不要在生产上这么配。
+  order-lookup:
+    # 每 IP 每小时。真买家的用法是「收到确认信 → 点链接 → 填一次邮箱」，10 次够了
+    ip-rate-per-hour: ${ORDER_LOOKUP_RATE_PER_HOUR:10}
+    # 每 IP 每天。光有小时窗口挡不住慢速撞号：10/小时 = 240/天
+    ip-rate-per-day: ${ORDER_LOOKUP_RATE_PER_DAY:30}
+    # 每**邮箱**每天被查几次。只按 IP 限的话，换一批 IP 就能接着撞同一个受害者
+    email-rate-per-day: ${ORDER_LOOKUP_EMAIL_RATE_PER_DAY:20}
+
+  # ==================== 跨域 ====================
+  #
+  # 默认留空 = 一条 CORS 映射都不注册，这是**推荐的生产配置**。
+  #
+  # 生产上前台和这个后端在同一个域名下（nginx 里 location /openapi/site/ 转本机 8081），
+  # 浏览器发的是同源请求：不需要 CORS，不会因为白名单漏配而白屏，还省一次跨域预检。
+  #
+  # 只有把前台的 NUXT_PUBLIC_API_BASE 填成一个跨根域地址时才需要配这里。
+  # 在此之前这个服务一行 CORS 配置都没有（ERP 那版给 /openapi/site/** 注册的
+  # 「任意来源」CORS 在瘦身时删了），于是那个前台选项事实上不可用，
+  # 而且失败发生在浏览器里、**后端日志上什么都看不到**。
+  #
+  # ⚠ 不要填 *。这组接口的读部分是公开的，但 POST /inquiry 是写操作——
+  #   通配来源等于允许任何一个网页替访客发询盘。要填就填确切的域名，逗号分隔：
+  #   https://kangchen.com,https://www.kangchen.com
+  #
+  # ⚠ 只作用于 /openapi/site/**。管理台的 /api/** 永远不开跨域，它靠 Cookie 会话。
+  cors:
+    allowed-origins: ${STATION_CORS_ORIGINS:}
+
+  # 管理台「文件 → 模型 → 用照片生成」：腾讯混元生 3D（2026-09-26）。
+  # 密钥不配在这里——复用「站点概览 → 文件存储」里腾讯云那一对（和机器翻译一样）；
+  # 那把密钥是子账号的话，要在腾讯云访问管理里给它挂 QcloudAI3DFullAccess。
+  # 每次生成消耗混元积分；免费积分用完不会自动转按量，调用会直接报计费错误。
+  ai3d:
+    enabled: ${STATION_AI3D_ENABLED:true}
+    region: ap-guangzhou
+    # 混元模型版本："3.0" / "3.1"
+    model: "3.0"
+    # 每站每天最多提交几次，防误点烧积分
+    daily-limit: ${STATION_AI3D_DAILY_LIMIT:20}
+
+  # ⚠ 跳转令牌的验签密钥。
+  #
+  # 正常情况下**不配在这里**，配在库里（u_s_siteinfo.consolesecret），因为它一站一份、
+  # 和 ERP 登记的那份必须一致。这个配置项只是给「库里没填」时的启动兜底，
+  # 留空即可——留空时 /sso 一律拒绝，日志里会说明原因。
+  jump:
+    secret: "CHANGE_ME_BEFORE_RUNNING"
+    # 令牌有效期上限（秒）。ERP 签发时写的是 60 秒，这里再夹一道：
+    # ERP 那边配错成 86400 的话，这一侧仍然只认 120 秒内的
+    max-age-seconds: 120
+
+  # ==================== 前台买家登录 ====================
+  #
+  # ⚠ 这一组是**买家**（客户）的，和管理台入场没有任何关系。
+  #
+  #   · 管理台操作员（u_s_user）：没有登录页，唯一入口是从 ERP 点「进入管理」免密进，
+  #     一个密码都不存（SessionController / docs/独立站与ERP的边界.md §6d）；
+  #   · 前台买家（u_s_buyer）：在前台自助注册、验证邮箱、用密码登录，看自己的订单。
+  #
+  # 两拨人、两张表、两套会话、两个 Cookie 名。改这一组不影响管理台。
+  #
+  # 🔧 **要用起来必须先配 SMTP**（下面 spring.mail.*）：注册要发验证信、
+  #    找回密码要发重置信，两步都不是「通知」而是流程本身。没配 SMTP 时这两个接口
+  #    直接报错并说明原因，启动日志里也会 WARN 一句。只想让买家匿名下单的话，
+  #    不配就是了——前台的下单和询盘完全不依赖账号。
+  buyer:
+    # 会话 Cookie 名。刻意和管理台的 CONSOLE_SESSION 不同名：
+    # 两者本来跑在不同主机名上（kangchen.com / console.kangchen.com），Cookie 串不过去，
+    # 不同名是为了排查时一眼看出「浏览器里那个 Cookie 是谁的」
+    cookie-name: BUYER_SESSION
+    # ⚠ 生产必须 true。本地 http 调试时用环境变量关掉，别改默认值。
+    #
+    # 不关的表现很迷惑：登录接口回 200、响应里有 Set-Cookie，但浏览器**静默丢掉**它
+    # （http 页面不接受 Secure Cookie），于是「登录成功了但立刻又是未登录」
+    cookie-secure: ${STATION_BUYER_COOKIE_SECURE:true}
+    # 多少天不活动就失效。滑动过期，每次带着有效 Cookie 来都会续期。
+    # 30 天是照买家的节奏定的：外贸买家可能一个月才回来看一次订单进度，
+    # 按管理台那 8 小时来他每次都要重登，那等于没有账号
+    session-days: 30
+    # 密码最少几位。只管长度，不强制「大小写数字符号各一个」——
+    # 那类规则的实际效果是让人写成 Passw0rd! 然后到处复用
+    password-min-length: 8
+    # 邮箱验证链接多少小时有效
+    verify-hours: 24
+    # 重置密码链接多少小时有效。⚠ 比验证链接短得多：它能直接改密码
+    reset-hours: 1
+    # 每 IP 每分钟最多试几次登录。挡撞库；10 次对真人绰绰有余（记错密码试三四次是常事）
+    login-rate-per-minute: ${STATION_BUYER_LOGIN_RATE:10}
+    # 每个邮箱每天最多发几封信（验证 + 重置合并计数）。
+    # 不限的话，任何人都能拿别人的邮箱反复点「忘记密码」把他收件箱刷满，
+    # 而且我们的发件账号会先被 SMTP 服务商限流，那时候连正常验证信也发不出去
+    mail-per-day: ${STATION_BUYER_MAIL_PER_DAY:5}
+
+  # 前台浏览量统计。表结构和全部设计决定见
+  # sql/station/migration/2026-09-08-pageview.sql 的文件头。
+  pageview:
+    # 总开关。关掉后 POST /openapi/site/pv 照样回 204、只是不落库——
+    # 前台那个埋点脚本不该因为后端关了统计就在浏览器控制台里刷错误
+    enabled: ${STATION_PV_ENABLED:true}
+    # 访客标识的 Cookie 名。⚠ 这是第四个 Cookie，和 BUYER_SESSION / CHAT_VISITOR /
+    # CONSOLE_SESSION 都不一样。它既不认身份也不认对话线程，只回答
+    # 「这两次浏览是不是同一个浏览器」，值本身没有任何权限
+    visitor-cookie-name: SITE_VISITOR
+    session-cookie-name: SITE_SESSION
+    # ⚠ 生产必须 true。本地 http 调试时用环境变量关。
+    #
+    # 不关的表现很迷惑：PV 完全正常，但 **UV 恒等于 PV**——http 页面不接受
+    # Secure Cookie，浏览器静默丢掉它，于是每看一个页面都算一个新访客。
+    # 这个现象看起来像「统计写得不对」，而其实是 Cookie 没存下来
+    cookie-secure: ${STATION_PV_COOKIE_SECURE:true}
+    # 访客标识留多久（天）。比 CHAT_VISITOR 的 30 天长：那个过期了重开一条对话就行，
+    # 这个过期意味着老访客被重新算成新访客，回访率会虚高。
+    # ⚠ 也别设成好几年——它是 GDPR 意义上的标识符，保留期越长越要有理由
+    visitor-cookie-days: 180
+    # 多少分钟不活动算一次新会话。30 是行业通行值，改了就没法和别人的数字比
+    session-minutes: 30
+    # 明细保留多少天，超期由 PageViewCleaner 删。
+    # ⚠ 配 0 = 不清理，别在生产上这么配：这张表是全库写入最频繁的，
+    #   而这台机器没有数据库备份，让它无限长下去等于慢慢把磁盘吃掉
+    retain-days: ${STATION_PV_RETAIN_DAYS:90}
+    # 每 IP 每分钟/每天最多上报几次。
+    # ⚠ 比聊天那 20 条还宽：这是被动上报不是主动操作，一个认真看货的买家
+    #   一分钟点开七八个商品很正常。NAT 出口共用 IP 的误差在这里是可以接受的——
+    #   丢几条浏览记录只是统计少几个数，而询盘那边同样的情况是丢一个客户
+    rate-per-minute: ${STATION_PV_RATE_PER_MINUTE:60}
+    rate-per-day: ${STATION_PV_RATE_PER_DAY:3000}
+    # 内存队列最多堆多少条待写，满了丢弃新来的、不阻塞请求线程。
+    # ⚠ 这是这个功能最重要的取舍：统计数据的价值远低于页面可用性
+    queue-capacity: 10000
+
+  # 询盘通知的发件人。留空则回退到 spring.mail.username。
+  #
+  # ⚠ 回退是在代码里做的，不是写成 ${station.notify-from:${spring.mail.username:}}——
+  #   占位符的默认值只在属性**缺失**时生效，而这里写的是 ${STATION_NOTIFY_FROM:}，
+  #   环境变量没设时它是**空串**，属性存在，默认值那一段永远轮不到。
+  notify-from: ${STATION_NOTIFY_FROM:}
+
+  # 加密 u_s_storage.access_key_secret 用的主密钥。和 ERP 的 OSS_CONFIG_SECRET 是
+  # 同一个工具类（AesUtils），但**值是本站自己的**——两边不共享任何密钥。
+  # 一期文件落本地磁盘，用不到它；留着是为了将来接对象存储时不用改配置结构。
+  config-secret: "CHANGE_ME_BEFORE_RUNNING"
+
+  # 前台两个 Cookie（BUYER_SESSION、CHAT_VISITOR）的历史 Domain 配置项。
+  # 当前代码永远不设置 Domain，Cookie 保持 host-only；两个前台 host 之间通过
+  # BuyerHandoff 的 60 秒一次性票据交接同一令牌。生产环境应留空，不要配置
+  # STATION_COOKIE_DOMAIN。
+  # 前台的币种偏好 Cookie 属于非敏感前端偏好，不受这里的服务端会话策略影响。
+  cookie-domain: ${STATION_COOKIE_DOMAIN:}
+
+console:
+  # 本站管理台的对外地址。询盘通知邮件里那个「去处理」链接用它拼，留空则邮件里不放链接。
+  home-url: ${CONSOLE_HOME_URL:}
+  # 管理台顶栏「回 ERP」那个链接。留空则不显示。
+  #
+  # ⚠ 它只是一个显示用的链接，**不是**一个会被后端调用的地址。
+  # boundary §13 第 5 条：ERP 侧不存在任何主动连独立站的代码；反过来这一侧同理——
+  # 这个值绝不能出现在任何 RestTemplate / WebClient 的调用里。
+  erp-home-url: ${ERP_HOME_URL:}
+
+  # ⚠ 登录即全权。**默认 true**，是一个明确的产品决定，不是漏配。
+  #
+  # true  = 任何通过认证的人（账号密码登录 / 从 ERP 免密进）都拿到 `*`，
+  #         u_s_user.rolecode 和 u_s_role.perms 不参与判定。
+  # false = 按角色卡权限，也就是建库脚本里那两条出厂角色（站长 * / 运营受限）。
+  #
+  # 为什么默认开：现在这个管理台只有站方自己人用，按角色卡权限带来的全是摩擦。
+  # 最典型的一次是——从 ERP 免密进来的人默认拿 operator，而那个角色刻意不含
+  # site:station:edit，于是「首页装修」和「站点设置」的保存按钮**从 DOM 里被删掉**，
+  # 看起来像功能没做。
+  #
+  # 角色那套东西一行都没删（u_s_role、每个接口的 @RequirePerm、前端的 v-hasPermi 全在），
+  # 把这一项配成 false 就整套恢复。将来把管理台开给商家自己的运营用时
+  # （boundary §6b「之后这个人的权限由站长在本站调整」），就是把它关掉。
+  #
+  # ⚠ 它只放开**权限**，不放开**认证**：没有会话照样 401，
+  #   AuthInterceptor 那道会话检查、以及「接口没挂 @RequirePerm 一律拒绝」都还在。
+  #
+  # 唯一的开关点在 SiteUserService.permsOf()。启动日志里会 WARN 一句当前是哪种模式。
+  grant-all-perms: ${CONSOLE_GRANT_ALL_PERMS:true}
+
+  # 左边菜单里要不要有「用户管理」。默认 false = 法国站那样：菜单里没有，
+  # 只能从 ERP「站点用户」按钮进。统领这种站方自己人在用的站配成 true。
+  # 见 ConsoleProperties.usersMenu
+  users-menu: ${CONSOLE_USERS_MENU:false}
+
+logging:
+  level:
+    com.ruoyi.station.console: info

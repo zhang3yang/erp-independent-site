@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  在线咨询的消息。
+
+  两侧的轮询走的都是 selectSince：带上手里最大的 id，只取比它新的。
+  全量拉一遍在对话长了以后会越来越慢，而且是每 3 秒一次。
+
+  ⚠ 这张表上没有 sitecode：它由 chatid 决定。冗余一份就多一个会不一致的地方。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteChatMessageMapper">
+
+  <resultMap id="MessageResult" type="com.ruoyi.station.console.domain.SiteChatMessage">
+    <id     property="id"         column="id"/>
+    <result property="shopCode"   column="shop_code"/>
+    <result property="chatId"     column="chatid"/>
+    <result property="sender"     column="sender"/>
+    <result property="senderUser" column="senderuser"/>
+    <result property="content"    column="content"/>
+    <result property="createTime" column="createtime"/>
+  </resultMap>
+
+  <sql id="columns">
+    id, shop_code, chatid, sender, senderuser, content, createtime
+  </sql>
+
+  <select id="selectSince" resultMap="MessageResult">
+    select <include refid="columns"/>
+      from u_s_chatmessage
+     where chatid = #{chatId} and id > #{sinceId}
+     order by id asc
+     limit #{limit}
+  </select>
+
+  <!--
+    打开窗口时用它，不是 selectSince(0)：一条聊了半年的线程不该在点开的那一刻
+    把全部历史推给浏览器。
+
+    取最近 N 条要先倒排再截断，所以有这层子查询；外面再正排一次，
+    让前端拿到的就是从上到下的时间顺序，不用在 JS 里 reverse 一遍。
+  -->
+  <select id="selectRecent" resultMap="MessageResult">
+    select * from (
+      select <include refid="columns"/>
+        from u_s_chatmessage
+       where chatid = #{chatId}
+       order by id desc
+       limit #{limit}
+    ) t order by t.id asc
+  </select>
+
+  <insert id="insert" parameterType="com.ruoyi.station.console.domain.SiteChatMessage"
+          useGeneratedKeys="true" keyProperty="id">
+    insert into u_s_chatmessage(shop_code, chatid, sender, senderuser, content, createtime)
+    values(#{shopCode}, #{chatId}, #{sender}, #{senderUser}, #{content}, sysdate())
+  </insert>
+
+  <!--
+    ⚠ sender 传的是**对方**：运营的未读只数买家发的，
+    自己刚回的那条不该让自己的红点亮起来。
+  -->
+  <select id="countUnread" resultType="int">
+    select count(1) from u_s_chatmessage
+     where chatid = #{chatId} and id > #{readId} and sender = #{sender}
+  </select>
+
+  <!-- 标已读时把游标推到这里。空线程返回 null，调用方按 0 处理 -->
+  <select id="maxId" resultType="java.lang.Long">
+    select max(id) from u_s_chatmessage where chatid = #{chatId}
+  </select>
+</mapper>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  管理台角色。
+
+  perms 里存的就是前端 v-hasPermi 用的那批权限串（site:goods:list 之类），逗号分隔——
+  沿用同一套串，station-console-ui 的按钮显隐逻辑一个字都不用改。
+
+  和 ERP 的权限体系没有任何关系：跳转令牌里没有 perms（boundary §4.3），
+  ERP 只说「这是谁」，不说「他能干什么」。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteRoleMapper">
+
+  <resultMap id="RoleResult" type="com.ruoyi.station.console.domain.SiteRole">
+    <result property="roleCode"   column="rolecode"/>
+    <result property="roleName"   column="rolename"/>
+    <result property="perms"      column="perms"/>
+    <result property="sortNum"    column="sortnum"/>
+    <result property="remark"     column="remark"/>
+    <result property="createTime" column="createtime"/>
+    <result property="updateTime" column="updatetime"/>
+  </resultMap>
+
+  <select id="selectByCode" resultMap="RoleResult">
+    select rolecode, rolename, perms, sortnum, remark, createtime, updatetime
+      from u_s_role
+     where rolecode = #{roleCode}
+  </select>
+
+  <select id="selectAll" resultMap="RoleResult">
+    select rolecode, rolename, perms, sortnum, remark, createtime, updatetime
+      from u_s_role
+     order by sortnum asc, rolecode asc
+  </select>
+
+  <!--
+    只让改 perms，不让改 rolecode，也不让新增删除。
+
+    出厂两条（admin / operator）够用，而每多一个角色就多一份要在前端菜单里对齐的
+    权限清单。真需要第三个角色时，加一条 INSERT 到建库脚本里，比开一个增删改接口
+    更不容易出「建了个空权限角色，把人锁在外面」这种事。
+  -->
+  <update id="updatePerms">
+    update u_s_role
+       set perms = #{perms}, updatetime = sysdate()
+     where rolecode = #{roleCode}
+  </update>
+</mapper>

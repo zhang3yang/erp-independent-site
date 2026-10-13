@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- 管理台是内部工具，不该被搜索引擎收录 -->
+  <meta name="robots" content="noindex, nofollow">
+  <!--
+    ⚠ 标题故意是空的。这个壳子是 /login 那个空页面也要用的一份 HTML，
+    写死「独立站管理台」的话，直接打开这个域名的人一眼就知道这后面是什么。
+    真正的页面由 router.afterEach 在挂载后立刻写上标题。
+  -->
+  <title></title>
+  <!--
+    加载占位（2026-09-23 加）。
+
+    这个壳子以前 body 里只有一个空的 <div id="app"></div>：JS 到齐之前**整页纯白**。
+    而首屏（还没配 gzip 时）要下 1.79 MB，那台机器出口小——冷缓存十几秒里，客户看到的是
+    「坏了」，不是「在加载」。法国客户 2026-09-23 报的正是这个（以为是登录坏了）。
+    压到约 460 KB 之后是 5 秒左右，但**网络再快也有一瞬间**，所以占位还是要留着。
+
+    ⚠ Vue 挂载时会把 #app 里原有内容整个替换掉，这段自己就没了——
+      不需要任何「卸载占位」的代码。ERP 那份壳子用的是同一个办法（那边还多一层转圈的动画）。
+
+    ⚠ 文案按**浏览器语言**挑：这一层在 i18n 装载之前就要显示，那时还拿不到站点默认语言
+      （那个要等 /api/me 回来）。和 views/storeLogin.vue 的挑法保持一致。
+  -->
+  <style>
+    html, body { margin: 0; height: 100%; }
+    .boot {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: #f2f3f5;
+      color: #6b7785;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+    .boot i {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 3px solid #d5dbe1;
+      border-top-color: #2f6fed;
+      animation: boot-spin 0.9s linear infinite;
+    }
+    .boot p { margin: 0; font-size: 14px; }
+    @keyframes boot-spin { to { transform: rotate(360deg); } }
+    /* 动不了的设备上别闪：转慢一点，文案还在，够说明「在加载」 */
+    @media (prefers-reduced-motion: reduce) { .boot i { animation-duration: 3s; } }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="boot">
+      <i aria-hidden="true"></i>
+      <p data-zh="正在加载管理台…" data-en="Loading the console…" data-fr="Chargement de la console…"></p>
+    </div>
+    <script>
+      (function () {
+        var lang = String(navigator.language || '').toLowerCase()
+        var key = lang.indexOf('zh') === 0 ? 'zh' : (lang.indexOf('fr') === 0 ? 'fr' : 'en')
+        var el = document.querySelector('.boot p')
+        if (el) el.textContent = el.getAttribute('data-' + key)
+      })()
+    </script>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

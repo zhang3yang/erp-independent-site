@@ -1,0 +1,426 @@
+{
+  "version": 1,
+  "title": {
+    "fr": "Configurez votre commande",
+    "en": "Configure your order",
+    "zh": "在线定制下单",
+    "es": "Configure su pedido",
+    "ru": "Настройте свой заказ",
+    "ja": "オンラインで構成・ご注文"
+  },
+  "lead": {
+    "fr": "Choisissez étape par étape. Nous vous envoyons un devis écrit — rien n’est payé sur ce site.",
+    "en": "Choose step by step. We reply with a written quote — nothing is paid on this site.",
+    "zh": "一步步选好配置，我们按你的选择书面报价。本站不收款。",
+    "es": "Elija paso a paso. Le respondemos con un presupuesto por escrito; en este sitio no se paga nada.",
+    "ru": "Выбирайте шаг за шагом. Мы ответим письменным предложением — на сайте ничего не оплачивается.",
+    "ja": "順番に選んでください。書面でお見積りをお送りします。このサイトでの支払いはありません。"
+  },
+  "groups": [
+    {
+      "code": "basic",
+      "title": { "fr": "Informations de base", "en": "Basics", "zh": "基本信息", "es": "Datos básicos", "ru": "Основное", "ja": "基本情報" },
+      "sub": { "fr": "Qui vous êtes et où livrer", "en": "Who you are and where it ships", "zh": "你是谁、货发去哪", "es": "Quién es usted y adónde enviamos", "ru": "Кто вы и куда доставить", "ja": "お客様の種別とお届け先" },
+      "fields": [
+        {
+          "code": "audience",
+          "type": "cards",
+          "required": true,
+          "title": { "fr": "Vous achetez pour", "en": "You are buying for", "zh": "采购身份", "es": "Compra para", "ru": "Вы покупаете", "ja": "ご購入の目的" },
+          "help": {
+            "fr": "Particulier : un ou deux ensembles pour vous. Entreprise : clubs, cabinets, revendeurs et marques — logo, emballage et certifications disponibles.",
+            "en": "Personal: one or two sets for yourself. Business: clubs, clinics, resellers and brands — logo, packaging and certifications available.",
+            "zh": "个人：自己用，一两套。企业：俱乐部、理疗机构、经销商和品牌方，可以做 logo、包装和认证。",
+            "es": "Particular: uno o dos equipos para usted. Empresa: clubes, clínicas, distribuidores y marcas; logotipo, embalaje y certificaciones disponibles.",
+            "ru": "Для себя: один-два комплекта. Для бизнеса: клубы, клиники, дилеры и бренды — логотип, упаковка и сертификаты.",
+            "ja": "個人：ご自身用に 1〜2 セット。法人：クラブ、治療院、販売店、ブランド向け。ロゴ・梱包・認証に対応します。"
+          },
+          "options": [
+            {
+              "code": "personal", "icon": "🙋",
+              "title": { "fr": "Particulier", "en": "Personal use", "zh": "个人使用", "es": "Uso personal", "ru": "Для себя", "ja": "個人" },
+              "desc": { "fr": "Pour moi", "en": "For myself", "zh": "自己用", "es": "Para mí", "ru": "Лично", "ja": "自分用" }
+            },
+            {
+              "code": "business", "icon": "🏢",
+              "title": { "fr": "Entreprise", "en": "Business", "zh": "企业采购", "es": "Empresa", "ru": "Для бизнеса", "ja": "法人" },
+              "desc": { "fr": "Club, cabinet, revendeur", "en": "Club, clinic, reseller", "zh": "俱乐部、机构、经销", "es": "Club, clínica, distribuidor", "ru": "Клуб, клиника, дилер", "ja": "クラブ・治療院・販売店" }
+            }
+          ]
+        },
+        {
+          "code": "mode",
+          "type": "cards",
+          "required": true,
+          "showIf": [ { "field": "audience", "in": [ "business" ] } ],
+          "title": { "fr": "Type de commande", "en": "Order type", "zh": "订购方式", "es": "Tipo de pedido", "ru": "Тип заказа", "ja": "ご注文の種類" },
+          "help": {
+            "fr": "Marque Esva : produit d’origine au logo Esva. Marque blanche (OEM) : même produit, votre logo et votre emballage. Sur mesure (ODM) : modifications de conception, étudiées par nos ingénieurs.",
+            "en": "Esva brand: the original product with the Esva logo. White label (OEM): same product, your logo and packaging. Custom (ODM): design changes, reviewed by our engineers.",
+            "zh": "Esva 品牌：原厂产品，印 Esva 商标。贴牌 OEM：产品不变，换成你的 logo 和包装。深度定制 ODM：要改设计，由工程师评估。",
+            "es": "Marca Esva: el producto original con el logotipo Esva. Marca blanca (OEM): el mismo producto con su logotipo y embalaje. A medida (ODM): cambios de diseño, evaluados por nuestros ingenieros.",
+            "ru": "Бренд Esva: оригинальный продукт с логотипом Esva. OEM: тот же продукт с вашим логотипом и упаковкой. ODM: изменения конструкции, их оценивают наши инженеры.",
+            "ja": "Esva ブランド：Esva ロゴ入りの純正品。OEM：製品はそのまま、御社のロゴと梱包に変更。ODM：設計変更。当社エンジニアが検討します。"
+          },
+          "options": [
+            {
+              "code": "stock", "icon": "📦",
+              "title": { "fr": "Marque Esva", "en": "Esva brand", "zh": "Esva 品牌", "es": "Marca Esva", "ru": "Бренд Esva", "ja": "Esva ブランド" },
+              "desc": { "fr": "Produit d’origine", "en": "Original product", "zh": "原厂产品", "es": "Producto original", "ru": "Оригинал", "ja": "純正品" }
+            },
+            {
+              "code": "oem", "icon": "🏷️",
+              "title": { "fr": "Marque blanche (OEM)", "en": "White label (OEM)", "zh": "贴牌 OEM", "es": "Marca blanca (OEM)", "ru": "Под вашим брендом (OEM)", "ja": "OEM" },
+              "desc": { "fr": "Votre logo et emballage", "en": "Your logo and packaging", "zh": "你的 logo 和包装", "es": "Su logotipo y embalaje", "ru": "Ваш логотип и упаковка", "ja": "御社ロゴと梱包" },
+              "badge": { "fr": "Fréquent", "en": "Popular", "zh": "常选", "es": "Frecuente", "ru": "Часто", "ja": "人気" }
+            },
+            {
+              "code": "odm", "icon": "🛠️",
+              "title": { "fr": "Sur mesure (ODM)", "en": "Custom design (ODM)", "zh": "深度定制 ODM", "es": "A medida (ODM)", "ru": "Своя разработка (ODM)", "ja": "ODM" },
+              "desc": { "fr": "Modifier la conception", "en": "Change the design", "zh": "改结构、改功能", "es": "Cambiar el diseño", "ru": "Изменить конструкцию", "ja": "設計を変更" },
+              "badge": { "fr": "Sur étude", "en": "Reviewed", "zh": "需评估", "es": "Con estudio", "ru": "По оценке", "ja": "要検討" }
+            }
+          ]
+        },
+        {
+          "code": "scene",
+          "type": "options",
+          "title": { "fr": "Utilisation principale", "en": "Main use", "zh": "主要用途", "es": "Uso principal", "ru": "Основное применение", "ja": "主な用途" },
+          "help": {
+            "fr": "Nous aide seulement à vous conseiller ; cela ne change pas le devis.",
+            "en": "Only helps us advise you; it does not change the quote.",
+            "zh": "只用来帮我们推荐配置，不影响报价。",
+            "es": "Solo nos ayuda a asesorarle; no cambia el presupuesto.",
+            "ru": "Помогает нам с рекомендацией и не влияет на цену.",
+            "ja": "ご提案の参考にするだけで、お見積りには影響しません。"
+          },
+          "options": [
+            { "code": "sport", "title": { "fr": "Récupération sportive", "en": "Sports recovery", "zh": "运动恢复", "es": "Recuperación deportiva", "ru": "Спортивное восстановление", "ja": "スポーツリカバリー" } },
+            { "code": "rehab", "title": { "fr": "Kiné / rééducation", "en": "Physio / rehab", "zh": "理疗康复", "es": "Fisio / rehabilitación", "ru": "Физиотерапия", "ja": "理学療法・リハビリ" } },
+            { "code": "gym", "title": { "fr": "Salle / club", "en": "Gym / club", "zh": "健身房 / 俱乐部", "es": "Gimnasio / club", "ru": "Зал / клуб", "ja": "ジム・クラブ" } },
+            { "code": "home", "title": { "fr": "Détente à domicile", "en": "Relaxing at home", "zh": "居家放松", "es": "Relax en casa", "ru": "Отдых дома", "ja": "自宅でリラックス" } }
+          ]
+        },
+        {
+          "code": "country",
+          "type": "options",
+          "required": true,
+          "title": { "fr": "Pays de livraison", "en": "Destination country", "zh": "目的国家", "es": "País de destino", "ru": "Страна доставки", "ja": "お届け先の国" },
+          "help": {
+            "fr": "Détermine la prise du boîtier et les certifications suggérées ; vous pouvez les modifier.",
+            "en": "Sets the plug of the control unit and the suggested certifications; you can change them.",
+            "zh": "决定主机插头规格和建议的认证，下面会自动选好，可以改。",
+            "es": "Define el enchufe de la unidad y las certificaciones sugeridas; puede cambiarlos.",
+            "ru": "Определяет вилку блока и предлагаемые сертификаты; их можно изменить.",
+            "ja": "本体のプラグ形状とおすすめの認証が自動で選ばれます。変更も可能です。"
+          },
+          "options": [
+            { "code": "FR", "sets": { "plug": "EU", "certs": [ "CE" ] }, "title": { "fr": "France", "en": "France", "zh": "法国", "es": "Francia", "ru": "Франция", "ja": "フランス" } },
+            { "code": "BE", "sets": { "plug": "EU", "certs": [ "CE" ] }, "title": { "fr": "Belgique", "en": "Belgium", "zh": "比利时", "es": "Bélgica", "ru": "Бельгия", "ja": "ベルギー" } },
+            { "code": "CH", "sets": { "plug": "EU", "certs": [ "CE" ] }, "title": { "fr": "Suisse", "en": "Switzerland", "zh": "瑞士", "es": "Suiza", "ru": "Швейцария", "ja": "スイス" } },
+            { "code": "DE", "sets": { "plug": "EU", "certs": [ "CE" ] }, "title": { "fr": "Allemagne", "en": "Germany", "zh": "德国", "es": "Alemania", "ru": "Германия", "ja": "ドイツ" } },
+            { "code": "ES", "sets": { "plug": "EU", "certs": [ "CE" ] }, "title": { "fr": "Espagne", "en": "Spain", "zh": "西班牙", "es": "España", "ru": "Испания", "ja": "スペイン" } },
+            { "code": "IT", "sets": { "plug": "EU", "certs": [ "CE" ] }, "title": { "fr": "Italie", "en": "Italy", "zh": "意大利", "es": "Italia", "ru": "Италия", "ja": "イタリア" } },
+            { "code": "GB", "sets": { "certs": [ "UKCA" ] }, "title": { "fr": "Royaume-Uni", "en": "United Kingdom", "zh": "英国", "es": "Reino Unido", "ru": "Великобритания", "ja": "イギリス" } },
+            { "code": "US", "sets": { "plug": "US", "certs": [ "FCC" ] }, "title": { "fr": "États-Unis", "en": "United States", "zh": "美国", "es": "Estados Unidos", "ru": "США", "ja": "アメリカ" } },
+            { "code": "OTHER", "title": { "fr": "Autre", "en": "Other", "zh": "其他", "es": "Otro", "ru": "Другая", "ja": "その他" } }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "unit",
+      "title": { "fr": "Boîtier de commande", "en": "Control unit", "zh": "主机", "es": "Unidad de control", "ru": "Блок управления", "ja": "コントロールユニット" },
+      "sub": {
+        "fr": "Écran couleur ; durée, pression, mode et chambres réglables",
+        "en": "Colour screen; time, pressure, mode and chambers adjustable",
+        "zh": "彩屏，时长 / 压力 / 模式 / 腔室都可在机器上调",
+        "es": "Pantalla a color; tiempo, presión, modo y cámaras ajustables",
+        "ru": "Цветной экран; время, давление, режим и камеры настраиваются",
+        "ja": "カラー画面。時間・圧力・モード・チャンバーを本体で調整"
+      },
+      "fields": [
+        {
+          "code": "unitNeed",
+          "type": "options",
+          "required": true,
+          "title": { "fr": "Boîtier", "en": "Control unit", "zh": "要不要主机", "es": "Unidad", "ru": "Блок", "ja": "本体" },
+          "options": [
+            { "code": "yes", "title": { "fr": "Oui, avec le boîtier Esva", "en": "Yes, with the Esva unit", "zh": "要，配 Esva 主机", "es": "Sí, con la unidad Esva", "ru": "Да, с блоком Esva", "ja": "はい、Esva 本体付き" } },
+            { "code": "no", "title": { "fr": "Non, j’en ai déjà un", "en": "No, I already have one", "zh": "不要，已有主机", "es": "No, ya tengo una", "ru": "Нет, уже есть", "ja": "いいえ、持っています" } }
+          ]
+        },
+        {
+          "code": "unitQty",
+          "type": "number",
+          "required": true,
+          "min": 1,
+          "max": 99999,
+          "goods": "EB-UNIT-01",
+          "showIf": [ { "field": "unitNeed", "in": [ "yes" ] } ],
+          "title": { "fr": "Nombre de boîtiers", "en": "Number of units", "zh": "主机台数", "es": "Número de unidades", "ru": "Количество блоков", "ja": "本体の台数" },
+          "help": {
+            "fr": "Un boîtier alimente un seul vêtement à la fois.",
+            "en": "One unit drives one garment at a time.",
+            "zh": "一台主机同一时间只驱动一件加压套件。",
+            "es": "Una unidad alimenta una prenda a la vez.",
+            "ru": "Один блок одновременно работает с одной манжетой.",
+            "ja": "本体 1 台で同時に使えるのは 1 着です。"
+          }
+        },
+        {
+          "code": "power",
+          "type": "options",
+          "showIf": [ { "field": "unitNeed", "in": [ "yes" ] } ],
+          "title": { "fr": "Alimentation", "en": "Power", "zh": "供电方式", "es": "Alimentación", "ru": "Питание", "ja": "電源" },
+          "options": [
+            { "code": "mains", "title": { "fr": "Secteur", "en": "Mains", "zh": "插电", "es": "Red eléctrica", "ru": "От сети", "ja": "コンセント" } },
+            { "code": "battery", "hidden": true, "title": { "fr": "Secteur + batterie intégrée", "en": "Mains + built-in battery", "zh": "插电 + 内置锂电池", "es": "Red + batería integrada", "ru": "Сеть + встроенный аккумулятор", "ja": "コンセント＋内蔵バッテリー" } }
+          ]
+        },
+        {
+          "code": "plug",
+          "type": "options",
+          "required": true,
+          "showIf": [ { "field": "unitNeed", "in": [ "yes" ] } ],
+          "title": { "fr": "Prise", "en": "Plug", "zh": "插头规格", "es": "Enchufe", "ru": "Вилка", "ja": "プラグ" },
+          "options": [
+            { "code": "EU", "title": { "fr": "Europe", "en": "EU", "zh": "欧规", "es": "Europa", "ru": "Европейская", "ja": "欧州" } },
+            { "code": "US", "title": { "fr": "États-Unis", "en": "US", "zh": "美规", "es": "EE. UU.", "ru": "Американская", "ja": "米国" } },
+            { "code": "UK", "hidden": true, "title": { "fr": "Royaume-Uni", "en": "UK", "zh": "英规", "es": "Reino Unido", "ru": "Британская", "ja": "英国" } },
+            { "code": "AU", "hidden": true, "title": { "fr": "Australie", "en": "Australia", "zh": "澳规", "es": "Australia", "ru": "Австралийская", "ja": "豪州" } }
+          ]
+        },
+        {
+          "code": "screenLogo",
+          "type": "options",
+          "showIf": [ { "field": "unitNeed", "in": [ "yes" ] }, { "field": "audience", "in": [ "business" ] } ],
+          "title": { "fr": "Écran de démarrage", "en": "Start-up screen", "zh": "开机画面", "es": "Pantalla de inicio", "ru": "Экран запуска", "ja": "起動画面" },
+          "help": {
+            "fr": "Le logo affiché à l’allumage du boîtier. Votre logo nécessite une commande OEM ou ODM.",
+            "en": "The logo shown when the unit starts. Your own logo needs an OEM or ODM order.",
+            "zh": "主机开机时屏幕先显示的 logo。换成你的 logo 需要选 OEM 或 ODM。",
+            "es": "El logotipo al encender la unidad. Su propio logotipo requiere un pedido OEM u ODM.",
+            "ru": "Логотип при включении блока. Свой логотип — только для заказа OEM или ODM.",
+            "ja": "本体起動時に表示されるロゴ。御社ロゴは OEM / ODM のご注文が必要です。"
+          },
+          "options": [
+            { "code": "esva", "title": { "fr": "Esva (par défaut)", "en": "Esva (default)", "zh": "Esva 默认", "es": "Esva (predeterminado)", "ru": "Esva (по умолчанию)", "ja": "Esva（標準）" } },
+            { "code": "mine", "needs": [ { "field": "mode", "in": [ "oem", "odm" ] } ], "title": { "fr": "Mon logo", "en": "My logo", "zh": "换成我的 logo", "es": "Mi logotipo", "ru": "Мой логотип", "ja": "自社ロゴ" } }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "garment",
+      "title": { "fr": "Vêtements et tailles", "en": "Garments and sizes", "zh": "加压套件与尺码", "es": "Prendas y tallas", "ru": "Манжеты и размеры", "ja": "カフとサイズ" },
+      "sub": { "fr": "Plusieurs choix possibles, quantité par taille", "en": "Choose several, quantity per size", "zh": "可多选，按尺码分别填数量", "es": "Puede elegir varias, cantidad por talla", "ru": "Можно несколько, количество по размерам", "ja": "複数選択可。サイズごとに数量を入力" },
+      "fields": [
+        {
+          "code": "garments",
+          "type": "cards",
+          "multi": true,
+          "required": true,
+          "title": { "fr": "Vêtements", "en": "Garments", "zh": "加压套件", "es": "Prendas", "ru": "Манжеты", "ja": "カフ" },
+          "help": {
+            "fr": "Les bottes ont 6 chambres : cuisse, genou, mollet supérieur, mollet inférieur, cheville et pied, gonflées de l’extrémité vers le cœur.",
+            "en": "The boots have 6 chambers: thigh, knee, upper calf, lower calf, ankle and foot, inflating from the extremity towards the heart.",
+            "zh": "腿靴 6 个腔：大腿、膝、小腿上段、小腿下段、脚踝、脚，从远端往心脏方向依次充气。",
+            "es": "Las botas tienen 6 cámaras: muslo, rodilla, gemelo superior, gemelo inferior, tobillo y pie, que se inflan desde el extremo hacia el corazón.",
+            "ru": "В сапогах 6 камер: бедро, колено, верх и низ голени, лодыжка и стопа; накачиваются от конечности к сердцу.",
+            "ja": "ブーツは 6 チャンバー（太もも・膝・ふくらはぎ上部・下部・足首・足）。末端から心臓方向へ順に加圧します。"
+          },
+          "options": [
+            { "code": "boot", "goods": "EB-BOOT-01", "title": { "fr": "Bottes", "en": "Boots", "zh": "恢复腿靴", "es": "Botas", "ru": "Сапоги", "ja": "ブーツ" }, "desc": { "fr": "6 chambres, par paire", "en": "6 chambers, per pair", "zh": "6 腔 · 按双", "es": "6 cámaras, por par", "ru": "6 камер, пара", "ja": "6 チャンバー・1 組" } },
+            { "code": "arm", "goods": "EB-ARM-01", "title": { "fr": "Manchons de bras", "en": "Arm sleeves", "zh": "臂套", "es": "Mangas de brazo", "ru": "Манжеты для рук", "ja": "アームスリーブ" }, "desc": { "fr": "Par paire", "en": "Per pair", "zh": "按双", "es": "Por par", "ru": "Пара", "ja": "1 組" } },
+            { "code": "trousers", "goods": "EB-TROUS-01", "title": { "fr": "Pantalon", "en": "Trousers", "zh": "恢复裤", "es": "Pantalón", "ru": "Брюки", "ja": "パンツ" }, "desc": { "fr": "À la pièce", "en": "Per piece", "zh": "按件", "es": "Por pieza", "ru": "Штука", "ja": "1 着" } },
+            { "code": "waist", "goods": "EB-WAIST-01", "title": { "fr": "Ceinture", "en": "Waist belt", "zh": "腰带", "es": "Cinturón", "ru": "Пояс", "ja": "ウエストベルト" }, "desc": { "fr": "À la pièce", "en": "Per piece", "zh": "按件", "es": "Por pieza", "ru": "Штука", "ja": "1 本" } }
+          ]
+        },
+        {
+          "code": "garmentQty",
+          "type": "goods",
+          "source": "garments",
+          "required": true,
+          "title": { "fr": "Tailles et quantités", "en": "Sizes and quantities", "zh": "尺码与数量", "es": "Tallas y cantidades", "ru": "Размеры и количество", "ja": "サイズと数量" },
+          "help": {
+            "fr": "Mesurez le tour de mollet au plus large et la longueur du talon au haut de la cuisse. En cas de doute, indiquez le total et ces deux mesures dans la note : nous confirmerons les tailles.",
+            "en": "Measure the widest calf circumference and the length from heel to top of thigh. If unsure, enter the total and put both measurements in the note: we will confirm the sizes.",
+            "zh": "量两个数：小腿最粗处的围度、脚跟到大腿根的长度。拿不准就只填总数，把这两个数写进备注，我们帮你配尺码。",
+            "es": "Mida el contorno máximo del gemelo y la longitud del talón a la parte alta del muslo. Si tiene dudas, indique el total y ambas medidas en la nota: confirmaremos las tallas.",
+            "ru": "Измерьте обхват голени в самом широком месте и длину от пятки до верха бедра. Если сомневаетесь, укажите общее количество и обе мерки в примечании — мы подберём размеры.",
+            "ja": "ふくらはぎの最も太い部分の周囲と、かかとから太ももの付け根までの長さを測ってください。迷う場合は合計数量と 2 つの寸法を備考にご記入ください。サイズはこちらで確認します。"
+          }
+        }
+      ]
+    },
+    {
+      "code": "custom",
+      "title": { "fr": "Personnalisation", "en": "Customisation", "zh": "个性化", "es": "Personalización", "ru": "Персонализация", "ja": "カスタマイズ" },
+      "sub": { "fr": "Logo et emballage personnalisé pour OEM / ODM", "en": "Logo and custom packaging for OEM / ODM", "zh": "OEM / ODM 才开放 logo 和定制包装", "es": "Logotipo y embalaje propio para OEM / ODM", "ru": "Логотип и своя упаковка — для OEM / ODM", "ja": "ロゴ・専用梱包は OEM / ODM のみ" },
+      "showIf": [ { "field": "audience", "in": [ "business" ] } ],
+      "fields": [
+        {
+          "code": "color",
+          "type": "swatch",
+          "title": { "fr": "Couleur du tissu", "en": "Fabric colour", "zh": "面料颜色", "es": "Color del tejido", "ru": "Цвет ткани", "ja": "生地の色" },
+          "options": [
+            { "code": "black", "color": "#15181C", "title": { "fr": "Noir", "en": "Black", "zh": "黑色", "es": "Negro", "ru": "Чёрный", "ja": "ブラック" } },
+            { "code": "grey", "hidden": true, "color": "#4B5563", "title": { "fr": "Gris foncé", "en": "Dark grey", "zh": "深灰", "es": "Gris oscuro", "ru": "Тёмно-серый", "ja": "ダークグレー" } },
+            { "code": "blue", "hidden": true, "color": "#0196FA", "title": { "fr": "Bleu électrique", "en": "Electric blue", "zh": "电光蓝", "es": "Azul eléctrico", "ru": "Электрик", "ja": "エレクトリックブルー" } },
+            { "code": "pantone", "hidden": true, "color": "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)", "needs": [ { "field": "mode", "in": [ "oem", "odm" ] } ], "title": { "fr": "Pantone au choix", "en": "Your Pantone", "zh": "指定色号", "es": "Su Pantone", "ru": "Свой Pantone", "ja": "指定色" } }
+          ]
+        },
+        {
+          "code": "logo",
+          "type": "options",
+          "title": { "fr": "Logo", "en": "Logo", "zh": "Logo 工艺", "es": "Logotipo", "ru": "Логотип", "ja": "ロゴ加工" },
+          "help": {
+            "fr": "Imprimé sur les vêtements et le boîtier. Envoyez votre fichier (AI, PDF, EPS ou PNG net) en réponse à l’e-mail de confirmation.",
+            "en": "Printed on the garments and the unit. Send your file (AI, PDF, EPS or a sharp PNG) in reply to the confirmation email.",
+            "zh": "印在加压套件和主机外壳上。logo 文件（AI / PDF / EPS 或清晰的 PNG）请在提交后回复确认邮件发给我们。",
+            "es": "Impreso en las prendas y la unidad. Envíe su archivo (AI, PDF, EPS o un PNG nítido) respondiendo al correo de confirmación.",
+            "ru": "Наносится на манжеты и корпус блока. Файл (AI, PDF, EPS или чёткий PNG) пришлите ответом на письмо-подтверждение.",
+            "ja": "カフと本体に印刷します。ロゴデータ（AI / PDF / EPS または鮮明な PNG）は確認メールへの返信でお送りください。"
+          },
+          "options": [
+            { "code": "none", "title": { "fr": "Sans logo", "en": "No logo", "zh": "不加 logo", "es": "Sin logotipo", "ru": "Без логотипа", "ja": "ロゴなし" } },
+            { "code": "print", "needs": [ { "field": "mode", "in": [ "oem", "odm" ] } ], "title": { "fr": "Sérigraphie", "en": "Screen print", "zh": "丝印", "es": "Serigrafía", "ru": "Шелкография", "ja": "シルク印刷" } },
+            { "code": "embroidery", "hidden": true, "needs": [ { "field": "mode", "in": [ "oem", "odm" ] } ], "title": { "fr": "Broderie", "en": "Embroidery", "zh": "刺绣", "es": "Bordado", "ru": "Вышивка", "ja": "刺繍" } },
+            { "code": "label", "hidden": true, "needs": [ { "field": "mode", "in": [ "oem", "odm" ] } ], "title": { "fr": "Étiquette silicone", "en": "Silicone label", "zh": "硅胶标", "es": "Etiqueta de silicona", "ru": "Силиконовая бирка", "ja": "シリコンラベル" } }
+          ]
+        },
+        {
+          "code": "pack",
+          "type": "options",
+          "title": { "fr": "Emballage", "en": "Packaging", "zh": "包装", "es": "Embalaje", "ru": "Упаковка", "ja": "梱包" },
+          "options": [
+            { "code": "std", "title": { "fr": "Boîte Esva", "en": "Esva box", "zh": "Esva 标准彩盒", "es": "Caja Esva", "ru": "Коробка Esva", "ja": "Esva 標準箱" } },
+            { "code": "neutral", "needs": [ { "field": "mode", "in": [ "oem", "odm" ] } ], "title": { "fr": "Emballage neutre", "en": "Plain packaging", "zh": "中性包装", "es": "Embalaje neutro", "ru": "Нейтральная упаковка", "ja": "無地梱包" } },
+            { "code": "customBox", "hidden": true, "moq": 100, "needs": [ { "field": "mode", "in": [ "oem", "odm" ] } ], "title": { "fr": "Boîte à votre marque", "en": "Your branded box", "zh": "定制彩盒", "es": "Caja con su marca", "ru": "Коробка с вашим брендом", "ja": "オリジナル化粧箱" } }
+          ]
+        },
+        {
+          "code": "manual",
+          "type": "options",
+          "multi": true,
+          "title": { "fr": "Langues de la notice", "en": "Manual languages", "zh": "说明书语言", "es": "Idiomas del manual", "ru": "Языки инструкции", "ja": "取扱説明書の言語" },
+          "options": [
+            { "code": "fr", "title": { "fr": "Français", "en": "Français", "zh": "Français", "es": "Français", "ru": "Français", "ja": "Français" } },
+            { "code": "en", "title": { "fr": "English", "en": "English", "zh": "English", "es": "English", "ru": "English", "ja": "English" } },
+            { "code": "de", "title": { "fr": "Deutsch", "en": "Deutsch", "zh": "Deutsch", "es": "Deutsch", "ru": "Deutsch", "ja": "Deutsch" } },
+            { "code": "es", "title": { "fr": "Español", "en": "Español", "zh": "Español", "es": "Español", "ru": "Español", "ja": "Español" } },
+            { "code": "it", "title": { "fr": "Italiano", "en": "Italiano", "zh": "Italiano", "es": "Italiano", "ru": "Italiano", "ja": "Italiano" } },
+            { "code": "ru", "title": { "fr": "Русский", "en": "Русский", "zh": "Русский", "es": "Русский", "ru": "Русский", "ja": "Русский" } },
+            { "code": "ja", "title": { "fr": "日本語", "en": "日本語", "zh": "日本語", "es": "日本語", "ru": "日本語", "ja": "日本語" } },
+            { "code": "zh", "title": { "fr": "中文", "en": "中文", "zh": "中文", "es": "中文", "ru": "中文", "ja": "中文" } }
+          ]
+        },
+        {
+          "code": "odmNeed",
+          "type": "text",
+          "required": true,
+          "showIf": [ { "field": "mode", "in": [ "odm" ] } ],
+          "title": { "fr": "Ce que vous voulez changer", "en": "What you want to change", "zh": "要改什么", "es": "Qué quiere cambiar", "ru": "Что нужно изменить", "ja": "変更したい内容" },
+          "hint": {
+            "fr": "Nombre de chambres, plage de pression, dimensions, fonctions… Joignez plans ou photos en réponse à l’e-mail de confirmation.",
+            "en": "Number of chambers, pressure range, dimensions, features… Send drawings or photos in reply to the confirmation email.",
+            "zh": "比如腔室数、压力范围、外形尺寸、要加的功能。图纸或参考照片请回复确认邮件发给我们。",
+            "es": "Número de cámaras, rango de presión, dimensiones, funciones… Envíe planos o fotos respondiendo al correo de confirmación.",
+            "ru": "Число камер, диапазон давления, размеры, функции… Чертежи или фото пришлите ответом на письмо-подтверждение.",
+            "ja": "チャンバー数、圧力範囲、寸法、追加機能など。図面や参考写真は確認メールへの返信でお送りください。"
+          }
+        }
+      ]
+    },
+    {
+      "code": "extras",
+      "title": { "fr": "Accessoires", "en": "Accessories", "zh": "配件", "es": "Accesorios", "ru": "Аксессуары", "ja": "アクセサリー" },
+      "sub": { "fr": "Facultatif", "en": "Optional", "zh": "可选", "es": "Opcional", "ru": "По желанию", "ja": "任意" },
+      "fields": [
+        {
+          "code": "acc",
+          "type": "cards",
+          "multi": true,
+          "title": { "fr": "Accessoires", "en": "Accessories", "zh": "配件", "es": "Accesorios", "ru": "Аксессуары", "ja": "アクセサリー" },
+          "options": [
+            { "code": "bag", "goods": "EB-BAG-01", "title": { "fr": "Sac de transport", "en": "Carry bag", "zh": "收纳包", "es": "Bolsa de transporte", "ru": "Сумка", "ja": "キャリーバッグ" } }
+          ]
+        },
+        {
+          "code": "accQty",
+          "type": "goods",
+          "source": "acc",
+          "title": { "fr": "Quantités", "en": "Quantities", "zh": "配件数量", "es": "Cantidades", "ru": "Количество", "ja": "数量" }
+        }
+      ]
+    },
+    {
+      "code": "cert",
+      "title": { "fr": "Certifications", "en": "Certifications", "zh": "认证", "es": "Certificaciones", "ru": "Сертификаты", "ja": "認証" },
+      "sub": { "fr": "Suggérées selon le pays", "en": "Suggested by country", "zh": "按目的国家自动建议", "es": "Sugeridas según el país", "ru": "Подбираются по стране", "ja": "国に応じて自動で提案" },
+      "showIf": [ { "field": "audience", "in": [ "business" ] } ],
+      "fields": [
+        {
+          "code": "certs",
+          "type": "options",
+          "multi": true,
+          "title": { "fr": "Certifications requises", "en": "Required certifications", "zh": "需要的认证", "es": "Certificaciones necesarias", "ru": "Нужные сертификаты", "ja": "必要な認証" },
+          "help": {
+            "fr": "C’est votre besoin. Les certificats que nous pouvons fournir sont confirmés par écrit dans le devis.",
+            "en": "This is your requirement. Which certificates we can provide is confirmed in writing in the quote.",
+            "zh": "这里填的是你的需求。我们能提供哪些证书，会在报价时书面确认。",
+            "es": "Es su requisito. Los certificados que podemos aportar se confirman por escrito en el presupuesto.",
+            "ru": "Это ваше требование. Какие сертификаты мы можем предоставить, подтвердим письменно в предложении.",
+            "ja": "こちらはご要望です。ご提供できる証明書はお見積りで書面にてご案内します。"
+          },
+          "options": [
+            { "code": "CE", "title": { "fr": "CE", "en": "CE", "zh": "CE", "es": "CE", "ru": "CE", "ja": "CE" } },
+            { "code": "UKCA", "title": { "fr": "UKCA", "en": "UKCA", "zh": "UKCA", "es": "UKCA", "ru": "UKCA", "ja": "UKCA" } },
+            { "code": "FCC", "title": { "fr": "FCC", "en": "FCC", "zh": "FCC", "es": "FCC", "ru": "FCC", "ja": "FCC" } },
+            { "code": "FDA", "title": { "fr": "FDA", "en": "FDA", "zh": "FDA", "es": "FDA", "ru": "FDA", "ja": "FDA" } },
+            { "code": "RoHS", "title": { "fr": "RoHS", "en": "RoHS", "zh": "RoHS", "es": "RoHS", "ru": "RoHS", "ja": "RoHS" } }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "delivery",
+      "title": { "fr": "Échantillon et délai", "en": "Sample and timing", "zh": "打样与交期", "es": "Muestra y plazo", "ru": "Образец и сроки", "ja": "サンプルと納期" },
+      "fields": [
+        {
+          "code": "sample",
+          "type": "options",
+          "required": true,
+          "showIf": [ { "field": "audience", "in": [ "business" ] } ],
+          "title": { "fr": "Échantillon d’abord ?", "en": "Sample first?", "zh": "先打样吗", "es": "¿Muestra primero?", "ru": "Сначала образец?", "ja": "先にサンプル？" },
+          "help": {
+            "fr": "Pour une commande OEM ou ODM, nous conseillons de valider un échantillon (logo, couleur) avant la production.",
+            "en": "For OEM or ODM we recommend approving one sample (logo, colour) before production.",
+            "zh": "OEM / ODM 建议先做一套样品确认 logo 和颜色，再做大货。",
+            "es": "Para OEM u ODM recomendamos aprobar una muestra (logotipo, color) antes de producir.",
+            "ru": "Для OEM и ODM советуем сначала утвердить образец (логотип, цвет).",
+            "ja": "OEM / ODM はロゴや色を確認するため、量産前のサンプル確認をおすすめします。"
+          },
+          "options": [
+            { "code": "sample", "title": { "fr": "Un échantillon d’abord", "en": "One sample first", "zh": "先打样一套", "es": "Primero una muestra", "ru": "Сначала образец", "ja": "まずサンプル 1 セット" } },
+            { "code": "bulk", "title": { "fr": "Directement en série", "en": "Straight to production", "zh": "直接做大货", "es": "Directo a producción", "ru": "Сразу партия", "ja": "そのまま量産" } }
+          ]
+        },
+        {
+          "code": "wantDate",
+          "type": "date",
+          "title": { "fr": "Livraison souhaitée", "en": "Wanted by", "zh": "期望到货", "es": "Entrega deseada", "ru": "Желаемая дата", "ja": "ご希望の到着日" },
+          "hint": {
+            "fr": "Indicatif ; le délai est confirmé dans le devis.",
+            "en": "For reference only; lead time is confirmed in the quote.",
+            "zh": "只是参考，交期以报价为准。",
+            "es": "Solo orientativo; el plazo se confirma en el presupuesto.",
+            "ru": "Ориентир; срок подтвердим в предложении.",
+            "ja": "目安です。納期はお見積りで確定します。"
+          }
+        }
+      ]
+    }
+  ]
+}

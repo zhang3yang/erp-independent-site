@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.PurchaseReceiveMapper">
+
+  <resultMap id="ReceiveResult" type="PurchaseReceive">
+    <result property="id" column="id"/><result property="shopCode" column="shop_code"/>
+    <result property="receiveCode" column="receivecode"/><result property="purchaseCode" column="purchasecode"/>
+    <result property="sendDate" column="senddate"/>
+    <result property="logisticsNo" column="logisticsno"/><result property="carrier" column="carrier"/>
+    <result property="freightType" column="freighttype"/>
+    <result property="estFreightAmount" column="estfreightamount"/><result property="freightAmount" column="freightamount"/>
+    <result property="totalQty" column="totalqty"/>
+    <result property="receiveTime" column="receivetime"/><result property="receiveUser" column="receiveuser"/>
+    <result property="status" column="status"/><result property="remark" column="remark"/>
+    <result property="createUser" column="createuser"/><result property="createTime" column="createtime"/>
+    <result property="updateUser" column="updateuser"/><result property="updateTime" column="updatetime"/>
+    <result property="receiveUserName" column="receive_user_name"/><result property="createUserName" column="create_user_name"/>
+    <result property="totalActualQty" column="total_actual_qty"/><result property="warehouseName" column="warehouse_name"/>
+    <result property="processingLines" column="processing_lines"/>
+  </resultMap>
+
+  <!-- 实际到货总量与到货仓库都在明细行上，列表要显示就得聚合出来。
+       一张发货单只入一个仓（决议 B6-1），所以仓库用 max() 取任意一行即可。
+       还没入库的行 actualqty 为 NULL，sum 会自动跳过，不计入合计。 -->
+  <sql id="detailAggregates">
+    (select coalesce(sum(d.actualqty), 0) from sdsorder.u_p_receivedetail_${tableSuffix} d
+      where d.shop_code = r.shop_code and d.receivecode = r.receivecode) as total_actual_qty,
+    (select max(d.warehousename) from sdsorder.u_p_receivedetail_${tableSuffix} d
+      where d.shop_code = r.shop_code and d.receivecode = r.receivecode) as warehouse_name,
+    <!-- 已被入库单占用的行数。大于 0 说明入库单已建、整单只读，界面据此隐藏修改/取消。
+         不能只看单头状态：入库单待审核期间单头仍是「待入库」。 -->
+    (select count(1) from sdsorder.u_p_receivedetail_${tableSuffix} d
+      where d.shop_code = r.shop_code and d.receivecode = r.receivecode
+        and d.actualqty is not null) as processing_lines
+  </sql>
+
+  <sql id="columns">
+    id, shop_code, receivecode, purchasecode, senddate, logisticsno, carrier, freighttype,
+    estfreightamount, freightamount, totalqty, receivetime, receiveuser, status, remark,
+    createuser, createtime, updateuser, updatetime
+  </sql>
+
+  <sql id="aliasedColumns">
+    r.id, r.shop_code, r.receivecode, r.purchasecode, r.senddate, r.logisticsno, r.carrier, r.freighttype,
+    r.estfreightamount, r.freightamount, r.totalqty, r.receivetime, r.receiveuser, r.status, r.remark,
+    r.createuser, r.createtime, r.updateuser, r.updatetime
+  </sql>
+
+  <!-- 展示用查询左连 sys_user，把发货登记人（采购员）与签收人（入库员）的账号换成昵称；
+       账号本身仍原样返回。签收人可以是手工填写的姓名，连不上时 nick_name 为空，由前端回退显示原值。
+       加锁查询不走这里，避免把 sys_user 的行一起锁住。 -->
+  <sql id="displayJoin">
+    left join sys_user ru on ru.user_name = r.receiveuser
+    left join sys_user cu on cu.user_name = r.createuser
+  </sql>
+
+  <select id="selectList" resultMap="ReceiveResult">
+    select <include refid="aliasedColumns"/>, ru.nick_name as receive_user_name, cu.nick_name as create_user_name,
+           <include refid="detailAggregates"/>
+      from sdsorder.u_p_receive_${tableSuffix} r
+      <include refid="displayJoin"/>
+     where r.shop_code = #{query.shopCode}
+    <if test="query.receiveCode != null and query.receiveCode != ''"> and r.receivecode = #{query.receiveCode}</if>
+    <if test="query.purchaseCode != null and query.purchaseCode != ''"> and r.purchasecode = #{query.purchaseCode}</if>
+    <if test="query.status != null and query.status != ''"> and r.status = #{query.status}</if>
+    <!-- createtime 同秒的收货单要靠 receivecode 兜底，否则分页顺序不稳定会漏行/重行 -->
+     order by r.createtime desc, r.receivecode desc
+  </select>
+
+  <!-- 供库存模块的采购入库页选单。只要还有未入库的行就列出来，
+       发货单是整单入库的，所以只挑「一行都还没被占用」的待入库单：
+       入库单已建、还在待审核的单子不能再建第二张，行级 actualqty is null 会拦，
+       但列在下拉里只会让入库员白选一次。 -->
+  <select id="selectPendingList" resultMap="ReceiveResult">
+    select <include refid="aliasedColumns"/>, ru.nick_name as receive_user_name, cu.nick_name as create_user_name,
+           <include refid="detailAggregates"/>
+      from sdsorder.u_p_receive_${tableSuffix} r
+      <include refid="displayJoin"/>
+     where r.shop_code = #{query.shopCode}
+       and r.status = '待入库'
+       and not exists (select 1 from sdsorder.u_p_receivedetail_${tableSuffix} d
+                        where d.shop_code = r.shop_code and d.receivecode = r.receivecode
+                          and d.actualqty is not null)
+     order by r.senddate desc, r.createtime desc
+  </select>
+
+  <select id="selectByCode" resultMap="ReceiveResult">
+    select <include refid="aliasedColumns"/>, ru.nick_name as receive_user_name, cu.nick_name as create_user_name
+      from sdsorder.u_p_receive_${tableSuffix} r
+      <include refid="displayJoin"/>
+     where r.shop_code = #{shopCode} and r.receivecode = #{receiveCode}
+  </select>
+
+  <select id="selectByCodeForUpdate" resultMap="ReceiveResult">
+    select <include refid="columns"/>
+      from sdsorder.u_p_receive_${tableSuffix}
+     where shop_code = #{shopCode} and receivecode = #{receiveCode}
+     for update
+  </select>
+
+  <!-- 签收人与签收时间由入库员在采购入库时回填，这里一律写 null。 -->
+  <insert id="insert" useGeneratedKeys="true" keyProperty="receive.id">
+    insert into sdsorder.u_p_receive_${tableSuffix}
+      (shop_code, receivecode, purchasecode, senddate, logisticsno, carrier, freighttype,
+       estfreightamount, freightamount, totalqty, receivetime, receiveuser, status, remark, createuser, createtime)
+    values
+      (#{receive.shopCode}, #{receive.receiveCode}, #{receive.purchaseCode}, #{receive.sendDate},
+       #{receive.logisticsNo}, #{receive.carrier}, #{receive.freightType},
+       coalesce(#{receive.estFreightAmount}, 0), coalesce(#{receive.freightAmount}, 0), #{receive.totalQty},
+       null, null, #{receive.status}, #{receive.remark}, #{receive.createUser}, sysdate())
+  </insert>
+
+  <!-- 只有全部明细行未处理时才允许改，状态条件与服务层的行级校验双保险。
+       实付运费与签收信息不在可改列里：到付的实付归入库员，寄付的实付虽然由采购员填，
+       但要按差额改（驳回后重建时列里还留着上次已付的钱），走 applyReceiveInfo。 -->
+  <update id="updateDraft">
+    update sdsorder.u_p_receive_${tableSuffix}
+       set senddate = #{receive.sendDate},
+           logisticsno = #{receive.logisticsNo},
+           carrier = #{receive.carrier},
+           freighttype = #{receive.freightType},
+           estfreightamount = #{receive.estFreightAmount},
+           totalqty = #{receive.totalQty},
+           remark = #{receive.remark},
+           updateuser = #{receive.updateUser},
+           updatetime = sysdate()
+     where shop_code = #{receive.shopCode} and receivecode = #{receive.receiveCode} and status = '待入库'
+  </update>
+
+  <update id="updateStatusUnconditional">
+    update sdsorder.u_p_receive_${tableSuffix}
+       set status = #{status}, updateuser = #{username}, updatetime = sysdate()
+     where shop_code = #{shopCode} and receivecode = #{receiveCode}
+  </update>
+
+  <!-- 运费在 SQL 内自增，多次入库并发不丢数。驳回时传负数扣回。 -->
+  <update id="applyReceiveInfo">
+    update sdsorder.u_p_receive_${tableSuffix}
+       set receiveuser = coalesce(#{receiveUser}, receiveuser),
+           receivetime = coalesce(#{receiveTime}, receivetime),
+           freightamount = greatest(coalesce(freightamount, 0) + coalesce(#{freightDelta}, 0), 0),
+           updateuser = #{username},
+           updatetime = sysdate()
+     where shop_code = #{shopCode} and receivecode = #{receiveCode}
+  </update>
+
+  <delete id="deleteDraft">
+    delete from sdsorder.u_p_receive_${tableSuffix}
+     where shop_code = #{shopCode} and receivecode = #{receiveCode} and status = '待入库'
+  </delete>
+</mapper>

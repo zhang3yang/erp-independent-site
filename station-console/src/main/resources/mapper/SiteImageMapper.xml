@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  站点图片资源。
+
+  和 ERP 那版比，少了两件事：
+
+  1. **每条语句的 `where shop_code = #{shopCode}`**。那是商家之间的隔离边界——
+     ERP 上一个库服务 N 个商家，漏一个 where 就查出全平台的图。这里一台机器一个站，
+     库里的图片就是这个站的全部图片，那一列降级成遗留列（boundary §5.3）。
+
+  2. **ERP 那个跨库子查询**：
+
+         and provider = (select provider from sdssys.s_m_shop_storage
+                          where shop_code = #{shopCode} and active = '1' limit 1)
+
+     它跨库（sdssys），而且 s_m_shop_storage 留在 ERP 原地不动（§5.2 的那个警告），
+     所以这个形式搬不过来。
+
+  ✅ 2026-09-07：**过滤本身补回来了**，但换了个做法——由 SiteFileService 从
+     u_s_storage 取当前生效的 provider、写进 query 再传下来（见 listWhere）。
+
+     为什么不照抄子查询：u_s_storage 是**空表**时子查询返回 NULL，而
+     `provider = NULL` 永远不成立，于是新装的机器上列表恒为空——
+     本机磁盘模式本来就是「一行配置都不需要」的默认状态，那样等于开箱即坏。
+     Service 那边走的是 requireActive()，空表时回落成 'local'，不会有这个洞。
+
+     ⚠ listWhere 里那个条件**不是可选的查询条件**，是硬边界：query 从请求参数绑上来，
+     客户端能自己传 ?provider=xxx，所以 Service 无条件覆盖它。别改成「前端没传才填」。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteImageMapper">
+
+  <resultMap id="ImageResult" type="com.ruoyi.station.console.domain.SiteImage">
+    <result property="imageId"    column="imageid"/>
+    <result property="shopCode"   column="shop_code"/>
+    <result property="siteCode"   column="sitecode"/>
+    <result property="imageName"  column="imagename"/>
+    <result property="imageUrl"   column="imageurl"/>
+    <result property="thumbUrl"   column="thumburl"/>
+    <result property="objectName" column="objectname"/>
+    <result property="provider"   column="provider"/>
+    <result property="fileSize"   column="filesize"/>
+    <result property="mimeType"   column="mimetype"/>
+    <result property="width"      column="width"/>
+    <result property="height"     column="height"/>
+    <result property="remark"     column="remark"/>
+    <result property="folderId"  column="folderid"/>
+    <result property="createtime" column="createtime"/>
+    <result property="updatetime" column="updatetime"/>
+    <result property="createBy"   column="create_by"/>
+    <result property="updateBy"   column="update_by"/>
+  </resultMap>
+
+  <sql id="columns">
+    imageid, shop_code, sitecode, imagename, imageurl, thumburl, objectname, provider,
+    filesize, mimetype, width, height, remark, folderid, createtime, updatetime, create_by, update_by
+  </sql>
+
+  <sql id="listWhere">
+    <where>
+      <!-- 按文件夹筛。没传=全部（含未分类）；ROOT=只看未分类；具体值=只看那个文件夹。 -->
+      <!-- ⚠ 「全部」和「未分类」必须分得开，否则点根节点看到所有图，会以为文件夹没生效 -->
+      <if test="query.folderId != null and query.folderId != ''">
+        <choose>
+          <when test="query.folderId == 'ROOT'">and folderid is null</when>
+          <otherwise>and folderid = #{query.folderId}</otherwise>
+        </choose>
+      </if>
+      <if test="query.imageName != null and query.imageName != ''">
+        and imagename like concat('%', #{query.imageName}, '%')
+      </if>
+      <!--
+        当前生效的存储。由 Service 无条件填入，不是用户传的查询条件（见文件顶部）。
+
+        provider is null 那一支：早期代码把这一列硬编码成 'local'，但列本身可空。
+        不认 NULL 的话，万一有历史行是空的，本机磁盘模式下它们会凭空消失——
+        「文件不见了」比「多显示了几个」难查得多。
+      -->
+      <if test="query.provider != null and query.provider != ''">
+        and (provider = #{query.provider}
+             or (provider is null and #{query.provider} = 'local'))
+      </if>
+    </where>
+  </sql>
+
+  <select id="selectList" resultMap="ImageResult">
+    select <include refid="columns"/>
+      from u_s_siteimage
+    <include refid="listWhere"/>
+     order by createtime desc, imageid desc
+     limit #{offset}, #{limit}
+  </select>
+
+  <select id="countList" resultType="int">
+    select count(1) from u_s_siteimage
+    <include refid="listWhere"/>
+  </select>
+
+  <!--
+    某一家存储里有多少张图。换存储的确认框用它报「有多少张不再显示」。
+    ⚠ 这里**不能**复用 listWhere：那个按「当前生效」过滤，而这里要数的恰恰是
+      即将不生效的那一家。
+  -->
+  <select id="countByProvider" resultType="int">
+    select count(1) from u_s_siteimage
+     where provider = #{provider}
+        or (provider is null and #{provider} = 'local')
+  </select>
+
+  <!-- 这个地址是不是本站文件库里的图。混元生 3D 提交前校验用：只许拿自己库里的图去生成（2026-09-26） -->
+  <select id="countByUrl" resultType="int">
+    select count(*) from u_s_siteimage where imageurl = #{url}
+  </select>
+
+  <select id="selectByCode" resultMap="ImageResult">
+    select <include refid="columns"/>
+      from u_s_siteimage
+     where imageid = #{imageId}
+  </select>
+
+  <insert id="insertImage" parameterType="com.ruoyi.station.console.domain.SiteImage">
+    insert into u_s_siteimage(imageid, shop_code, sitecode, imagename, imageurl,
+                              thumburl, objectname, provider, filesize, mimetype,
+                              width, height, remark, folderid, createtime, updatetime,
+                              create_by, update_by)
+    values(#{imageId}, #{shopCode}, #{siteCode}, #{imageName}, #{imageUrl},
+           #{thumbUrl}, #{objectName}, #{provider}, #{fileSize}, #{mimeType},
+           #{width}, #{height}, #{remark}, #{folderId}, sysdate(), sysdate(),
+           #{createBy}, #{updateBy})
+  </insert>
+
+  <update id="updateImageInfo" parameterType="com.ruoyi.station.console.domain.SiteImage">
+    update u_s_siteimage
+       set imagename  = #{imageName},
+           remark     = #{remark},
+           updatetime = sysdate(),
+           update_by  = #{updateBy}
+     where imageid = #{imageId}
+  </update>
+
+  <delete id="deleteByCode">
+    delete from u_s_siteimage
+     where imageid = #{imageId}
+  </delete>
+  <!-- 文件夹相关：只动 folderid 这一列，不碰文件本身——图片可能正被商品页或博客引用 -->
+  <update id="clearFolder">
+    update u_s_siteimage set folderid = null where folderid = #{folderId}
+  </update>
+
+  <update id="updateFolder">
+    update u_s_siteimage set folderid = #{folderId}
+     where imageid in
+    <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+  </update>
+
+</mapper>

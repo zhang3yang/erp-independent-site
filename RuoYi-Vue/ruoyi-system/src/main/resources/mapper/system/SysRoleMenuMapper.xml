@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.SysRoleMenuMapper">
+
+	<resultMap type="SysRoleMenu" id="SysRoleMenuResult">
+		<result property="roleCode"     column="role_code"      />
+		<result property="funCode"     column="fun_code"      />
+	</resultMap>
+	
+	<select id="checkMenuExistRole" resultType="Integer">
+	    select count(1) from sys_role_menu where fun_code = #{funCode}
+	</select>
+
+	<delete id="deleteRoleMenuByRoleCode" parameterType="String">
+		delete rm from sys_role_menu rm
+		inner join sys_role r on r.role_code = rm.role_code
+		where rm.role_code = #{roleCode} and r.role_type = 'PLATFORM' and r.shop_code = ''
+	</delete>
+	
+	<delete id="deleteRoleMenu">
+		delete rm from sys_role_menu rm
+		inner join sys_role r on r.role_code = rm.role_code
+		where r.role_type = 'PLATFORM' and r.shop_code = '' and rm.role_code in
+ 		<foreach collection="array" item="roleCode" open="(" separator="," close=")">
+ 			#{roleCode}
+        </foreach> 
+ 	</delete>
+	
+	<insert id="batchRoleMenu">
+		insert into sys_role_menu(role_code, fun_code)
+		select requested.role_code, requested.fun_code
+		  from (
+		<foreach item="item" collection="list" separator=" union all ">
+			select #{item.roleCode} as role_code, #{item.funCode} as fun_code
+		</foreach>
+		  ) requested
+		  join sys_role r on r.role_code = requested.role_code
+		 where r.role_type = 'PLATFORM' and r.shop_code = '' and r.del_flag = '0'
+	</insert>
+	
+</mapper>

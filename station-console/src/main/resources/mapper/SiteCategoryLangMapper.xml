@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  站点分类的多语言显示名。
+
+  这张表只有「读两条 + upsert 一条」，**没有任何 delete**。译名是站点级共享的，
+  按某一个商品的改动去删会波及别的商品，理由见 SiteCategoryLangMapper 的类注释。
+
+  分类的身份仍然是 u_s_sitegoods.sitecategory 那一列自由文本，本表不参与筛选，
+  只提供显示文字。所以这里没有 publicWhere 那种「只放已上架」的过滤——
+  译名本身不是敏感数据，而哪些分类会出现在前台，由 selectPublicCategories 决定。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteCategoryLangMapper">
+
+  <resultMap id="CategoryLangResult" type="com.ruoyi.station.console.domain.SiteCategoryLang">
+    <result property="shopCode"   column="shop_code"/>
+    <result property="siteCode"   column="sitecode"/>
+    <result property="catKey"     column="catkey"/>
+    <result property="lang"       column="lang"/>
+    <result property="name"       column="name"/>
+    <result property="createTime" column="createtime"/>
+    <result property="updateTime" column="updatetime"/>
+  </resultMap>
+
+  <!--
+    本站的 sitecode。和 SiteGoodsMapper 里那一份是同一条规矩：每一条语句都必须带上它。
+    理由（后端连的是还没拆的共享库、漏掉不报错只是悄悄跨站）见那边的长注释。
+  -->
+  <sql id="thisSite">(select sitecode from u_s_siteinfo limit 1)</sql>
+
+  <!-- ==================== 读 ==================== -->
+
+  <!--
+    某种语言的全部译名。name 为空的行不返回——对调用方来说
+    「没有这一行」和「有这一行但名字是空的」应该是同一件事：都回退显示原文。
+    在这里滤掉，省得每个调用方各判一次。
+  -->
+  <select id="selectByLang" resultMap="CategoryLangResult">
+    select shop_code, sitecode, catkey, lang, name, createtime, updatetime
+      from u_s_sitecategory_lang
+     where sitecode = <include refid="thisSite"/>
+       and lang = #{lang}
+       and name is not null
+       and name != ''
+     order by catkey
+  </select>
+
+  <!-- 管理台那张表一次 load 全部，行列在前端拼，不按语言查七遍 -->
+  <select id="selectAll" resultMap="CategoryLangResult">
+    select shop_code, sitecode, catkey, lang, name, createtime, updatetime
+      from u_s_sitecategory_lang
+     where sitecode = <include refid="thisSite"/>
+     order by catkey, lang
+  </select>
+
+  <!-- ==================== 写 ==================== -->
+
+  <!--
+    ⚠ 这是本表唯一的写入方式。没有 delete，也没有 deleteMissing。
+
+    name 传空字符串会被 Service 归一成 null，于是这一行留着但不生效（前台回退原文）。
+    刻意不做成「空就删行」：商家在管理台把一格清空，再点「一键补齐」时应该重新翻出来，
+    两种表现是一致的；而留着行能保住 createtime，看得出这个分类什么时候第一次被翻过。
+  -->
+  <insert id="upsert" parameterType="com.ruoyi.station.console.domain.SiteCategoryLang">
+    insert into u_s_sitecategory_lang(
+      shop_code, sitecode, catkey, lang, name, createtime
+    ) values(
+      #{shopCode}, #{siteCode}, #{catKey}, #{lang}, #{name}, sysdate()
+    )
+    on duplicate key update name = values(name)
+  </insert>
+
+</mapper>

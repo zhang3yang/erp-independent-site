@@ -1,0 +1,84 @@
+<template>
+  <el-form ref="pwdRef" :model="user" :rules="rules" label-width="80px" autocomplete="off">
+    <!-- 诱饵字段，避免浏览器把已保存的账号密码自动填进下面两个框 -->
+    <input type="text" name="username" autocomplete="username" class="autofill-decoy" tabindex="-1" aria-hidden="true" />
+    <input type="password" autocomplete="current-password" class="autofill-decoy" tabindex="-1" aria-hidden="true" />
+    <el-form-item label="新密码" prop="newPassword" :rules="infoPwdValidator">
+      <el-input v-model="user.newPassword" placeholder="请输入新密码" type="password" show-password autocomplete="new-password" />
+    </el-form-item>
+    <el-form-item label="确认密码" prop="confirmPassword">
+      <el-input v-model="user.confirmPassword" placeholder="请确认新密码" type="password" show-password autocomplete="new-password" />
+    </el-form-item>
+    <el-form-item>
+      <el-button type="primary" @click="submit">保存</el-button>
+      <el-button type="danger" @click="close">关闭</el-button>
+    </el-form-item>
+  </el-form>
+</template>
+
+<script setup>
+import { usePasswordRule } from "@/utils/passwordRule"
+import { updateUserPwd } from "@/api/system/user"
+
+const emit = defineEmits(["close"])
+
+const { proxy } = getCurrentInstance()
+const { infoPwdValidator } = usePasswordRule()
+
+const user = reactive({
+  newPassword: undefined,
+  confirmPassword: undefined
+})
+
+const equalToPassword = (rule, value, callback) => {
+  if (user.newPassword !== value) {
+    callback(new Error("两次输入的密码不一致"))
+  } else {
+    callback()
+  }
+}
+
+const rules = ref({
+  confirmPassword: [{ required: true, message: "确认密码不能为空", trigger: "blur" }, { required: true, validator: equalToPassword, trigger: "blur" }]
+})
+
+/** 重置表单 */
+function reset() {
+  user.newPassword = undefined
+  user.confirmPassword = undefined
+  proxy.$refs.pwdRef.resetFields()
+}
+
+/** 提交按钮 */
+function submit() {
+  proxy.$refs.pwdRef.validate(valid => {
+    if (valid) {
+      updateUserPwd(user.newPassword).then(() => {
+        proxy.$modal.msgSuccess("修改成功")
+        reset()
+        emit("close")
+      })
+    }
+  })
+}
+
+/** 关闭按钮 */
+function close() {
+  reset()
+  emit("close")
+}
+</script>
+
+<style scoped>
+.autofill-decoy {
+  position: absolute;
+  top: -9999px;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+</style>

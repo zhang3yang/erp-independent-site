@@ -1,0 +1,316 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  博客文章。u_s_post + u_s_post_lang。
+
+  ⚠⚠ 对外那几条用 inner join，和 SiteGoodsMapper.xml 相反。
+     那边是 left join + 「当前语言 → 默认语言」回退：商品必须能被买到。
+     文章这边**某语言没译文就等于那个语言版本不存在**——一篇英文长文摆在日语站上
+     对读者没价值，而且会被 Google 判成「hreflang 说是日语、内容是英文」。
+
+  ⚠ 对外的每一条都带 publishstatus = '已发布'，后台的每一条都不带。
+     混在一起用参数控制，早晚有人传错值把草稿捅到公网上。
+
+  ⚠ 都不带 sitecode 条件：一个部署一个站，这个库里只有这一个站的文章（boundary §5.3）。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SitePostMapper">
+
+  <resultMap id="PostResult" type="com.ruoyi.station.console.domain.SitePost">
+    <result property="siteCode"      column="sitecode"/>
+    <result property="postCode"      column="postcode"/>
+    <result property="slug"          column="slug"/>
+    <result property="category"      column="category"/>
+    <result property="coverImg"      column="coverimg"/>
+    <result property="author"        column="author"/>
+    <result property="publishStatus" column="publishstatus"/>
+    <result property="publishTime"   column="publishtime"/>
+    <result property="sortNum"       column="sortnum"/>
+    <result property="remark"        column="remark"/>
+    <result property="createUser"    column="createuser"/>
+    <result property="createTime"    column="createtime"/>
+    <result property="updateUser"    column="updateuser"/>
+    <result property="updateTime"    column="updatetime"/>
+    <!-- 语言表 join 出来的当前语言文案 -->
+    <result property="title"         column="title"/>
+    <result property="summary"       column="summary"/>
+    <result property="content"       column="content"/>
+    <result property="keywords"      column="keywords"/>
+    <!--
+      ⚠ 只有 selectSitemapRows 会有这一列（group_concat 出来的逗号串）。
+        由 SitePostService 调 splitLangCodes() 拆进 langs——MyBatis 没法把一个
+        逗号串直接映射成 List<String>，而为它写一个 TypeHandler 太重了：
+        全工程就这一处需要。
+    -->
+    <result property="langCodes"     column="langcodes"/>
+  </resultMap>
+
+  <resultMap id="PostLangResult" type="com.ruoyi.station.console.domain.SitePostLang">
+    <result property="postCode" column="postcode"/>
+    <result property="lang"     column="lang"/>
+    <result property="title"    column="title"/>
+    <result property="summary"  column="summary"/>
+    <result property="content"  column="content"/>
+    <result property="keywords" column="keywords"/>
+  </resultMap>
+
+  <sql id="postColumns">
+    p.sitecode, p.postcode, p.slug, p.category, p.coverimg, p.author,
+    p.publishstatus, p.publishtime, p.sortnum, p.remark,
+    p.createuser, p.createtime, p.updateuser, p.updatetime
+  </sql>
+
+  <!--
+    排序：sortnum 升序（置顶用），再 publishtime 倒序。
+
+    ⚠ publishtime 可能为 null（草稿从没发布过）。对外的查询不会遇到
+      （只查已发布，而转已发布时 Service 一定会填上），但写 `desc` 时 MySQL 把 null
+      排在最后，正好是想要的顺序，所以不额外写 `is null` 判断。
+    ⚠ 最后再按 postcode 兜一层：同一秒发布的两篇文章如果不加这个，
+      翻页时可能在两页里各出现一次或都不出现（不稳定排序）。
+  -->
+  <sql id="publicOrder">
+    order by p.sortnum, p.publishtime desc, p.postcode desc
+  </sql>
+
+  <!--
+    对外列表的 where。
+
+    ⚠ inner join + l.title 非空 = 「这个语言有译文」。两个条件都要：
+      join 上了但 title 是空串的行是存在的（人建了语言页签又没填标题）。
+  -->
+  <sql id="publicWhere">
+    where p.publishstatus = '已发布'
+      and l.title is not null and trim(l.title) != ''
+    <if test="category != null and category != ''">
+      and p.category = #{category}
+    </if>
+    <if test="keyword != null and keyword != ''">
+      and (l.title like concat('%', #{keyword}, '%')
+        or l.summary like concat('%', #{keyword}, '%'))
+    </if>
+  </sql>
+
+  <!-- ==================== 对外 ==================== -->
+
+  <!-- ⚠ 不选 l.content：正文可以很大，列表页也用不上。卡片正文用 summary -->
+  <select id="selectPublicList" resultMap="PostResult">
+    select <include refid="postColumns"/>,
+           l.title as title, l.summary as summary, l.keywords as keywords
+      from u_s_post p
+      inner join u_s_post_lang l
+        on l.postcode = p.postcode and l.lang = #{lang}
+    <include refid="publicWhere"/>
+    <include refid="publicOrder"/>
+     limit #{offset}, #{limit}
+  </select>
+
+  <select id="countPublicList" resultType="int">
+    select count(*)
+      from u_s_post p
+      inner join u_s_post_lang l
+        on l.postcode = p.postcode and l.lang = #{lang}
+    <include refid="publicWhere"/>
+  </select>
+
+  <!-- 详情：比列表多一个正文。按 slug 查，不是按 postcode -->
+  <select id="selectPublicOne" resultMap="PostResult">
+    select <include refid="postColumns"/>,
+           l.title as title, l.summary as summary,
+           l.content as content, l.keywords as keywords
+      from u_s_post p
+      inner join u_s_post_lang l
+        on l.postcode = p.postcode and l.lang = #{lang}
+     where p.slug = #{slug}
+       and p.publishstatus = '已发布'
+       and l.title is not null and trim(l.title) != ''
+     limit 1
+  </select>
+
+  <!--
+    这篇文章有译文的语言。给 hreflang 用。
+
+    ⚠ 只回 title 非空的。全列出来等于向 Google 承诺一批 404 地址，
+      而 hreflang 里有一个坏链接会让 Google 忽略**整组**声明。
+  -->
+  <select id="selectPublicLangs" resultType="string">
+    select l.lang
+      from u_s_post_lang l
+     where l.postcode = #{postCode}
+       and l.title is not null and trim(l.title) != ''
+     order by l.lang
+  </select>
+
+  <select id="selectPublicCategories" resultType="string">
+    select distinct p.category
+      from u_s_post p
+     where p.publishstatus = '已发布'
+       and p.category is not null and trim(p.category) != ''
+     order by p.category
+  </select>
+
+  <!--
+    给 sitemap 用的整个矩阵：每一篇已发布文章 + 它有译文的语言。
+
+    ⚠ **不按语言过滤**，这是它和 selectPublicList 的全部区别，也是它必须单独存在的
+      理由：用那一条生成 sitemap 会漏掉「只翻了日语、没有默认语言版本」的文章，
+      而那种漏的表现是「文章在站上打得开、Google 却一直发现不了」——
+      最难注意到的一类问题。
+
+    ⚠ group_concat 有长度上限（group_concat_max_len，默认 1024 字节）。
+      这里拼的是语言代码，最多 8 种 × 3 字符，离上限很远，所以不调那个参数
+      ——调它要改会话变量，而那种依赖在换个连接池配置之后会静默失效。
+
+    ⚠ having 那一句不能省：一篇文章如果一条译文都没有（或都是空标题），
+      group_concat 会回 null，那篇文章不该进 sitemap。
+  -->
+  <select id="selectSitemapRows" resultMap="PostResult">
+    select p.sitecode, p.postcode, p.slug, p.publishtime, p.sortnum,
+           group_concat(l.lang order by l.lang) as langcodes
+      from u_s_post p
+      left join u_s_post_lang l
+        on l.postcode = p.postcode
+       and l.title is not null and trim(l.title) != ''
+     where p.publishstatus = '已发布'
+     group by p.sitecode, p.postcode, p.slug, p.publishtime, p.sortnum
+    having langcodes is not null
+     order by p.sortnum, p.publishtime desc, p.postcode desc
+     limit #{limit}
+  </select>
+
+  <!-- ==================== 后台 ==================== -->
+
+  <!--
+    ⚠ left join，而且**不要求 title 非空**：管理台就是要看见「这篇文章的日语还没填」。
+      用对外那条语句的话，没填默认语言标题的草稿会在自己的管理列表里消失。
+  -->
+  <select id="selectAdminList" resultMap="PostResult">
+    select <include refid="postColumns"/>,
+           l.title as title, l.summary as summary
+      from u_s_post p
+      left join u_s_post_lang l
+        on l.postcode = p.postcode and l.lang = #{lang}
+     <where>
+       <if test="publishStatus != null and publishStatus != ''">
+         and p.publishstatus = #{publishStatus}
+       </if>
+       <if test="category != null and category != ''">
+         and p.category = #{category}
+       </if>
+       <if test="keyword != null and keyword != ''">
+         and (l.title like concat('%', #{keyword}, '%')
+           or p.slug like concat('%', #{keyword}, '%')
+           or p.postcode like concat('%', #{keyword}, '%'))
+       </if>
+     </where>
+     order by p.sortnum, p.publishtime desc, p.createtime desc
+  </select>
+
+  <select id="selectAdminOne" resultMap="PostResult">
+    select <include refid="postColumns"/>
+      from u_s_post p
+     where p.postcode = #{postCode}
+  </select>
+
+  <select id="countBySlug" resultType="int">
+    select count(*)
+      from u_s_post
+     where slug = #{slug}
+    <if test="exceptPostCode != null and exceptPostCode != ''">
+      and postcode != #{exceptPostCode}
+    </if>
+  </select>
+
+  <insert id="insert" parameterType="com.ruoyi.station.console.domain.SitePost">
+    insert into u_s_post(
+      sitecode, postcode, slug, category, coverimg, author,
+      publishstatus, publishtime, sortnum, remark,
+      createuser, createtime, updateuser, updatetime
+    ) values(
+      #{siteCode}, #{postCode}, #{slug}, #{category}, #{coverImg}, #{author},
+      #{publishStatus}, #{publishTime}, coalesce(#{sortNum}, 0), #{remark},
+      #{createUser}, sysdate(), #{updateUser}, sysdate()
+    )
+  </insert>
+
+  <!--
+    ⚠ publishtime 走 coalesce：前端不带这个字段时保持原值。
+
+    这一项和别的字段不一样——它由「首次发布」那个动作自动填，之后才允许手工改。
+    直接赋值的话，一次「只改了标题」的保存会把发布时间清成 null，
+    而症状是列表排序突然乱掉、sitemap 里那篇文章的 lastmod 没了。
+  -->
+  <update id="update" parameterType="com.ruoyi.station.console.domain.SitePost">
+    update u_s_post
+       set slug          = #{slug},
+           category      = #{category},
+           coverimg      = #{coverImg},
+           author        = #{author},
+           publishstatus = #{publishStatus},
+           publishtime   = coalesce(#{publishTime}, publishtime),
+           sortnum       = coalesce(#{sortNum}, 0),
+           remark        = #{remark},
+           updateuser    = #{updateUser},
+           updatetime    = sysdate()
+     where postcode = #{postCode}
+  </update>
+
+  <!--
+    批量改状态。
+
+    ⚠ publishtime 只在**它原来是空的**时候填：一篇下架后重新发布的文章，
+      发布时间应该还是当初那个（外链和收录都指着那个日期），
+      不该因为按了一次「发布」就跳到今天。
+  -->
+  <update id="updateStatus">
+    update u_s_post
+       set publishstatus = #{publishStatus},
+           publishtime   = case
+                             when #{publishTime} is not null and publishtime is null
+                               then #{publishTime}
+                             else publishtime
+                           end,
+           updateuser    = #{updateUser},
+           updatetime    = sysdate()
+     where postcode in
+    <foreach collection="postCodes" item="code" open="(" separator="," close=")">
+      #{code}
+    </foreach>
+  </update>
+
+  <delete id="deleteByCodes">
+    delete from u_s_post
+     where postcode in
+    <foreach collection="postCodes" item="code" open="(" separator="," close=")">
+      #{code}
+    </foreach>
+  </delete>
+
+  <!-- ==================== 多语言文案 ==================== -->
+
+  <select id="selectLangs" resultMap="PostLangResult">
+    select postcode, lang, title, summary, content, keywords
+      from u_s_post_lang
+     where postcode = #{postCode}
+     order by lang
+  </select>
+
+  <insert id="upsertLang" parameterType="com.ruoyi.station.console.domain.SitePostLang">
+    insert into u_s_post_lang(postcode, lang, title, summary, content, keywords, createtime, updatetime)
+    values(#{postCode}, #{lang}, #{title}, #{summary}, #{content}, #{keywords}, sysdate(), sysdate())
+    on duplicate key update
+      title      = values(title),
+      summary    = values(summary),
+      content    = values(content),
+      keywords   = values(keywords),
+      updatetime = sysdate()
+  </insert>
+
+  <delete id="deleteLangsByPosts">
+    delete from u_s_post_lang
+     where postcode in
+    <foreach collection="postCodes" item="code" open="(" separator="," close=")">
+      #{code}
+    </foreach>
+  </delete>
+</mapper>

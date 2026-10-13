@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  站点客户询盘。
+
+  和 ERP 那版比，少了两样东西：
+
+  1. `left join sdsstation.u_s_site s` —— 那张表不在这个库里（它留在 ERP 的 sdsshop
+     当登记表，docs/独立站与ERP的边界.md §5.2）。站点名称由 Service 从 u_s_siteinfo 填。
+
+  2. `bindBuyer` —— 「转成 ERP 客户」那个动作往 sdsshop.u_m_buyer 写数据，是一条互通，
+     整个删掉（§3.2）。
+-->
+<mapper namespace="com.ruoyi.station.console.mapper.SiteInquiryMapper">
+
+  <resultMap id="InquiryResult" type="com.ruoyi.station.console.domain.SiteInquiry">
+    <result property="id"           column="id"/>
+    <result property="shopCode"     column="shop_code"/>
+    <result property="siteCode"     column="sitecode"/>
+    <result property="inquiryCode"  column="inquirycode"/>
+    <result property="name"         column="name"/>
+    <result property="email"        column="email"/>
+    <result property="company"      column="company"/>
+    <result property="phone"        column="phone"/>
+    <result property="goodsCode"    column="goodscode"/>
+    <result property="productTitle" column="producttitle"/>
+    <result property="message"      column="message"/>
+    <result property="pageUrl"      column="pageurl"/>
+    <result property="clientIp"     column="clientip"/>
+    <result property="userAgent"    column="useragent"/>
+    <result property="status"       column="status"/>
+    <result property="buyerCode"    column="buyercode"/>
+    <result property="handleUser"   column="handleuser"/>
+    <result property="handleTime"   column="handletime"/>
+    <result property="remark"       column="remark"/>
+    <!-- 跟进模块加的两列。⚠ owner 和 handleuser 不是一回事：那个是「最后动过的人」，
+         这个是「这条归谁」。没人动过的询盘 handleuser 为空，而「没人负责」和
+         「没人动过」要分开看才知道是流程问题还是人手问题 -->
+    <result property="owner"        column="owner"/>
+    <result property="nextFollow"   column="nextfollow"/>
+    <result property="createTime"   column="createtime"/>
+  </resultMap>
+
+  <sql id="columns">
+    id, shop_code, sitecode, inquirycode, name, email, company, phone,
+    goodscode, producttitle, message, pageurl, clientip, useragent,
+    status, buyercode, handleuser, handletime, remark, owner, nextfollow, createtime
+  </sql>
+
+  <sql id="listWhere">
+    <where>
+      <if test="query.status != null and query.status != ''">
+         and status = #{query.status}</if>
+      <!-- 一个输入框查三个字段：姓名、公司、邮箱。运营记得住的通常是其中之一 -->
+      <if test="query.name != null and query.name != ''">
+         and (name like concat('%', #{query.name}, '%')
+           or company like concat('%', #{query.name}, '%')
+           or email like concat('%', #{query.name}, '%'))</if>
+      <if test="query.goodsCode != null and query.goodsCode != ''">
+         and goodscode = #{query.goodsCode}</if>
+    </where>
+  </sql>
+
+  <!--
+    分页参数直接写在语句里，没有 PageHelper。
+
+    ERP 那边是 startPage() + 拦截器改写 SQL；这个服务没引 PageHelper——引它就要连着引
+    一套 ThreadLocal 分页上下文，而那套东西最容易出的问题恰恰是「startPage() 之后
+    第一条查询不是你想分页的那条」（ERP 的 StationImageMapper.xml 里就留着一段
+    为了绕开它而写的子查询注释）。手写 offset/limit 是笨办法，但它没有隐式状态。
+  -->
+  <select id="selectList" resultMap="InquiryResult">
+    select <include refid="columns"/>
+      from u_s_inquiry
+    <include refid="listWhere"/>
+     order by createtime desc, id desc
+     limit #{offset}, #{limit}
+  </select>
+
+  <select id="countList" resultType="int">
+    select count(1) from u_s_inquiry
+    <include refid="listWhere"/>
+  </select>
+
+  <select id="selectById" resultMap="InquiryResult">
+    select <include refid="columns"/>
+      from u_s_inquiry
+     where id = #{id}
+  </select>
+
+  <!--
+    客户填的内容一个字都不许改：那是客户说的话，改了就不是原始凭据了。
+    后台能动的只有处理状态和内部备注。
+  -->
+  <!--
+    ⚠ remark / owner / nextfollow 三个都是**直赋值**，不是 coalesce：
+      管理台那个表单是「所见即所得」的，清空一个框再保存，期望就是它没了
+      （比如把负责人取消掉、把下次跟进日期删掉）。
+
+    ⚠ 所以调用方必须**整份送**。只想改状态的场合用 bumpStatus，别用这一条——
+      传一个只填了 id 和 status 的对象进来，会把备注、负责人、跟进日期一起清空。
+  -->
+  <update id="updateHandle" parameterType="com.ruoyi.station.console.domain.SiteInquiry">
+    update u_s_inquiry
+       set status = coalesce(#{status}, status),
+           remark = #{remark},
+           owner = #{owner},
+           nextfollow = #{nextFollow},
+           handleuser = #{handleUser},
+           handletime = sysdate()
+     where id = #{id}
+  </update>
+
+  <!--
+    只推状态，别的列一个都不碰。见 SiteInquiryMapper#bumpStatus 的注释：
+    存在的理由就是「不能用 updateHandle 代替」。
+  -->
+  <update id="bumpStatus">
+    update u_s_inquiry
+       set status = #{status},
+           handleuser = #{handleUser},
+           handletime = sysdate()
+     where id = #{id}
+  </update>
+
+  <!--
+    挂到本站客户档案上。
+
+    ⚠ 这不是 ERP 那个「转成 ERP 客户」——那一版往 sdsshop.u_m_buyer 写数据，
+      是一条互通，已经删掉了（boundary §10.1）。这里写的是本库 u_s_buyer 的编码，
+      SQL 里一个库名都没有。
+  -->
+  <update id="bindBuyer">
+    update u_s_inquiry set buyercode = #{buyerCode} where id = #{id}
+  </update>
+
+  <!-- 客户详情页里列他的历史询盘。按邮箱查，理由见 mapper 接口上的注释 -->
+  <select id="selectByEmail" resultMap="InquiryResult">
+    select <include refid="columns"/>
+      from u_s_inquiry
+     where email = #{email}
+     order by createtime desc, id desc
+     limit #{limit}
+  </select>
+
+  <insert id="insert" parameterType="com.ruoyi.station.console.domain.SiteInquiry"
+          useGeneratedKeys="true" keyProperty="id">
+    insert into u_s_inquiry(
+      shop_code, sitecode, inquirycode, name, email, company, phone,
+      goodscode, producttitle, combocode, comboname, lang,
+      message, pageurl, clientip, useragent, status, createtime
+    ) values(
+      #{shopCode}, #{siteCode}, #{inquiryCode}, #{name}, #{email}, #{company}, #{phone},
+      #{goodsCode}, #{productTitle}, #{comboCode}, #{comboName}, #{lang},
+      #{message}, #{pageUrl}, #{clientIp}, #{userAgent},
+      coalesce(#{status}, '待处理'), sysdate()
+    )
+  </insert>
+</mapper>

@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.DocumentDetailMapper">
+
+    <resultMap type="DocumentDetail" id="DocumentDetailResult">
+        <result property="shopCode"    column="shop_code" />
+        <result property="detailCode"  column="detailcode" />
+        <result property="docCode"     column="doccode" />
+        <result property="lineNo"      column="lineno" />
+        <result property="goodsCode"   column="goodscode" />
+        <result property="goodsName"   column="goodsname" />
+        <result property="spec"        column="spec" />
+        <result property="unit"        column="unit" />
+        <result property="wareCode"    column="warecode" />
+        <result property="wareName"    column="warename" />
+        <result property="qualityFlag" column="qualityflag" />
+        <result property="onhandFlag"  column="onhandflag" />
+        <result property="qty"         column="qty" />
+        <result property="salePrice"   column="saleprice" />
+        <result property="saleAmount"  column="saleamount" />
+        <result property="costPrice"   column="costprice" />
+        <result property="costAmount"  column="costamount" />
+        <result property="batchCode"   column="batchcode" />
+        <result property="orderDetailCode" column="orderdetailcode" />
+        <result property="remark"      column="remark" />
+    </resultMap>
+
+    <select id="selectDetailsByDocCode" resultMap="DocumentDetailResult">
+        select shop_code, detailcode, doccode, lineno,
+               goodscode, goodsname, spec, unit, warecode, warename, qualityflag, onhandflag, qty,
+               saleprice, saleamount, costprice, costamount,
+               batchcode, orderdetailcode, remark
+          from sdsorder.u_f_docdetail_${tableSuffix}
+         where shop_code = #{shopCode}
+           and doccode = #{docCode}
+         order by lineno
+    </select>
+
+    <insert id="insertDetail" parameterType="DocumentDetail">
+        insert into sdsorder.u_f_docdetail_${tableSuffix}(
+            shop_code, detailcode, doccode, lineno,
+            goodscode, goodsname, spec, unit, warecode, warename, qualityflag, onhandflag, qty,
+            saleprice, saleamount, costprice, costamount,
+            batchcode, orderdetailcode, remark
+        ) values(
+            #{shopCode}, #{detailCode}, #{docCode}, #{lineNo},
+            #{goodsCode}, #{goodsName}, #{spec}, #{unit},
+            #{wareCode}, #{wareName}, #{qualityFlag}, #{onhandFlag}, #{qty},
+            #{salePrice}, #{saleAmount}, #{costPrice}, #{costAmount},
+            #{batchCode}, #{orderDetailCode, jdbcType=VARCHAR}, #{remark}
+        )
+    </insert>
+
+    <insert id="batchInsertDetail">
+        insert into sdsorder.u_f_docdetail_${tableSuffix}(
+            shop_code, detailcode, doccode, lineno,
+            goodscode, goodsname, spec, unit, warecode, warename, qualityflag, onhandflag, qty,
+            saleprice, saleamount, costprice, costamount,
+            batchcode, orderdetailcode, remark
+        ) values
+        <foreach item="item" collection="details" separator=",">
+        (
+            #{item.shopCode}, #{item.detailCode}, #{item.docCode}, #{item.lineNo},
+            #{item.goodsCode}, #{item.goodsName}, #{item.spec}, #{item.unit},
+            #{item.wareCode}, #{item.wareName}, #{item.qualityFlag}, #{item.onhandFlag}, #{item.qty},
+            #{item.salePrice}, #{item.saleAmount}, #{item.costPrice}, #{item.costAmount},
+            #{item.batchCode}, #{item.orderDetailCode, jdbcType=VARCHAR}, #{item.remark}
+        )
+        </foreach>
+    </insert>
+
+    <delete id="deleteDetailsByDocCode">
+        delete from sdsorder.u_f_docdetail_${tableSuffix}
+         where shop_code = #{shopCode}
+           and doccode = #{docCode}
+    </delete>
+
+    <!-- 全部库存单据月表后缀，供跨月汇总使用 -->
+    <select id="selectDocumentTableSuffixes" resultType="string">
+        select substring(table_name, length('u_f_docmain_') + 1)
+          from information_schema.tables
+         where table_schema = 'sdsorder' and table_name like 'u_f_docmain_%'
+    </select>
+
+    <!--
+      某订单的发货批次已经发出去多少、成本是多少，按商品与仓库聚合。
+
+      出库单的 sourcedoccode 存的是批次号（见 InventoryDocumentTypes.SHIP_BATCH_SOURCE），
+      一张订单可能有多个批次散在不同月表，所以由服务层先把批次号收齐再传进来。
+      costamount 是过账后回写的实际成本，退货入库按它计价，不用订单售价。
+    -->
+    <select id="selectShippedQtyByShipCodes" resultType="com.ruoyi.system.domain.vo.SalesReturnableItem">
+        select d.goodscode   as goodsCode,
+               max(d.goodsname) as goodsName,
+               max(d.spec)   as spec,
+               max(d.unit)   as unit,
+               d.warecode    as warehouseCode,
+               max(d.warename) as warehouseName,
+               sum(d.qty)    as shippedQty,
+               sum(coalesce(d.costamount, 0)) as costAmount
+          from sdsorder.u_f_docdetail_${tableSuffix} d
+          join sdsorder.u_f_docmain_${tableSuffix} m
+            on m.shop_code = d.shop_code and m.doccode = d.doccode
+         where m.shop_code = #{shopCode}
+           and m.doctype = 'CK'
+           and m.sourcedoctype = 'XSFH'
+           and m.confirmstate = '已审核'
+           and m.sourcedoccode in
+           <foreach item="code" collection="shipCodes" open="(" separator="," close=")">#{code}</foreach>
+         group by d.goodscode, d.warecode
+    </select>
+
+    <!--
+      某销售订单已退回的数量，按商品与仓库聚合。
+      含待审核，避免同一批货被重复提交退货。
+    -->
+    <select id="selectReturnedQtyByOrder" resultType="com.ruoyi.system.domain.vo.SalesReturnableItem">
+        select d.goodscode as goodsCode, d.warecode as warehouseCode, sum(d.qty) as returnedQty
+          from sdsorder.u_f_docdetail_${tableSuffix} d
+          join sdsorder.u_f_docmain_${tableSuffix} m
+            on m.shop_code = d.shop_code and m.doccode = d.doccode
+         where m.shop_code = #{shopCode}
+           and m.doctype = 'XSTHRK'
+           and m.sourcedoccode = #{orderCode}
+           and m.confirmstate in ('待审核', '已审核')
+         group by d.goodscode, d.warecode
+    </select>
+
+    <!--
+      某采购单还挂着多少「待审核」的入库数量，用来算剩余可入库量。
+
+      ⚠ 必须跨全部月表统计，不能只看当月。入库单落哪张月表由单据日期决定，
+      而待审核的单子完全可能跨月躺着：8/30 建的单没人审，9/1 又对同一张采购单
+      建一张——只查当月的话第二张看到的待审核量是 0，两张都能建、都能审，
+      采购单收货量直接翻倍。
+      销售退货 selectReturnedQtyByOrder 的调用方是遍历全部月表的，这里保持一致。
+    -->
+    <select id="selectPendingInboundQty" resultType="java.math.BigDecimal">
+        select coalesce(sum(t.qty), 0)
+          from (
+        <foreach collection="tableSuffixes" item="suffix" separator=" union all ">
+            ( select coalesce(sum(d.qty), 0) as qty
+                from sdsorder.u_f_docdetail_${suffix} d
+                join sdsorder.u_f_docmain_${suffix} m
+                  on m.shop_code = d.shop_code
+                 and m.doccode = d.doccode
+               where m.shop_code = #{shopCode}
+                 and m.doctype = 'RK'
+                 and m.sourcedoccode = #{purchaseCode}
+                 and m.confirmstate = '待审核'
+                 and d.goodscode = #{goodsCode} )
+        </foreach>
+          ) t
+    </select>
+
+    <update id="updateDetailCost">
+        update sdsorder.u_f_docdetail_${tableSuffix}
+           set costprice = #{costPrice},
+               costamount = #{costAmount}
+         where shop_code = #{shopCode}
+           and detailcode = #{detailCode}
+    </update>
+
+    <update id="updateDetailSalePrice">
+        update sdsorder.u_f_docdetail_${tableSuffix}
+           set saleprice = #{salePrice},
+               saleamount = #{saleAmount}
+         where shop_code = #{shopCode}
+           and detailcode = #{detailCode}
+    </update>
+
+</mapper>
